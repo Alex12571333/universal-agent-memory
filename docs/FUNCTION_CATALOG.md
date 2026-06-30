@@ -77,6 +77,20 @@
 | `RetainedEventRouter.__init__(handlers)` | Регистрирует handlers по job name | Handler можно тестировать отдельно |
 | `RetainedEventRouter.handle(event)` | Dispatch jobs из `memory.retained.v1` | Неизвестные event/job пропускаются |
 
+## Outbox — `services/outbox.py`, `services/consumer.py`
+
+| Функция | Назначение | Семантика |
+|---|---|---|
+| `OutboxRelay.run_once()` | Lease → JetStream publish → ack/release | At-least-once, bounded batch |
+| `IdempotentEventConsumer.handle()` | Защищает handler от completed/concurrent duplicates | Failed handler освобождает lease |
+| `PostgresMemoryLedger.claim_outbox()` | Конкурентно выдаёт due events | `FOR UPDATE SKIP LOCKED` |
+| `mark_outbox_published()` | Подтверждает событие | Только текущий lease owner |
+| `release_outbox()` | Retry или dead-letter | Порог по attempts |
+| `claim_event_processing()` | Consumer dedupe lease | acquired/completed/busy |
+| `NatsJetStreamSink.send()` | Публикует versioned event | Ждёт server ack, `Nats-Msg-Id=event.id` |
+| `NatsPullWorker.run_once()` | Pull → decode → handler → ack/nak | Busy/error delivery не подтверждается |
+| `migrate(dsn)` | Применяет forward-only SQL migrations | Advisory lock; повторный запуск безопасен |
+
 ## Composition/API
 
 | Функция | Назначение |

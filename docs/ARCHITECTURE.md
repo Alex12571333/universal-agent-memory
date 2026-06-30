@@ -103,6 +103,9 @@ cross-encoder и freshness verification без изменения `RecallQuery`.
 - Индексы обновляются eventually consistent.
 - API должен отдавать `index_stale`, когда outbox lag выше порога.
 - Consumer хранит processed event IDs и выдерживает повторную доставку.
+- Outbox relay арендует события через PostgreSQL lease и подтверждает их только
+  после JetStream persistence acknowledgement.
+- Poison events после максимума попыток остаются аудируемыми в dead letter.
 - Конфликт shared blocks решается optimistic revision/CAS.
 
 ## Deployment

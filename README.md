@@ -12,12 +12,16 @@ curl http://localhost:8080/health
 ```
 
 По умолчанию запускаются только `memory-server` и PostgreSQL. Данные остаются в
-Docker volume `postgres_data`. Qdrant, NATS и MinIO пока экспериментальны и
-включаются отдельно:
+Docker volume `postgres_data`. Advanced-профиль добавляет NATS JetStream,
+transactional-outbox relay и экспериментальные Qdrant/MinIO:
 
 ```bash
 docker compose --profile advanced up -d
 ```
+
+Перед API и relay автоматически запускается forward-only migration service.
+Повторный `docker compose up` сохраняет volume и применяет только новые SQL
+migrations.
 
 ## API за минуту
 
@@ -57,14 +61,15 @@ OpenAPI доступен на `http://localhost:8080/docs`.
 - working, core, episodic, semantic, procedural, social, reflection и error layers;
 - PostgreSQL source of truth;
 - атомарная запись memory + idempotency key + transactional outbox;
+- PostgreSQL leases, retries, dead-letter и доставка outbox в NATS JetStream;
+- durable consumer deduplication по `(event_id, consumer)`;
 - lexical recall и budgeted context compiler;
 - text ingestion и baseline reflection;
 - изоляция проектов через PostgreSQL RLS;
 - in-memory режим для unit-тестов;
 - Docker image, Compose и CI.
 
-Qdrant/vector recall, outbox relay, embeddings и SDK развиваются отдельными
-work packages.
+Qdrant/vector recall, embeddings и SDK развиваются отдельными work packages.
 
 ## Совместная работа агентов
 

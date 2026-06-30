@@ -6,7 +6,7 @@ from typing import Protocol
 from uuid import UUID
 
 from memory_plane.contracts.dto import Candidate, RecallQuery
-from memory_plane.contracts.events import IntegrationEvent
+from memory_plane.contracts.events import ClaimedEvent, ConsumerClaim, IntegrationEvent
 from memory_plane.domain.models import MemoryItem, MemoryLayer, Observation
 
 
@@ -65,6 +65,85 @@ class EventPublisher(Protocol):
 
     def publish(self, event: IntegrationEvent) -> None:
         """Persist an event for at-least-once delivery."""
+        ...
+
+
+class OutboxRepository(Protocol):
+    """Leased PostgreSQL outbox boundary for at-least-once delivery."""
+
+    def claim_outbox(
+        self,
+        tenant_id: UUID,
+        worker_id: str,
+        *,
+        limit: int,
+        lease_seconds: int,
+    ) -> tuple[ClaimedEvent, ...]:
+        """Lease due events using skip-locked concurrency."""
+        ...
+
+    def mark_outbox_published(
+        self, tenant_id: UUID, event_id: UUID, worker_id: str
+    ) -> bool:
+        """Acknowledge a leased event after the sink confirms publication."""
+        ...
+
+    def release_outbox(
+        self,
+        tenant_id: UUID,
+        event_id: UUID,
+        worker_id: str,
+        *,
+        error: str,
+        max_attempts: int,
+    ) -> bool:
+        """Release for retry or dead-letter after the configured attempt limit."""
+        ...
+
+
+class EventSink(Protocol):
+    """Asynchronous transport receiving integration events from the outbox."""
+
+    async def send(self, event: IntegrationEvent) -> None:
+        """Confirm only after the transport durably accepts the event."""
+        ...
+
+
+class ProcessedEventRepository(Protocol):
+    """Durable per-consumer idempotency and active-processing leases."""
+
+    def claim_event_processing(
+        self,
+        tenant_id: UUID,
+        event_id: UUID,
+        consumer: str,
+        worker_id: str,
+        *,
+        lease_seconds: int,
+    ) -> ConsumerClaim:
+        """Acquire, reject as busy, or report an already completed event."""
+        ...
+
+    def complete_event_processing(
+        self,
+        tenant_id: UUID,
+        event_id: UUID,
+        consumer: str,
+        worker_id: str,
+    ) -> bool:
+        """Mark a successfully handled event permanently complete."""
+        ...
+
+    def release_event_processing(
+        self,
+        tenant_id: UUID,
+        event_id: UUID,
+        consumer: str,
+        worker_id: str,
+        *,
+        error: str,
+    ) -> bool:
+        """Release a failed handler attempt for later redelivery."""
         ...
 
 

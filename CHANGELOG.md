@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Added leased PostgreSQL outbox delivery to NATS JetStream.
+- Added retry/dead-letter state and durable per-consumer event deduplication.
+- Added a standalone `outbox-relay` Docker service and end-to-end coverage.
+- Added idempotent forward-only migrations for existing Docker volumes.
 - Reframed the project as a self-hosted Docker memory server rather than a SaaS.
 - Added the `memory-server` image, durable runtime composition and standalone API defaults.
 - Added GitHub issue claiming, live agent status and auto-merge collaboration scripts.
