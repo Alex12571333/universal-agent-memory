@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added deterministic Markdown/PDF extraction with binary checksum and page provenance.
+- Added a base64 document-ingestion endpoint with stable retry identities.
 - Added optional constant-time bearer API-key protection with public health checks.
 - Added dependency-free Python and platform-fetch TypeScript SDKs.
 - Added stable retain idempotency keys, bounded retries and typed SDK errors.

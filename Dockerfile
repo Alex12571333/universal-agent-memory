@@ -10,7 +10,7 @@ COPY pyproject.toml README.md ./
 COPY src ./src
 COPY migrations ./migrations
 COPY scripts/migrate.py ./scripts/migrate.py
-RUN python -m pip install ".[api,postgres,nats]"
+RUN python -m pip install ".[api,postgres,nats,documents]"
 
 EXPOSE 8080
 

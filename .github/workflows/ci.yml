@@ -40,7 +40,7 @@ jobs:
           cache: pip
       - name: Install project
         run: |
-          pip install -e ".[dev,api,postgres,nats]"
+          pip install -e ".[dev,api,postgres,nats,documents]"
           pip install -e sdk/python
       - name: Apply database schema
         run: python scripts/migrate.py

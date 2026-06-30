@@ -22,6 +22,9 @@ class IngestDocumentCommand:
     labels: tuple[str, ...] = ()
     chunk_size_chars: int = 2400
     chunk_overlap_chars: int = 240
+    document_checksum: str | None = None
+    source_kind: str = "document"
+    extraction_version: str = "text-chunker-v1"
 
     def __post_init__(self) -> None:
         """Validate deterministic chunking parameters."""

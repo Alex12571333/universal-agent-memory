@@ -45,7 +45,8 @@ class IngestionService:
 
     def ingest_text(self, command: IngestDocumentCommand) -> IngestResult:
         """Checksum, chunk and retain a text document idempotently."""
-        digest = sha256(command.text.encode("utf-8")).hexdigest()
+        digest = command.document_checksum or sha256(command.text.encode("utf-8")).hexdigest()
+        origin_digest = sha256(command.origin_uri.encode("utf-8")).hexdigest()[:16]
         chunks = self._chunker.split(
             command.text,
             size=command.chunk_size_chars,
@@ -70,13 +71,15 @@ class IngestionService:
                     text=text,
                     labels=command.labels,
                     provenance=Provenance(
-                        source_kind="document",
+                        source_kind=command.source_kind,
                         origin_uri=command.origin_uri,
                         checksum_sha256=digest,
                         quote=text,
-                        extraction_version="text-chunker-v1",
+                        extraction_version=command.extraction_version,
                     ),
-                    idempotency_key=f"doc:{digest}:chunk:{index}:{start}:{end}",
+                    idempotency_key=(
+                        f"doc:{digest}:origin:{origin_digest}:chunk:{index}:{start}:{end}"
+                    ),
                 )
             )
             ids.append(result.item.id)

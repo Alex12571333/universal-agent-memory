@@ -10,7 +10,7 @@ roadmap и acceptance criteria, но не используется как lock.
 | WP-02 | Qdrant dense+sparse adapter | `CandidateSource` | project filter, fusion, reindex |
 | WP-03 ✅ | Outbox relay + dedupe consumer | events | crash/replay, poison event |
 | WP-04 | Embedding worker | WP-02/03 | model version, dimensions, reindex |
-| WP-05 | Markdown/PDF ingestion | ledger | provenance, stable chunks, retry |
+| WP-05 ✅ | Markdown/PDF ingestion | ledger | provenance, stable chunks, retry |
 | WP-06 | Checkpoints/working blocks | ledger | CAS, compaction, replay |
 | WP-07 ✅ | Python/TypeScript SDK | OpenAPI | retries, typed errors |
 | WP-08 | Reflection v2 | reflection service | conflict/time/entity fixtures |
