@@ -48,6 +48,10 @@ curl -X POST http://localhost:8080/v1/memory/recall \
   -d '{"query":"Какой язык используется в проекте?"}'
 ```
 
+Markdown и text-bearing PDF принимаются через `POST /v1/ingest/document` как
+base64 с полями `format` и `origin_uri`. Для PDF provenance сохраняет номер
+страницы в URI, а checksum относится к исходному бинарному файлу.
+
 `server_id` и `project_id` имеют standalone defaults, поэтому клиенту не нужно
 передавать SaaS tenant. Их можно заменить через `UAM_SERVER_ID` и
 `UAM_PROJECT_ID`, если на одном сервере требуется несколько независимых
@@ -90,6 +94,7 @@ reverse proxy.
 - durable consumer deduplication по `(event_id, consumer)`;
 - lexical recall и budgeted context compiler;
 - text ingestion и baseline reflection;
+- Markdown/PDF ingestion с checksum, page provenance и idempotent retry;
 - изоляция проектов через PostgreSQL RLS;
 - in-memory режим для unit-тестов;
 - Docker image, Compose и CI.

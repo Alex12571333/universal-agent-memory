@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
 import os
 import secrets
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+from memory_plane.adapters.documents import BinaryDocumentCommand, DocumentIngestor
 from memory_plane.bootstrap import (
     Container,
     build_in_memory_container,
@@ -115,6 +118,21 @@ def _checkpoint_response(cp: Checkpoint) -> dict[str, Any]:
     }
 
 
+class IngestDocumentBody(BaseModel):
+    """Base64 Markdown/PDF ingestion request."""
+
+    content_base64: str
+    format: Literal["markdown", "pdf"]
+    origin_uri: str
+    tenant_id: UUID = DEFAULT_SERVER_ID
+    workspace_id: UUID = DEFAULT_PROJECT_ID
+    agent_id: UUID | None = None
+    thread_id: UUID | None = None
+    labels: list[str] = Field(default_factory=list)
+    chunk_size_chars: int = Field(default=2400, ge=256)
+    chunk_overlap_chars: int = Field(default=240, ge=0)
+
+
 def create_app(
     container: Container | None = None,
     *,
@@ -122,6 +140,7 @@ def create_app(
 ) -> FastAPI:
     """Create the standalone memory server around an injected service graph."""
     services = container or _build_runtime_container()
+    documents = DocumentIngestor(services.ingestion)
     configured_key = api_key if api_key is not None else os.getenv("UAM_API_KEY")
     app = FastAPI(
         title="Universal Agent Memory Server",
@@ -248,6 +267,39 @@ def create_app(
             )
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return {
+            "document_checksum": result.document_checksum,
+            "memory_ids": [str(item_id) for item_id in result.memory_ids],
+            "created_count": result.created_count,
+        }
+
+    @app.post("/v1/ingest/document", status_code=202)
+    def ingest_document(body: IngestDocumentBody) -> dict[str, Any]:
+        """Decode and ingest a Markdown or text-bearing PDF document."""
+        try:
+            data = base64.b64decode(body.content_base64, validate=True)
+            if len(data) > 20 * 1024 * 1024:
+                raise ValueError("document exceeds 20 MiB limit")
+            command = BinaryDocumentCommand(
+                tenant_id=body.tenant_id,
+                workspace_id=body.workspace_id,
+                data=data,
+                origin_uri=body.origin_uri,
+                agent_id=body.agent_id,
+                thread_id=body.thread_id,
+                labels=tuple(body.labels),
+                chunk_size_chars=body.chunk_size_chars,
+                chunk_overlap_chars=body.chunk_overlap_chars,
+            )
+            result = (
+                documents.ingest_markdown(command)
+                if body.format == "markdown"
+                else documents.ingest_pdf(command)
+            )
+        except (binascii.Error, UnicodeDecodeError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
         return {
             "document_checksum": result.document_checksum,
             "memory_ids": [str(item_id) for item_id in result.memory_ids],

@@ -17,6 +17,7 @@ postgres = ["psycopg[binary,pool]>=3.2,<4"]
 qdrant = ["qdrant-client>=1.12,<2"]
 nats = ["nats-py>=2.9,<3"]
 s3 = ["boto3>=1.35,<2"]
+documents = ["pypdf>=5,<7"]
 dev = ["pytest>=8.3,<9", "ruff>=0.8,<1", "mypy>=1.13,<2", "httpx>=0.27,<1"]
 
 [tool.hatch.build.targets.wheel]

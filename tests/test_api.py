@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+
 from fastapi.testclient import TestClient
 
 from memory_plane.adapters.in_memory import InMemoryMemoryStore
@@ -72,3 +74,35 @@ def test_api_key_is_disabled_when_not_configured(monkeypatch) -> None:
     )
 
     assert response.status_code == 200
+
+
+def test_markdown_document_endpoint_is_idempotent() -> None:
+    client = TestClient(create_app(build_in_memory_container()))
+    body = {
+        "content_base64": base64.b64encode(b"# Decision\n\nUse PostgreSQL.").decode(),
+        "format": "markdown",
+        "origin_uri": "file:///decision.md",
+    }
+
+    first = client.post("/v1/ingest/document", json=body)
+    second = client.post("/v1/ingest/document", json=body)
+
+    assert first.status_code == 202
+    assert first.json()["created_count"] == 1
+    assert second.json()["created_count"] == 0
+    assert first.json()["memory_ids"] == second.json()["memory_ids"]
+
+
+def test_document_endpoint_rejects_invalid_base64() -> None:
+    client = TestClient(create_app(build_in_memory_container()))
+
+    response = client.post(
+        "/v1/ingest/document",
+        json={
+            "content_base64": "not base64!",
+            "format": "markdown",
+            "origin_uri": "file:///invalid.md",
+        },
+    )
+
+    assert response.status_code == 422

@@ -36,6 +36,10 @@
 | `TextChunker.split(text, size, overlap)` | Text → stable `(start,end,chunk)` | Paragraph/sentence-aware, deterministic |
 | `IngestionService.__init__(retention, chunker=None)` | Retain seam → service | Parser можно заменить независимо |
 | `IngestionService.ingest_text(command)` | Document → `IngestResult` | SHA-256 provenance и idempotency на каждый chunk |
+| `MarkdownParser.parse(data)` | Markdown bytes → readable text | Не исполняет HTML/code |
+| `PdfParser.parse_pages(data)` | PDF bytes → page texts | Optional pypdf; rejects image-only PDF |
+| `DocumentIngestor.ingest_markdown()` | Binary source → memory chunks | Binary checksum и stable origin |
+| `DocumentIngestor.ingest_pdf()` | PDF pages → memory chunks | `#page=N` provenance, общий checksum |
 
 ## Retrieval — `services/retrieval.py`
 
@@ -102,6 +106,7 @@
 | API-key middleware | Защищает все non-health routes при `UAM_API_KEY` |
 | `POST /v1/memory/retain` | REST boundary для retain |
 | `POST /v1/ingest/text` | Детерминированный text ingestion |
+| `POST /v1/ingest/document` | Base64 Markdown/PDF ingestion, лимит 20 MiB |
 | `POST /v1/memory/recall` | Recall + context compilation |
 | `POST /v1/workspaces/{id}/reflect` | Запуск baseline sleep/reflection |
 
