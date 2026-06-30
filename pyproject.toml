@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "universal-agent-memory"
 version = "0.1.0"
-description = "A modular, multi-agent, multi-layer memory plane"
+description = "A self-hosted Docker memory server for AI agents"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "Apache-2.0" }

@@ -1,4 +1,8 @@
-# Архитектура
+# Архитектура standalone memory server
+
+Universal Agent Memory — один self-hosted HTTP-сервер в Docker. Он обслуживает
+агентов пользователя или команды и не содержит SaaS control plane, billing,
+customer onboarding или облачной оркестрации.
 
 ## Принципы из исследований
 
@@ -11,8 +15,9 @@
 4. **Provenance first.** Производное знание без evidence не считается памятью.
 5. **Контекст компилируется.** Агент получает не «всё найденное», а бюджетный
    пакет под `chat_reply`, `planner`, `coder`, `critic` или `tool_call`.
-6. **Tenant boundary в каждом слое.** API policy + PostgreSQL RLS + payload
-   filters. Namespace в индексе сам по себе не является защитой.
+6. **Project boundary в каждом слое.** Один deployment может хранить несколько
+   локальных проектов. Существующее поле `tenant_id` является внутренним
+   `server_id`, а не SaaS-клиентом; `workspace_id` является `project_id`.
 
 ## Направление зависимостей
 
@@ -52,8 +57,8 @@ sequenceDiagram
   Worker->>Index: derived index update
 ```
 
-В production `append` и `publish` должны быть одной SQL-транзакцией. Текущий
-in-memory adapter повторяет семантику, но не заменяет production durability.
+В Docker-профиле `append` и outbox фиксируются одной PostgreSQL-транзакцией.
+In-memory adapter повторяет семантику только для тестов.
 
 ## Поток чтения
 
@@ -100,13 +105,27 @@ cross-encoder и freshness verification без изменения `RecallQuery`.
 - Consumer хранит processed event IDs и выдерживает повторную доставку.
 - Конфликт shared blocks решается optimistic revision/CAS.
 
-## Что намеренно не реализовано в foundation
+## Deployment
+
+```mermaid
+flowchart LR
+  A["AI agents"] -->|"HTTP :8080"| S["memory-server"]
+  S --> PG["PostgreSQL source of truth"]
+  S -. "advanced profile" .-> Q["Qdrant"]
+  PG -. "outbox" .-> W["workers"]
+```
+
+Default Compose запускает `memory-server` и PostgreSQL на одной машине.
+Дополнительные индексы и workers включаются профилем `advanced`, но не образуют
+отдельную SaaS-платформу.
+
+## Что намеренно не реализовано
 
 - LLM extraction и модельный routing;
 - реальные Postgres/Qdrant/NATS/S3 adapters;
-- policy engine и identity provider;
+- сложный policy engine и identity provider;
 - graph database;
 - distributed worker leases;
-- production readiness/metrics.
+- metrics и backup automation.
 
 Для каждого пункта есть независимый work package.

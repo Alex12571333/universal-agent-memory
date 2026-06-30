@@ -6,6 +6,7 @@ from dataclasses import replace
 from uuid import uuid4
 
 from memory_plane.adapters.postgres import PostgresMemoryLedger
+from memory_plane.contracts.dto import RecallQuery
 from memory_plane.contracts.events import IntegrationEvent
 from memory_plane.domain.models import MemoryItem, MemoryLayer, MemoryScope, Provenance
 
@@ -133,6 +134,21 @@ class PostgresMemoryLedgerTest(unittest.TestCase):
 
         self.assertEqual((core.id,), tuple(row.id for row in rows))
         self.assertEqual("test://postgres", rows[0].provenance.origin_uri)
+
+    def test_postgres_is_a_lexical_candidate_source(self) -> None:
+        expected = self._item("Agents remember PostgreSQL facts")
+        self.store.retain(expected, self._event(expected))
+
+        rows = self.store.search(
+            RecallQuery(
+                tenant_id=self.tenant,
+                workspace_id=self.workspace,
+                text="PostgreSQL facts",
+            )
+        )
+
+        self.assertEqual(expected.id, rows[0].item.id)
+        self.assertEqual("postgres_lexical", rows[0].source)
 
 
 if __name__ == "__main__":

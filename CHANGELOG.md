@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Reframed the project as a self-hosted Docker memory server rather than a SaaS.
+- Added the `memory-server` image, durable runtime composition and standalone API defaults.
+- Added GitHub issue claiming, live agent status and auto-merge collaboration scripts.
+- Added PostgreSQL lexical recall for the default Docker profile.
 - Implemented PostgreSQL canonical memory, provenance, idempotency and transactional outbox.
 - Forced tenant RLS even for table owners and added PostgreSQL integration coverage.
 - Replaced the split ledger/event retention boundary with one atomic port.

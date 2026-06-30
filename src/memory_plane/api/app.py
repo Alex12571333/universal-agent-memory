@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any
 from uuid import UUID
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from memory_plane.bootstrap import Container, build_in_memory_container
+from memory_plane.bootstrap import (
+    Container,
+    build_in_memory_container,
+    build_postgres_container,
+)
 from memory_plane.contracts.dto import (
     ContextRecipe,
     IngestDocumentCommand,
@@ -17,12 +22,15 @@ from memory_plane.contracts.dto import (
 )
 from memory_plane.domain.models import MemoryLayer, MemoryScope, Provenance
 
+DEFAULT_SERVER_ID = UUID("00000000-0000-0000-0000-000000000001")
+DEFAULT_PROJECT_ID = UUID("00000000-0000-0000-0000-000000000002")
+
 
 class RetainBody(BaseModel):
     """External retain request schema."""
 
-    tenant_id: UUID
-    workspace_id: UUID
+    tenant_id: UUID = DEFAULT_SERVER_ID
+    workspace_id: UUID = DEFAULT_PROJECT_ID
     layer: MemoryLayer
     scope: MemoryScope
     kind: str
@@ -39,8 +47,8 @@ class RetainBody(BaseModel):
 class RecallBody(BaseModel):
     """External recall request schema."""
 
-    tenant_id: UUID
-    workspace_id: UUID
+    tenant_id: UUID = DEFAULT_SERVER_ID
+    workspace_id: UUID = DEFAULT_PROJECT_ID
     query: str
     agent_id: UUID | None = None
     thread_id: UUID | None = None
@@ -55,8 +63,8 @@ class RecallBody(BaseModel):
 class IngestTextBody(BaseModel):
     """External normalized-text ingestion request."""
 
-    tenant_id: UUID
-    workspace_id: UUID
+    tenant_id: UUID = DEFAULT_SERVER_ID
+    workspace_id: UUID = DEFAULT_PROJECT_ID
     text: str
     origin_uri: str
     agent_id: UUID | None = None
@@ -67,9 +75,13 @@ class IngestTextBody(BaseModel):
 
 
 def create_app(container: Container | None = None) -> FastAPI:
-    """Create an API around an injected service graph."""
-    services = container or build_in_memory_container()
-    app = FastAPI(title="Universal Agent Memory", version="0.1.0")
+    """Create the standalone memory server around an injected service graph."""
+    services = container or _build_runtime_container()
+    app = FastAPI(
+        title="Universal Agent Memory Server",
+        version="0.1.0",
+        description="Self-hosted memory API for local and team AI agents.",
+    )
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -189,3 +201,13 @@ def create_app(container: Container | None = None) -> FastAPI:
         }
 
     return app
+
+
+def _build_runtime_container() -> Container:
+    """Select durable Docker mode when a database URL is configured."""
+    dsn = os.getenv("UAM_DATABASE_URL")
+    if not dsn:
+        return build_in_memory_container()
+    server_id = UUID(os.getenv("UAM_SERVER_ID", str(DEFAULT_SERVER_ID)))
+    project_id = UUID(os.getenv("UAM_PROJECT_ID", str(DEFAULT_PROJECT_ID)))
+    return build_postgres_container(dsn, server_id=server_id, project_id=project_id)

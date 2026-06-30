@@ -82,6 +82,7 @@
 | Функция | Назначение |
 |---|---|
 | `build_in_memory_container()` | Собирает полностью рабочий local/test graph |
+| `build_postgres_container(...)` | Собирает durable standalone server graph |
 | `create_app(container=None)` | Создаёт FastAPI app; позволяет dependency injection |
 | `GET /health` | Liveness, не readiness |
 | `POST /v1/memory/retain` | REST boundary для retain |
@@ -94,10 +95,13 @@
 | Функция | Назначение | Гарантия |
 |---|---|---|
 | `PostgresMemoryLedger.connect()` | Проверяет соединение и наличие schema | Не оставляет открытое соединение |
+| `ensure_standalone_scope(...)` | Создаёт fixed server/project namespace | Идемпотентно |
 | `retain(item, event, key)` | Записывает item, provenance, key и outbox | Одна транзакция; concurrent idempotency через advisory lock |
 | `append(item, key)` | Импортирует memory без события | Append-only и tenant-bound |
 | `get(tenant, item)` | Загружает memory с provenance | Устанавливает RLS tenant context |
 | `list_for_workspace(...)` | Детализация workspace с layer filter | Детерминированный порядок |
+| `search(query)` | PostgreSQL lexical fallback | Project/thread/label/time filters |
+| `save(observation)` | Хранит reflection и evidence links | Evidence не меняется |
 
 `QdrantCandidateSource.connect()` пока остаётся явной seam-точкой следующего
 work package.

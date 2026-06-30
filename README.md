@@ -1,71 +1,97 @@
-# Universal Agent Memory
+# Universal Agent Memory Server
 
-Основа универсального memory plane для нескольких AI-агентов. Проект собран по
-двум исследованиям из задания и сочетает:
+Self-hosted сервер общей памяти для AI-агентов. Это не SaaS: один Docker
+deployment принадлежит пользователю или команде, хранит память локально и даёт
+агентам простой HTTP API в стиле Mem0.
 
-- append-only каноническую память и provenance;
-- working, core, episodic, semantic, procedural, social, reflection и error слои;
-- hybrid retrieval с независимыми источниками кандидатов;
-- компиляцию контекста под бюджет и тип операции агента;
-- outbox и фоновые `embed`, `dedupe`, `graph`, `reflect`, `summarize` задачи;
-- tenant/workspace/agent/thread scopes;
-- сменные хранилища через ports/adapters.
+## Запуск
 
-## Быстрый старт
+```bash
+docker compose up -d --build
+curl http://localhost:8080/health
+```
+
+По умолчанию запускаются только `memory-server` и PostgreSQL. Данные остаются в
+Docker volume `postgres_data`. Qdrant, NATS и MinIO пока экспериментальны и
+включаются отдельно:
+
+```bash
+docker compose --profile advanced up -d
+```
+
+## API за минуту
+
+Сохранить память:
+
+```bash
+curl -X POST http://localhost:8080/v1/memory/retain \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "layer": "semantic",
+    "scope": "workspace",
+    "kind": "fact",
+    "text": "Основной язык проекта — Python",
+    "agent_id": "11111111-1111-1111-1111-111111111111",
+    "idempotency_key": "example-1"
+  }'
+```
+
+Найти и собрать контекст:
+
+```bash
+curl -X POST http://localhost:8080/v1/memory/recall \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"Какой язык используется в проекте?"}'
+```
+
+`server_id` и `project_id` имеют standalone defaults, поэтому клиенту не нужно
+передавать SaaS tenant. Их можно заменить через `UAM_SERVER_ID` и
+`UAM_PROJECT_ID`, если на одном сервере требуется несколько независимых
+проектов.
+
+OpenAPI доступен на `http://localhost:8080/docs`.
+
+## Что уже работает
+
+- append-only memory и provenance;
+- working, core, episodic, semantic, procedural, social, reflection и error layers;
+- PostgreSQL source of truth;
+- атомарная запись memory + idempotency key + transactional outbox;
+- lexical recall и budgeted context compiler;
+- text ingestion и baseline reflection;
+- изоляция проектов через PostgreSQL RLS;
+- in-memory режим для unit-тестов;
+- Docker image, Compose и CI.
+
+Qdrant/vector recall, outbox relay, embeddings и SDK развиваются отдельными
+work packages.
+
+## Совместная работа агентов
+
+GitHub Issues — живая доска задач, Pull Requests — очередь интеграции, `main` —
+единственная общая линия истории. Агент обязан занять issue до изменений:
+
+```bash
+make agent-status
+make agent-claim ISSUE=12 SLUG=qdrant-index
+# работа, тесты, commits
+make agent-submit ISSUE=12
+```
+
+После зелёного CI PR получает auto-merge. Так каждый агент сразу видит assignee,
+ветку и PR других агентов, а готовые изменения автоматически сходятся в этот
+репозиторий. Полный протокол находится в [AGENTS.md](AGENTS.md).
+
+## Локальная разработка
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e ".[dev,api]"
+pip install -e ".[dev,api,postgres]"
 pytest
-uvicorn memory_plane.api.app:create_app --factory --reload
+ruff check .
+mypy src
 ```
 
-Без внешних сервисов ядро и тесты работают через in-memory адаптер:
-
-```bash
-python examples/basic_flow.py
-```
-
-Инфраструктура для production-профиля:
-
-```bash
-docker compose up -d
-```
-
-## Где что лежит
-
-| Папка | Ответственность | Можно разрабатывать отдельно |
-|---|---|---|
-| `src/memory_plane/domain` | Модели и инварианты памяти | Да, без I/O |
-| `src/memory_plane/contracts` | DTO и события между модулями | Да; изменения требуют contract review |
-| `src/memory_plane/ports` | Интерфейсы репозиториев и индексов | Да |
-| `src/memory_plane/services` | Retain, recall, context, reflection | Да, через fake ports |
-| `src/memory_plane/adapters` | Postgres/Qdrant/S3/NATS и in-memory реализации | Каждый адаптер отдельно |
-| `src/memory_plane/api` | REST boundary | Да, только через services |
-| `src/memory_plane/workers` | Обработчики фоновых событий | Каждый handler отдельно |
-| `migrations` | SQL schema, RLS, индексы | Отдельный владелец |
-| `docs` | Архитектура, контракты, каталог функций | — |
-
-Начните с [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), затем прочитайте
-[AGENTS.md](AGENTS.md) и [docs/FUNCTION_CATALOG.md](docs/FUNCTION_CATALOG.md).
-
-## Статус
-
-Это foundation, а не законченный SaaS. Уже реализованы исполняемые domain-модели,
-retain/recall/context/reflection, REST endpoints и unit tests. In-memory профиль
-подходит для локальной разработки. PostgreSQL-профиль уже умеет атомарно сохранять
-memory item, provenance, idempotency key и outbox event с tenant RLS. Также работает
-детерминированный text ingestion с SHA-256 provenance и идемпотентными chunks.
-Qdrant, NATS и S3 production-адаптеры остаются независимыми work packages.
-
-PostgreSQL integration tests запускаются отдельно:
-
-```bash
-UAM_TEST_DATABASE_URL=postgresql://memory_app:memory@localhost:5432/memory \
-  pytest tests/integration
-```
-
-В Compose миграции выполняет `memory_admin`, а приложение подключается как
-`memory_app` из `.env.example`. Это разделение обязательно: PostgreSQL superuser
-обходит RLS.
+Начните с [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [AGENTS.md](AGENTS.md) и
+[docs/WORK_PACKAGES.md](docs/WORK_PACKAGES.md).

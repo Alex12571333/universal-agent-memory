@@ -49,3 +49,5 @@ jobs:
         run: ruff check .
       - name: Type check
         run: mypy src
+      - name: Build standalone server image
+        run: docker build -t universal-agent-memory:test .

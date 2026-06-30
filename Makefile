@@ -1,4 +1,4 @@
-.PHONY: install test lint run infra-up infra-down
+.PHONY: install test lint run infra-up infra-down agent-status agent-claim agent-submit
 
 install:
 	python3 -m pip install -e ".[dev,api]"
@@ -18,3 +18,14 @@ infra-up:
 
 infra-down:
 	docker compose down
+
+agent-status:
+	./scripts/agent-status.sh
+
+agent-claim:
+	@test -n "$(ISSUE)" -a -n "$(SLUG)" || (echo "Use ISSUE=<n> SLUG=<name>" && exit 1)
+	./scripts/agent-claim.sh "$(ISSUE)" "$(SLUG)"
+
+agent-submit:
+	@test -n "$(ISSUE)" || (echo "Use ISSUE=<n>" && exit 1)
+	./scripts/agent-submit.sh "$(ISSUE)"
