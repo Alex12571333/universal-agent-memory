@@ -1,0 +1,187 @@
+"""Unit tests for the Qdrant dense+sparse CandidateSource adapter.
+
+These tests use a lightweight stub that replaces the real qdrant-client
+so that the entire test suite runs without any external infrastructure.
+"""
+
+from __future__ import annotations
+
+import unittest
+from uuid import UUID, uuid4
+
+from memory_plane.adapters.qdrant import QdrantCandidateSource
+from memory_plane.contracts.dto import RecallQuery
+from memory_plane.domain.models import MemoryItem, MemoryLayer, MemoryScope, Provenance
+
+_T = UUID(int=1)
+_W = UUID(int=2)
+_PROV = Provenance(source_kind="test")
+
+
+def _item(
+    text: str = "hello world",
+    *,
+    layer: MemoryLayer = MemoryLayer.SEMANTIC,
+    tenant: UUID = _T,
+    workspace: UUID = _W,
+    labels: tuple[str, ...] = (),
+    thread_id: UUID | None = None,
+    scope: MemoryScope = MemoryScope.WORKSPACE,
+) -> MemoryItem:
+    return MemoryItem(
+        tenant_id=tenant,
+        workspace_id=workspace,
+        layer=layer,
+        scope=scope,
+        kind="fact",
+        text=text,
+        provenance=_PROV,
+        labels=labels,
+        thread_id=thread_id,
+    )
+
+
+class QdrantAdapterTest(unittest.TestCase):
+    """Verify QdrantCandidateSource contract compliance."""
+
+    def setUp(self) -> None:
+        self.source = QdrantCandidateSource(
+            url="http://localhost:6333",
+            collection="test_memory",
+            dense_dim=4,
+        )
+        # Use the built-in in-memory fallback instead of a real Qdrant instance.
+        self.source._use_in_memory_backend()
+
+    # ---- search contract ------------------------------------------------
+
+    def test_search_returns_candidates_with_project_filter(self) -> None:
+        """Only items matching tenant+workspace appear in search results."""
+        item_a = _item("semantic information")
+        item_b = _item("foreign tenant", tenant=uuid4())
+        vec = [0.1, 0.2, 0.3, 0.4]
+        self.source.upsert(item_a, dense_vector=vec)
+        self.source.upsert(item_b, dense_vector=vec)
+
+        query = RecallQuery(tenant_id=_T, workspace_id=_W, text="semantic")
+        results = self.source.search(query)
+
+        self.assertTrue(all(c.item.tenant_id == _T for c in results))
+        ids = {c.item.id for c in results}
+        self.assertIn(item_a.id, ids)
+        self.assertNotIn(item_b.id, ids)
+
+    def test_search_empty_collection_returns_empty(self) -> None:
+        query = RecallQuery(tenant_id=_T, workspace_id=_W, text="anything")
+        results = self.source.search(query)
+        self.assertEqual((), results)
+
+    def test_search_respects_layer_filter(self) -> None:
+        """When query specifies layers, only matching items are returned."""
+        core = _item("core policy", layer=MemoryLayer.CORE)
+        semantic = _item("semantic fact", layer=MemoryLayer.SEMANTIC)
+        vec = [0.1, 0.2, 0.3, 0.4]
+        self.source.upsert(core, dense_vector=vec)
+        self.source.upsert(semantic, dense_vector=vec)
+
+        query = RecallQuery(
+            tenant_id=_T,
+            workspace_id=_W,
+            text="policy",
+            layers=(MemoryLayer.CORE,),
+        )
+        results = self.source.search(query)
+        layers = {c.item.layer for c in results}
+        self.assertEqual({MemoryLayer.CORE}, layers)
+
+    def test_search_respects_label_filter(self) -> None:
+        labeled = _item("labeled fact", labels=("alpha", "release"))
+        unlabeled = _item("plain fact")
+        vec = [0.1, 0.2, 0.3, 0.4]
+        self.source.upsert(labeled, dense_vector=vec)
+        self.source.upsert(unlabeled, dense_vector=vec)
+
+        query = RecallQuery(
+            tenant_id=_T,
+            workspace_id=_W,
+            text="fact",
+            labels=("alpha",),
+        )
+        results = self.source.search(query)
+        self.assertTrue(all("alpha" in c.item.labels for c in results))
+
+    # ---- upsert / delete / reindex --------------------------------------
+
+    def test_upsert_and_search_roundtrip(self) -> None:
+        item = _item("unique knowledge")
+        self.source.upsert(item, dense_vector=[0.5, 0.5, 0.5, 0.5])
+
+        query = RecallQuery(tenant_id=_T, workspace_id=_W, text="knowledge")
+        results = self.source.search(query)
+        self.assertEqual(1, len(results))
+        self.assertEqual(item.id, results[0].item.id)
+
+    def test_delete_removes_point(self) -> None:
+        item = _item("deletable fact")
+        self.source.upsert(item, dense_vector=[0.1, 0.2, 0.3, 0.4])
+        self.source.delete(item.id)
+
+        query = RecallQuery(tenant_id=_T, workspace_id=_W, text="deletable")
+        results = self.source.search(query)
+        self.assertEqual((), results)
+
+    def test_reindex_replaces_all_points(self) -> None:
+        old = _item("old knowledge")
+        self.source.upsert(old, dense_vector=[0.1, 0.2, 0.3, 0.4])
+
+        new_a = _item("new alpha")
+        new_b = _item("new beta")
+        self.source.reindex([
+            (new_a, [0.5, 0.5, 0.5, 0.5]),
+            (new_b, [0.3, 0.3, 0.3, 0.3]),
+        ])
+
+        query = RecallQuery(tenant_id=_T, workspace_id=_W, text="knowledge")
+        results = self.source.search(query)
+        ids = {c.item.id for c in results}
+        self.assertNotIn(old.id, ids)
+
+    # ---- candidate signals ----------------------------------------------
+
+    def test_candidates_carry_semantic_signal(self) -> None:
+        item = _item("tested signal")
+        self.source.upsert(item, dense_vector=[1.0, 0.0, 0.0, 0.0])
+
+        query = RecallQuery(tenant_id=_T, workspace_id=_W, text="signal")
+        results = self.source.search(query)
+        self.assertEqual(1, len(results))
+        self.assertGreater(results[0].semantic, 0.0)
+        self.assertEqual("qdrant_hybrid", results[0].source)
+
+    def test_name_property_is_stable(self) -> None:
+        self.assertEqual("qdrant_hybrid", self.source.name)
+
+    # ---- fusion with lexical source via RetrievalService -----------------
+
+    def test_fusion_with_lexical_source(self) -> None:
+        """QdrantCandidateSource cooperates with RetrievalService fusion."""
+        from memory_plane.adapters.in_memory import InMemoryMemoryStore
+        from memory_plane.services.retrieval import RetrievalService
+
+        store = InMemoryMemoryStore()
+        item = _item("python primary language")
+        store.append(item)
+        self.source.upsert(item, dense_vector=[0.9, 0.1, 0.0, 0.0])
+
+        retrieval = RetrievalService((store, self.source))
+        result = retrieval.recall(
+            RecallQuery(tenant_id=_T, workspace_id=_W, text="python language")
+        )
+
+        self.assertGreater(len(result.candidates), 0)
+        self.assertIn("qdrant_hybrid", result.sources_used)
+        self.assertIn("sql_lexical", result.sources_used)
+
+
+if __name__ == "__main__":
+    unittest.main()

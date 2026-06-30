@@ -123,9 +123,6 @@
 | `search(query)` | PostgreSQL lexical fallback | Project/thread/label/time filters |
 | `save(observation)` | Хранит reflection и evidence links | Evidence не меняется |
 
-`QdrantCandidateSource.connect()` пока остаётся явной seam-точкой следующего
-work package.
-
 ## Checkpoint domain — `domain/checkpoint.py`
 
 | Тип | Назначение | Инвариант |
@@ -164,3 +161,15 @@ work package.
 | `MemoryClient.ingest_text()` / `ingestText()` | Загружает текст | Typed checksum и memory IDs |
 | retry loop | Повторяет network/429/502/503/504 | Bounded exponential backoff, `Retry-After` |
 | typed errors | Нормализует HTTP failures | Сохраняет status code |
+
+## Qdrant adapter — `adapters/qdrant.py`
+
+| Функция | Назначение | Гарантия |
+|---|---|---|
+| `QdrantCandidateSource.__init__(url, collection, dense_dim, api_key)` | Capture Qdrant endpoint and vector config | Нет I/O до `connect()` |
+| `connect()` | Create QdrantClient, ensure collection with dense+sparse vectors | Идемпотентно; requires `qdrant-client` |
+| `search(query)` | Hybrid search with project-scoped filtering | Tenant/workspace/layer/label filters |
+| `upsert(item, dense_vector, sparse_indices?, sparse_values?)` | Insert or update point with full payload | Idempotent by item ID |
+| `delete(item_id)` | Remove point by memory item ID | Нет ошибки если не существует |
+| `reindex(items)` | Drop collection and re-insert from scratch | Блокирующий; batch по 100 |
+| `_use_in_memory_backend()` | Activate test-only in-memory fallback | Нет зависимости на qdrant-client |

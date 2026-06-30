@@ -11,6 +11,10 @@
 - Added retry/dead-letter state and durable per-consumer event deduplication.
 - Added a standalone `outbox-relay` Docker service and end-to-end coverage.
 - Added idempotent forward-only migrations for existing Docker volumes.
+- Added Qdrant dense+sparse `CandidateSource` adapter with hybrid search, upsert,
+  delete and full reindex (WP-02).
+- Bootstrap optionally connects Qdrant via `UAM_QDRANT_URL` / `UAM_EMBEDDING_DIM`.
+- Docker Compose forwards Qdrant env vars to `memory-server`.
 - Reframed the project as a self-hosted Docker memory server rather than a SaaS.
 - Added the `memory-server` image, durable runtime composition and standalone API defaults.
 - Added GitHub issue claiming, live agent status and auto-merge collaboration scripts.
