@@ -32,8 +32,8 @@ jobs:
       UAM_ADMIN_DATABASE_URL: postgresql://memory_admin:memory@localhost:5432/memory
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
           cache: pip
