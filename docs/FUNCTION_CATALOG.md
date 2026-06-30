@@ -121,6 +121,35 @@
 `QdrantCandidateSource.connect()` пока остаётся явной seam-точкой следующего
 work package.
 
+## Checkpoint domain — `domain/checkpoint.py`
+
+| Тип | Назначение | Инвариант |
+|---|---|---|
+| `Checkpoint` | Frozen ревизионный snapshot | `revision >= 1`, immutable |
+| `StaleRevisionError` | CAS conflict exception | Содержит `expected`, `actual` |
+
+## CheckpointService — `services/checkpoint.py`
+
+| Функция | Назначение | Гарантия |
+|---|---|---|
+| `save(tenant_id, workspace_id, thread_id, state)` | Auto-increment save | CAS-protected через store |
+| `update(tenant_id, workspace_id, thread_id, state, expected_revision)` | CAS update | Raises `StaleRevisionError` |
+| `restore(tenant_id, thread_id)` | Load latest checkpoint | None если нет |
+| `restore_revision(tenant_id, thread_id, revision)` | Load specific revision | None если нет |
+| `compact(tenant_id, thread_id, keep_last)` | Удаляет старые ревизии | Возвращает count удалённых |
+| `list_for_workspace(tenant_id, workspace_id)` | Head checkpoints по workspace | Детерминированный порядок |
+
+## CheckpointStore port — `ports/checkpoint_store.py`
+
+| Метод | Назначение | Гарантия |
+|---|---|---|
+| `save(checkpoint)` | Unconditional append | Без CAS проверки |
+| `save_if_head(checkpoint, expected_revision)` | CAS append | Raises `StaleRevisionError` |
+| `get_head(tenant_id, thread_id)` | Latest revision | None если нет |
+| `get_revision(tenant_id, thread_id, revision)` | Specific revision | None если нет |
+| `list_for_workspace(tenant_id, workspace_id)` | Head per thread | Tenant-scoped |
+| `compact(tenant_id, thread_id, keep_last)` | Удаление старых | Возвращает count |
+
 ## SDK — `sdk/python`, `sdk/typescript`
 
 | Функция | Назначение | Гарантия |

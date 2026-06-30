@@ -8,6 +8,7 @@ from uuid import UUID
 
 from memory_plane.contracts.dto import Candidate, RecallQuery
 from memory_plane.contracts.events import IntegrationEvent
+from memory_plane.domain.checkpoint import Checkpoint, StaleRevisionError
 from memory_plane.domain.models import MemoryItem, MemoryLayer, MemoryScope, Observation
 
 _WORD = re.compile(r"\w+", re.UNICODE)
@@ -149,3 +150,83 @@ class InMemoryObservationRepository:
     ) -> tuple[Observation, ...]:
         """Delegate tenant-safe observation listing."""
         return self._store.list_observations(tenant_id, workspace_id)
+
+
+class InMemoryCheckpointStore:
+    """Thread-safe in-memory checkpoint store implementing CheckpointStore Protocol."""
+
+    def __init__(self) -> None:
+        # thread_id → list of Checkpoint ordered by revision
+        self._revisions: dict[UUID, list[Checkpoint]] = {}
+        self._lock = RLock()
+
+    def save(self, checkpoint: Checkpoint) -> Checkpoint:
+        """Append a new checkpoint revision unconditionally."""
+        with self._lock:
+            revs = self._revisions.setdefault(checkpoint.thread_id, [])
+            revs.append(checkpoint)
+            return checkpoint
+
+    def save_if_head(
+        self, checkpoint: Checkpoint, expected_revision: int
+    ) -> Checkpoint:
+        """CAS: append only when current head revision equals *expected_revision*."""
+
+        with self._lock:
+            revs = self._revisions.get(checkpoint.thread_id, [])
+            tenant_revs = [r for r in revs if r.tenant_id == checkpoint.tenant_id]
+            actual = tenant_revs[-1].revision if tenant_revs else None
+            if actual != expected_revision:
+                raise StaleRevisionError(
+                    checkpoint.thread_id, expected_revision, actual
+                )
+            return self.save(checkpoint)
+
+    def get_head(self, tenant_id: UUID, thread_id: UUID) -> Checkpoint | None:
+        """Return the latest revision for a thread, or None."""
+        with self._lock:
+            revs = self._revisions.get(thread_id, [])
+            tenant_revs = [r for r in revs if r.tenant_id == tenant_id]
+            return tenant_revs[-1] if tenant_revs else None
+
+    def get_revision(
+        self, tenant_id: UUID, thread_id: UUID, revision: int
+    ) -> Checkpoint | None:
+        """Return a specific historical revision."""
+        with self._lock:
+            revs = self._revisions.get(thread_id, [])
+            for r in revs:
+                if r.tenant_id == tenant_id and r.revision == revision:
+                    return r
+            return None
+
+    def list_for_workspace(
+        self, tenant_id: UUID, workspace_id: UUID
+    ) -> tuple[Checkpoint, ...]:
+        """List head checkpoints for all threads in a workspace."""
+        with self._lock:
+            heads: dict[UUID, Checkpoint] = {}
+            for revs in self._revisions.values():
+                for r in revs:
+                    if r.tenant_id == tenant_id and r.workspace_id == workspace_id:
+                        existing = heads.get(r.thread_id)
+                        if existing is None or r.revision > existing.revision:
+                            heads[r.thread_id] = r
+            return tuple(
+                v for v in sorted(heads.values(), key=lambda c: c.created_at)
+            )
+
+    def compact(
+        self, tenant_id: UUID, thread_id: UUID, *, keep_last: int = 3
+    ) -> int:
+        """Delete old revisions keeping *keep_last* most recent ones."""
+        with self._lock:
+            revs = self._revisions.get(thread_id, [])
+            tenant_revs = [r for r in revs if r.tenant_id == tenant_id]
+            other_revs = [r for r in revs if r.tenant_id != tenant_id]
+            if len(tenant_revs) <= keep_last:
+                return 0
+            removed = len(tenant_revs) - keep_last
+            kept = tenant_revs[-keep_last:]
+            self._revisions[thread_id] = other_revs + kept
+            return removed

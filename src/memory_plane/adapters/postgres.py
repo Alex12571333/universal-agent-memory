@@ -10,6 +10,7 @@ from uuid import UUID
 
 from memory_plane.contracts.dto import Candidate, RecallQuery
 from memory_plane.contracts.events import ClaimedEvent, ConsumerClaim, IntegrationEvent
+from memory_plane.domain.checkpoint import Checkpoint, StaleRevisionError
 from memory_plane.domain.models import (
     MemoryItem,
     MemoryLayer,
@@ -673,3 +674,165 @@ class PostgresObservationRepository:
         self, tenant_id: UUID, workspace_id: UUID
     ) -> tuple[Observation, ...]:
         return self._store.list_observations(tenant_id, workspace_id)
+
+
+class PostgresCheckpointStore:
+    """CAS-protected checkpoint storage backed by the existing checkpoints table."""
+
+    def __init__(self, ledger: PostgresMemoryLedger) -> None:
+        self._ledger = ledger
+
+    def save(self, checkpoint: Checkpoint) -> Checkpoint:
+        """Append a new checkpoint revision unconditionally."""
+        from psycopg.types.json import Jsonb
+
+        with self._ledger._connection() as connection:
+            self._ledger._set_tenant(connection, checkpoint.tenant_id)
+            connection.execute(
+                """
+                insert into checkpoints (
+                  id, tenant_id, workspace_id, thread_id, revision, state, created_at
+                ) values (%s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    checkpoint.id,
+                    checkpoint.tenant_id,
+                    checkpoint.workspace_id,
+                    checkpoint.thread_id,
+                    checkpoint.revision,
+                    Jsonb(checkpoint.state),
+                    checkpoint.created_at,
+                ),
+            )
+        return checkpoint
+
+    def save_if_head(
+        self, checkpoint: Checkpoint, expected_revision: int
+    ) -> Checkpoint:
+        """CAS: append only when current head revision equals *expected_revision*."""
+        from psycopg.types.json import Jsonb
+
+
+        with self._ledger._connection() as connection:
+            self._ledger._set_tenant(connection, checkpoint.tenant_id)
+            row = connection.execute(
+                """
+                select max(revision) as head
+                from checkpoints
+                where thread_id = %s
+                for update
+                """,
+                (checkpoint.thread_id,),
+            ).fetchone()
+            actual = row["head"] if row and row["head"] is not None else None
+            if actual != expected_revision:
+                raise StaleRevisionError(
+                    checkpoint.thread_id, expected_revision, actual
+                )
+            connection.execute(
+                """
+                insert into checkpoints (
+                  id, tenant_id, workspace_id, thread_id, revision, state, created_at
+                ) values (%s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    checkpoint.id,
+                    checkpoint.tenant_id,
+                    checkpoint.workspace_id,
+                    checkpoint.thread_id,
+                    checkpoint.revision,
+                    Jsonb(checkpoint.state),
+                    checkpoint.created_at,
+                ),
+            )
+        return checkpoint
+
+    def get_head(
+        self, tenant_id: UUID, thread_id: UUID
+    ) -> Checkpoint | None:
+        """Return the latest revision for a thread."""
+        with self._ledger._connection() as connection:
+            self._ledger._set_tenant(connection, tenant_id)
+            row = connection.execute(
+                """
+                select id, tenant_id, workspace_id, thread_id,
+                       revision, state, created_at
+                from checkpoints
+                where thread_id = %s
+                order by revision desc
+                limit 1
+                """,
+                (thread_id,),
+            ).fetchone()
+        return None if row is None else self._to_checkpoint(row)
+
+    def get_revision(
+        self, tenant_id: UUID, thread_id: UUID, revision: int
+    ) -> Checkpoint | None:
+        """Return a specific historical revision."""
+        with self._ledger._connection() as connection:
+            self._ledger._set_tenant(connection, tenant_id)
+            row = connection.execute(
+                """
+                select id, tenant_id, workspace_id, thread_id,
+                       revision, state, created_at
+                from checkpoints
+                where thread_id = %s and revision = %s
+                """,
+                (thread_id, revision),
+            ).fetchone()
+        return None if row is None else self._to_checkpoint(row)
+
+    def list_for_workspace(
+        self, tenant_id: UUID, workspace_id: UUID
+    ) -> tuple[Checkpoint, ...]:
+        """List head checkpoints for every thread in a workspace."""
+        with self._ledger._connection() as connection:
+            self._ledger._set_tenant(connection, tenant_id)
+            rows = connection.execute(
+                """
+                select distinct on (thread_id)
+                       id, tenant_id, workspace_id, thread_id,
+                       revision, state, created_at
+                from checkpoints
+                where workspace_id = %s
+                order by thread_id, revision desc
+                """,
+                (workspace_id,),
+            ).fetchall()
+        return tuple(self._to_checkpoint(row) for row in rows)
+
+    def compact(
+        self, tenant_id: UUID, thread_id: UUID, *, keep_last: int = 3
+    ) -> int:
+        """Delete old revisions keeping the most recent *keep_last*."""
+        with self._ledger._connection() as connection:
+            self._ledger._set_tenant(connection, tenant_id)
+            row = connection.execute(
+                """
+                with deletable as (
+                  select id
+                  from checkpoints
+                  where thread_id = %s
+                  order by revision desc
+                  offset %s
+                )
+                delete from checkpoints
+                where id in (select id from deletable)
+                returning id
+                """,
+                (thread_id, keep_last),
+            ).fetchall()
+        return len(row)
+
+    @staticmethod
+    def _to_checkpoint(row: dict[str, Any]) -> Checkpoint:
+        return Checkpoint(
+            id=row["id"],
+            tenant_id=row["tenant_id"],
+            workspace_id=row["workspace_id"],
+            thread_id=row["thread_id"],
+            revision=row["revision"],
+            state=row["state"],
+            created_at=row["created_at"],
+        )

@@ -22,6 +22,7 @@ from memory_plane.contracts.dto import (
     RecallQuery,
     RetainCommand,
 )
+from memory_plane.domain.checkpoint import Checkpoint, StaleRevisionError
 from memory_plane.domain.models import MemoryLayer, MemoryScope, Provenance
 
 DEFAULT_SERVER_ID = UUID("00000000-0000-0000-0000-000000000001")
@@ -74,6 +75,44 @@ class IngestTextBody(BaseModel):
     labels: list[str] = Field(default_factory=list)
     chunk_size_chars: int = Field(default=2400, ge=256)
     chunk_overlap_chars: int = Field(default=240, ge=0)
+
+
+class CheckpointSaveBody(BaseModel):
+    """Save a new working-memory checkpoint."""
+
+    tenant_id: UUID = DEFAULT_SERVER_ID
+    workspace_id: UUID = DEFAULT_PROJECT_ID
+    thread_id: UUID
+    state: dict[str, Any]
+
+
+class CheckpointUpdateBody(BaseModel):
+    """CAS-update an existing checkpoint."""
+
+    tenant_id: UUID = DEFAULT_SERVER_ID
+    workspace_id: UUID = DEFAULT_PROJECT_ID
+    state: dict[str, Any]
+    expected_revision: int = Field(ge=1)
+
+
+class CheckpointCompactBody(BaseModel):
+    """Compaction request body."""
+
+    tenant_id: UUID = DEFAULT_SERVER_ID
+    keep_last: int = Field(default=3, ge=1)
+
+
+def _checkpoint_response(cp: Checkpoint) -> dict[str, Any]:
+    """Render a checkpoint as a JSON-compatible dict."""
+    return {
+        "id": str(cp.id),
+        "tenant_id": str(cp.tenant_id),
+        "workspace_id": str(cp.workspace_id),
+        "thread_id": str(cp.thread_id),
+        "revision": cp.revision,
+        "state": cp.state,
+        "created_at": cp.created_at.isoformat(),
+    }
 
 
 def create_app(
@@ -223,6 +262,101 @@ def create_app(
             "created": len(observations),
             "observation_ids": [str(row.id) for row in observations],
         }
+
+    # ── Checkpoint endpoints ────────────────────────────────────────
+
+    @app.post("/v1/checkpoints", status_code=201)
+    def save_checkpoint(body: CheckpointSaveBody) -> dict[str, Any]:
+        """Save a new working-memory checkpoint revision."""
+        try:
+            cp = services.checkpoint.save(
+                tenant_id=body.tenant_id,
+                workspace_id=body.workspace_id,
+                thread_id=body.thread_id,
+                state=body.state,
+            )
+        except StaleRevisionError as exc:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error": "revision_conflict",
+                    "message": str(exc),
+                    "expected": exc.expected,
+                    "actual": exc.actual,
+                },
+            ) from exc
+        return _checkpoint_response(cp)
+
+    @app.get("/v1/checkpoints")
+    def list_checkpoints(
+        workspace_id: UUID = DEFAULT_PROJECT_ID,
+        tenant_id: UUID = DEFAULT_SERVER_ID,
+    ) -> list[dict[str, Any]]:
+        """List head checkpoints for all threads in a workspace."""
+        heads = services.checkpoint.list_for_workspace(tenant_id, workspace_id)
+        return [_checkpoint_response(cp) for cp in heads]
+
+    @app.get("/v1/checkpoints/{thread_id}")
+    def restore_checkpoint(
+        thread_id: UUID,
+        tenant_id: UUID = DEFAULT_SERVER_ID,
+    ) -> dict[str, Any]:
+        """Restore the latest checkpoint for a thread."""
+        cp = services.checkpoint.restore(tenant_id=tenant_id, thread_id=thread_id)
+        if cp is None:
+            raise HTTPException(404, "checkpoint not found")
+        return _checkpoint_response(cp)
+
+    @app.get("/v1/checkpoints/{thread_id}/revisions/{revision}")
+    def restore_checkpoint_revision(
+        thread_id: UUID,
+        revision: int,
+        tenant_id: UUID = DEFAULT_SERVER_ID,
+    ) -> dict[str, Any]:
+        """Restore a specific historical checkpoint revision."""
+        cp = services.checkpoint.restore_revision(
+            tenant_id=tenant_id, thread_id=thread_id, revision=revision
+        )
+        if cp is None:
+            raise HTTPException(404, "checkpoint revision not found")
+        return _checkpoint_response(cp)
+
+    @app.put("/v1/checkpoints/{thread_id}")
+    def update_checkpoint(
+        thread_id: UUID, body: CheckpointUpdateBody
+    ) -> dict[str, Any]:
+        """CAS-update a checkpoint; returns 409 on stale revision."""
+        try:
+            cp = services.checkpoint.update(
+                tenant_id=body.tenant_id,
+                workspace_id=body.workspace_id,
+                thread_id=thread_id,
+                state=body.state,
+                expected_revision=body.expected_revision,
+            )
+        except StaleRevisionError as exc:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error": "revision_conflict",
+                    "message": str(exc),
+                    "expected": exc.expected,
+                    "actual": exc.actual,
+                },
+            ) from exc
+        return _checkpoint_response(cp)
+
+    @app.post("/v1/checkpoints/{thread_id}/compact")
+    def compact_checkpoint(
+        thread_id: UUID, body: CheckpointCompactBody
+    ) -> dict[str, Any]:
+        """Delete old revisions keeping the most recent *keep_last*."""
+        deleted = services.checkpoint.compact(
+            tenant_id=body.tenant_id,
+            thread_id=thread_id,
+            keep_last=body.keep_last,
+        )
+        return {"deleted": deleted}
 
     return app
 
