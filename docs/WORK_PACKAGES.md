@@ -12,7 +12,7 @@ roadmap и acceptance criteria, но не используется как lock.
 | WP-04 | Embedding worker | WP-02/03 | model version, dimensions, reindex |
 | WP-05 | Markdown/PDF ingestion | ledger | provenance, stable chunks, retry |
 | WP-06 | Checkpoints/working blocks | ledger | CAS, compaction, replay |
-| WP-07 | Python/TypeScript SDK | OpenAPI | retries, typed errors |
+| WP-07 ✅ | Python/TypeScript SDK | OpenAPI | retries, typed errors |
 | WP-08 | Reflection v2 | reflection service | conflict/time/entity fixtures |
 | WP-09 | API key for trusted LAN exposure | server | deny invalid key, health allowed |
 | WP-10 | Metrics + backup/restore | boundaries | outbox lag, restore drill |
