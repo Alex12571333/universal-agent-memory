@@ -39,7 +39,7 @@ jobs:
           python-version: "3.11"
           cache: pip
       - name: Install project
-        run: pip install -e ".[dev,api,postgres]"
+        run: pip install -e ".[dev,api,postgres,nats]"
       - name: Apply database schema
         run: python scripts/migrate.py
       - name: Start NATS JetStream
