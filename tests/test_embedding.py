@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import ANY, patch
 from uuid import uuid4
 
 from memory_plane.adapters.embeddings import FakeEmbeddingClient
@@ -49,8 +50,15 @@ class EmbeddingServiceTest(unittest.TestCase):
         result = self.container.retention.retain(command)
         memory_id = result.item.id
 
-        # 2. Run embedding worker handler logic
-        self.container.embedding.process_memory_retained(self.tenant, memory_id)
+        # 2. Run embedding worker handler logic with a spy
+        qdrant = self.container.embedding._qdrant
+        with patch.object(qdrant, "upsert", wraps=qdrant.upsert) as mock_upsert:
+            self.container.embedding.process_memory_retained(self.tenant, memory_id)
+            mock_upsert.assert_called_once_with(
+                ANY,
+                dense_vector=ANY,
+                model_name="fake-embed-v1",
+            )
 
         # 3. Recall using RetrievalService (which queries Qdrant Candidate Source)
         recall_query = RecallQuery(
@@ -101,8 +109,14 @@ class EmbeddingServiceTest(unittest.TestCase):
             )
         )
 
-        # 2. Run full reindex
-        count = self.container.embedding.reindex_all(self.tenant, self.workspace)
+        # 2. Run full reindex with a spy
+        qdrant = self.container.embedding._qdrant
+        with patch.object(qdrant, "reindex", wraps=qdrant.reindex) as mock_reindex:
+            count = self.container.embedding.reindex_all(self.tenant, self.workspace)
+            mock_reindex.assert_called_once_with(
+                ANY,
+                model_name="fake-embed-v1",
+            )
         self.assertEqual(2, count)
 
         # 3. Search and verify both exist in Qdrant

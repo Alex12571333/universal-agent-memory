@@ -33,7 +33,7 @@ class EmbeddingService:
 
         vector = self._client.embed(item.text)
         # Store embedding in Qdrant with model metadata in payload
-        self._qdrant.upsert(item, dense_vector=vector)
+        self._qdrant.upsert(item, dense_vector=vector, model_name=self._client.model_name)
 
     def reindex_all(self, tenant_id: UUID, workspace_id: UUID) -> int:
         """Re-generate all embeddings using the current model and perform a full reindex."""
@@ -46,5 +46,5 @@ class EmbeddingService:
             vector = self._client.embed(item.text)
             pairs.append((item, vector))
 
-        self._qdrant.reindex(pairs)
+        self._qdrant.reindex(pairs, model_name=self._client.model_name)
         return len(pairs)

@@ -182,6 +182,34 @@ class QdrantAdapterTest(unittest.TestCase):
         self.assertIn("qdrant_hybrid", result.sources_used)
         self.assertIn("sql_lexical", result.sources_used)
 
+    def test_upsert_qdrant_adds_model_name_to_payload(self) -> None:
+        """Verify model_name is passed to Qdrant payload when provided."""
+        from unittest.mock import MagicMock, patch
+
+        mock_models = MagicMock()
+        mock_models.PointStruct = lambda id, vector, payload: MagicMock(payload=payload)
+
+        with patch.dict(
+            "sys.modules",
+            {
+                "qdrant_client": MagicMock(),
+                "qdrant_client.models": mock_models,
+            },
+        ):
+            source = QdrantCandidateSource(
+                url="http://localhost:6333", collection="test", dense_dim=4
+            )
+            source._client = MagicMock()
+            item = _item("test text")
+            
+            source._upsert_qdrant(item, [0.1, 0.2, 0.3, 0.4], model_name="test-model-v2")
+            
+            called_args = source._client.upsert.call_args
+            self.assertIsNotNone(called_args)
+            points = called_args.kwargs.get("points")
+            self.assertEqual(1, len(points))
+            self.assertEqual("test-model-v2", points[0].payload.get("model_name"))
+
 
 if __name__ == "__main__":
     unittest.main()
