@@ -6,13 +6,16 @@ from dataclasses import dataclass
 from uuid import UUID
 
 from memory_plane.adapters.in_memory import (
+    InMemoryCheckpointStore,
     InMemoryMemoryStore,
     InMemoryObservationRepository,
 )
 from memory_plane.adapters.postgres import (
+    PostgresCheckpointStore,
     PostgresMemoryLedger,
     PostgresObservationRepository,
 )
+from memory_plane.services.checkpoint import CheckpointService
 from memory_plane.services.context import ContextCompiler
 from memory_plane.services.ingestion import IngestionService
 from memory_plane.services.reflection import ReflectionService
@@ -29,6 +32,7 @@ class Container:
     retrieval: RetrievalService
     context: ContextCompiler
     reflection: ReflectionService
+    checkpoint: CheckpointService
     store: object
 
 
@@ -42,6 +46,7 @@ def build_in_memory_container() -> Container:
         retrieval=RetrievalService((store,)),
         context=ContextCompiler(),
         reflection=ReflectionService(store, InMemoryObservationRepository(store)),
+        checkpoint=CheckpointService(InMemoryCheckpointStore()),
         store=store,
     )
 
@@ -63,5 +68,6 @@ def build_postgres_container(
         retrieval=RetrievalService((store,)),
         context=ContextCompiler(),
         reflection=ReflectionService(store, PostgresObservationRepository(store)),
+        checkpoint=CheckpointService(PostgresCheckpointStore(store)),
         store=store,
     )
