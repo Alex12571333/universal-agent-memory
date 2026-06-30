@@ -10,8 +10,8 @@ services:
       UAM_PROJECT_ID: 00000000-0000-0000-0000-000000000002
     ports: ["8080:8080"]
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     restart: unless-stopped
     healthcheck:
       test:
@@ -34,13 +34,22 @@ services:
     ports: ["5432:5432"]
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./migrations/001_initial.sql:/docker-entrypoint-initdb.d/001_initial.sql:ro
-      - ./migrations/dev/002_app_role.sql:/docker-entrypoint-initdb.d/002_app_role.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U memory_admin -d memory"]
       interval: 5s
       timeout: 3s
       retries: 10
+
+  migrate:
+    build:
+      context: .
+    command: ["python", "scripts/migrate.py"]
+    environment:
+      UAM_ADMIN_DATABASE_URL: postgresql://memory_admin:memory@postgres:5432/memory
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
 
   qdrant:
     profiles: ["advanced"]
@@ -67,6 +76,22 @@ services:
     ports: ["4222:4222", "8222:8222"]
     volumes:
       - nats_data:/data
+
+  outbox-relay:
+    profiles: ["advanced"]
+    build:
+      context: .
+    command: ["python", "-m", "memory_plane.workers.outbox_main"]
+    environment:
+      UAM_DATABASE_URL: postgresql://memory_app:memory@postgres:5432/memory
+      UAM_SERVER_ID: 00000000-0000-0000-0000-000000000001
+      UAM_NATS_URL: nats://nats:4222
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      nats:
+        condition: service_started
+    restart: unless-stopped
 
 volumes:
   postgres_data:

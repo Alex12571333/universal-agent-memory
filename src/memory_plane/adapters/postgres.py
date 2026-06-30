@@ -9,7 +9,7 @@ from typing import Any
 from uuid import UUID
 
 from memory_plane.contracts.dto import Candidate, RecallQuery
-from memory_plane.contracts.events import IntegrationEvent
+from memory_plane.contracts.events import ClaimedEvent, ConsumerClaim, IntegrationEvent
 from memory_plane.domain.models import (
     MemoryItem,
     MemoryLayer,
@@ -105,6 +105,223 @@ class PostgresMemoryLedger:
                 )
             self._insert_event(connection, event)
             return item, True
+
+    def claim_outbox(
+        self,
+        tenant_id: UUID,
+        worker_id: str,
+        *,
+        limit: int,
+        lease_seconds: int,
+    ) -> tuple[ClaimedEvent, ...]:
+        """Lease due events concurrently with `FOR UPDATE SKIP LOCKED`."""
+        with self._connection() as connection:
+            self._set_tenant(connection, tenant_id)
+            rows = connection.execute(
+                """
+                with due as (
+                  select id
+                  from outbox_events
+                  where published_at is null
+                    and dead_lettered_at is null
+                    and (lease_until is null or lease_until < clock_timestamp())
+                  order by occurred_at, id
+                  for update skip locked
+                  limit %s
+                )
+                update outbox_events o
+                set lease_owner = %s,
+                    lease_until = clock_timestamp() + make_interval(secs => %s),
+                    attempts = o.attempts + 1,
+                    last_error = null
+                from due
+                where o.id = due.id
+                returning
+                  o.id, o.tenant_id, o.workspace_id, o.name, o.payload,
+                  o.correlation_id, o.occurred_at, o.attempts
+                """,
+                (limit, worker_id, lease_seconds),
+            ).fetchall()
+        return tuple(
+            ClaimedEvent(
+                event=IntegrationEvent(
+                    id=row["id"],
+                    tenant_id=row["tenant_id"],
+                    workspace_id=row["workspace_id"],
+                    name=row["name"],
+                    payload=row["payload"],
+                    correlation_id=row["correlation_id"],
+                    occurred_at=row["occurred_at"],
+                ),
+                attempts=row["attempts"],
+            )
+            for row in rows
+        )
+
+    def mark_outbox_published(
+        self, tenant_id: UUID, event_id: UUID, worker_id: str
+    ) -> bool:
+        """Acknowledge publication only for the worker holding the lease."""
+        with self._connection() as connection:
+            self._set_tenant(connection, tenant_id)
+            row = connection.execute(
+                """
+                update outbox_events
+                set published_at = clock_timestamp(),
+                    lease_owner = null,
+                    lease_until = null,
+                    last_error = null
+                where id = %s
+                  and lease_owner = %s
+                  and published_at is null
+                returning id
+                """,
+                (event_id, worker_id),
+            ).fetchone()
+        return row is not None
+
+    def release_outbox(
+        self,
+        tenant_id: UUID,
+        event_id: UUID,
+        worker_id: str,
+        *,
+        error: str,
+        max_attempts: int,
+    ) -> bool:
+        """Release a failed lease or dead-letter an exhausted event."""
+        with self._connection() as connection:
+            self._set_tenant(connection, tenant_id)
+            row = connection.execute(
+                """
+                update outbox_events
+                set lease_owner = null,
+                    lease_until = null,
+                    last_error = %s,
+                    dead_lettered_at = case
+                      when attempts >= %s then clock_timestamp()
+                      else dead_lettered_at
+                    end
+                where id = %s
+                  and lease_owner = %s
+                  and published_at is null
+                returning id
+                """,
+                (error, max_attempts, event_id, worker_id),
+            ).fetchone()
+        return row is not None
+
+    def claim_event_processing(
+        self,
+        tenant_id: UUID,
+        event_id: UUID,
+        consumer: str,
+        worker_id: str,
+        *,
+        lease_seconds: int,
+    ) -> ConsumerClaim:
+        """Acquire a per-consumer event lease without simultaneous duplicates."""
+        with self._connection() as connection:
+            self._set_tenant(connection, tenant_id)
+            inserted = connection.execute(
+                """
+                insert into processed_events (
+                  tenant_id, event_id, consumer, lease_owner, lease_until, attempts
+                ) values (
+                  %s, %s, %s, %s,
+                  clock_timestamp() + make_interval(secs => %s), 1
+                )
+                on conflict do nothing
+                returning event_id
+                """,
+                (tenant_id, event_id, consumer, worker_id, lease_seconds),
+            ).fetchone()
+            if inserted is not None:
+                return ConsumerClaim.ACQUIRED
+
+            existing = connection.execute(
+                """
+                select processed_at
+                from processed_events
+                where event_id = %s and consumer = %s
+                for update
+                """,
+                (event_id, consumer),
+            ).fetchone()
+            if existing is not None and existing["processed_at"] is not None:
+                return ConsumerClaim.COMPLETED
+
+            acquired = connection.execute(
+                """
+                update processed_events
+                set lease_owner = %s,
+                    lease_until = clock_timestamp() + make_interval(secs => %s),
+                    attempts = attempts + 1,
+                    last_error = null
+                where event_id = %s
+                  and consumer = %s
+                  and processed_at is null
+                  and (lease_until is null or lease_until < clock_timestamp())
+                returning event_id
+                """,
+                (worker_id, lease_seconds, event_id, consumer),
+            ).fetchone()
+            return ConsumerClaim.ACQUIRED if acquired is not None else ConsumerClaim.BUSY
+
+    def complete_event_processing(
+        self,
+        tenant_id: UUID,
+        event_id: UUID,
+        consumer: str,
+        worker_id: str,
+    ) -> bool:
+        """Persist completion only for the worker holding the consumer lease."""
+        with self._connection() as connection:
+            self._set_tenant(connection, tenant_id)
+            row = connection.execute(
+                """
+                update processed_events
+                set processed_at = clock_timestamp(),
+                    lease_owner = null,
+                    lease_until = null,
+                    last_error = null
+                where event_id = %s
+                  and consumer = %s
+                  and lease_owner = %s
+                  and processed_at is null
+                returning event_id
+                """,
+                (event_id, consumer, worker_id),
+            ).fetchone()
+        return row is not None
+
+    def release_event_processing(
+        self,
+        tenant_id: UUID,
+        event_id: UUID,
+        consumer: str,
+        worker_id: str,
+        *,
+        error: str,
+    ) -> bool:
+        """Release a failed handler lease so JetStream can redeliver."""
+        with self._connection() as connection:
+            self._set_tenant(connection, tenant_id)
+            row = connection.execute(
+                """
+                update processed_events
+                set lease_owner = null,
+                    lease_until = null,
+                    last_error = %s
+                where event_id = %s
+                  and consumer = %s
+                  and lease_owner = %s
+                  and processed_at is null
+                returning event_id
+                """,
+                (error, event_id, consumer, worker_id),
+            ).fetchone()
+        return row is not None
 
     def append(
         self, item: MemoryItem, idempotency_key: str | None = None

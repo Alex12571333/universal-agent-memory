@@ -7,7 +7,7 @@ from uuid import uuid4
 
 from memory_plane.adapters.postgres import PostgresMemoryLedger
 from memory_plane.contracts.dto import RecallQuery
-from memory_plane.contracts.events import IntegrationEvent
+from memory_plane.contracts.events import ConsumerClaim, IntegrationEvent
 from memory_plane.domain.models import MemoryItem, MemoryLayer, MemoryScope, Provenance
 
 DATABASE_URL = os.getenv("UAM_TEST_DATABASE_URL")
@@ -149,6 +149,99 @@ class PostgresMemoryLedgerTest(unittest.TestCase):
 
         self.assertEqual(expected.id, rows[0].item.id)
         self.assertEqual("postgres_lexical", rows[0].source)
+
+    def test_outbox_lease_prevents_concurrent_delivery_and_acknowledges(self) -> None:
+        item = self._item("leased event")
+        event = self._event(item)
+        self.store.retain(item, event)
+
+        claimed = self.store.claim_outbox(
+            self.tenant, "relay-a", limit=10, lease_seconds=30
+        )
+        competing = self.store.claim_outbox(
+            self.tenant, "relay-b", limit=10, lease_seconds=30
+        )
+
+        self.assertEqual((event.id,), tuple(row.event.id for row in claimed))
+        self.assertEqual((), competing)
+        self.assertFalse(
+            self.store.mark_outbox_published(self.tenant, event.id, "relay-b")
+        )
+        self.assertTrue(
+            self.store.mark_outbox_published(self.tenant, event.id, "relay-a")
+        )
+        self.assertEqual(
+            (),
+            self.store.claim_outbox(
+                self.tenant, "relay-b", limit=10, lease_seconds=30
+            ),
+        )
+
+    def test_exhausted_outbox_event_is_dead_lettered(self) -> None:
+        item = self._item("poison event")
+        event = self._event(item)
+        self.store.retain(item, event)
+        self.store.claim_outbox(self.tenant, "relay-a", limit=1, lease_seconds=30)
+
+        released = self.store.release_outbox(
+            self.tenant,
+            event.id,
+            "relay-a",
+            error="poison",
+            max_attempts=1,
+        )
+
+        self.assertTrue(released)
+        self.assertEqual(
+            (),
+            self.store.claim_outbox(
+                self.tenant, "relay-b", limit=10, lease_seconds=30
+            ),
+        )
+        with self.store._connection() as connection:
+            self.store._set_tenant(connection, self.tenant)
+            row = connection.execute(
+                """
+                select last_error, dead_lettered_at
+                from outbox_events where id = %s
+                """,
+                (event.id,),
+            ).fetchone()
+        self.assertEqual("poison", row["last_error"])
+        self.assertIsNotNone(row["dead_lettered_at"])
+
+    def test_consumer_processing_is_leased_and_completed_once(self) -> None:
+        event_id = uuid4()
+
+        first = self.store.claim_event_processing(
+            self.tenant,
+            event_id,
+            "embed-v1",
+            "worker-a",
+            lease_seconds=30,
+        )
+        busy = self.store.claim_event_processing(
+            self.tenant,
+            event_id,
+            "embed-v1",
+            "worker-b",
+            lease_seconds=30,
+        )
+        completed = self.store.complete_event_processing(
+            self.tenant, event_id, "embed-v1", "worker-a"
+        )
+        duplicate = self.store.claim_event_processing(
+            self.tenant,
+            event_id,
+            "embed-v1",
+            "worker-b",
+            lease_seconds=30,
+        )
+
+        self.assertEqual(ConsumerClaim.ACQUIRED, first)
+        self.assertEqual(ConsumerClaim.BUSY, busy)
+        self.assertTrue(completed)
+        self.assertEqual(ConsumerClaim.COMPLETED, duplicate)
 
 
 if __name__ == "__main__":

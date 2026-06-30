@@ -8,7 +8,7 @@ roadmap и acceptance criteria, но не используется как lock.
 | WP-01a ✅ | Psycopg ledger + transactional outbox | schema, ports | rollback, RLS, idempotency |
 | WP-01b | Optimistic revision/CAS | WP-01a | stale revision, concurrent supersede |
 | WP-02 | Qdrant dense+sparse adapter | `CandidateSource` | project filter, fusion, reindex |
-| WP-03 | Outbox relay + dedupe worker | events | crash/replay, poison event |
+| WP-03 ✅ | Outbox relay + dedupe consumer | events | crash/replay, poison event |
 | WP-04 | Embedding worker | WP-02/03 | model version, dimensions, reindex |
 | WP-05 | Markdown/PDF ingestion | ledger | provenance, stable chunks, retry |
 | WP-06 | Checkpoints/working blocks | ledger | CAS, compaction, replay |

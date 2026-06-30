@@ -8,7 +8,9 @@ WORKDIR /app
 
 COPY pyproject.toml README.md ./
 COPY src ./src
-RUN python -m pip install ".[api,postgres]"
+COPY migrations ./migrations
+COPY scripts/migrate.py ./scripts/migrate.py
+RUN python -m pip install ".[api,postgres,nats]"
 
 EXPOSE 8080
 
