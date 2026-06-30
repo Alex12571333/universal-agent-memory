@@ -38,3 +38,11 @@ select = ["E", "F", "I", "UP", "B"]
 python_version = "3.11"
 strict = true
 packages = ["memory_plane"]
+
+[[tool.mypy.overrides]]
+module = [
+    "pypdf.*",
+    "qdrant_client.*",
+    "nats.*",
+]
+ignore_missing_imports = true

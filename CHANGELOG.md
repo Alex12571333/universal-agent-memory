@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Added `EmbeddingService` to coordinate generation and indexing of dense memory representations (WP-04).
+- Added `EmbeddingClient` port protocol and `FakeEmbeddingClient` adapter for test-driven embedding workflows.
+- Added an executable `embedding-worker` daemon to process retention events and generate vector embeddings asynchronously.
+- Added support for full workspace reindexing via `EmbeddingService.reindex_all`.
+
 - Added deterministic Markdown/PDF extraction with binary checksum and page provenance.
 - Added a base64 document-ingestion endpoint with stable retry identities.
 - Added optional constant-time bearer API-key protection with public health checks.
@@ -11,6 +16,10 @@
 - Added retry/dead-letter state and durable per-consumer event deduplication.
 - Added a standalone `outbox-relay` Docker service and end-to-end coverage.
 - Added idempotent forward-only migrations for existing Docker volumes.
+- Added Qdrant dense+sparse `CandidateSource` adapter with hybrid search, upsert,
+  delete and full reindex (WP-02).
+- Bootstrap optionally connects Qdrant via `UAM_QDRANT_URL` / `UAM_EMBEDDING_DIM`.
+- Docker Compose forwards Qdrant env vars to `memory-server`.
 - Reframed the project as a self-hosted Docker memory server rather than a SaaS.
 - Added the `memory-server` image, durable runtime composition and standalone API defaults.
 - Added GitHub issue claiming, live agent status and auto-merge collaboration scripts.
