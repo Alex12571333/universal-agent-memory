@@ -117,11 +117,12 @@ class QdrantCandidateSource:
         dense_vector: list[float],
         sparse_indices: list[int] | None = None,
         sparse_values: list[float] | None = None,
+        model_name: str | None = None,
     ) -> None:
         """Insert or update a point with full metadata payload."""
         if self._mem_items is not None:
-            return self._upsert_in_memory(item, dense_vector)
-        self._upsert_qdrant(item, dense_vector, sparse_indices, sparse_values)
+            return self._upsert_in_memory(item, dense_vector, model_name)
+        self._upsert_qdrant(item, dense_vector, sparse_indices, sparse_values, model_name)
 
     def delete(self, item_id: UUID) -> None:
         """Remove a point by its memory item ID."""
@@ -129,18 +130,27 @@ class QdrantCandidateSource:
             return self._delete_in_memory(item_id)
         self._delete_qdrant(item_id)
 
-    def reindex(self, items: Sequence[tuple[MemoryItem, list[float]]]) -> None:
+    def reindex(
+        self,
+        items: Sequence[tuple[MemoryItem, list[float]]],
+        model_name: str | None = None,
+    ) -> None:
         """Drop all points and re-insert from scratch.
 
         This is a blunt full-reindex; incremental sync can be added later.
         """
         if self._mem_items is not None:
-            return self._reindex_in_memory(items)
-        self._reindex_qdrant(items)
+            return self._reindex_in_memory(items, model_name)
+        self._reindex_qdrant(items, model_name)
 
     # ---- in-memory fallback implementation ------------------------------
 
-    def _upsert_in_memory(self, item: MemoryItem, dense_vector: list[float]) -> None:
+    def _upsert_in_memory(
+        self,
+        item: MemoryItem,
+        dense_vector: list[float],
+        model_name: str | None = None,
+    ) -> None:
         assert self._mem_items is not None and self._mem_lock is not None
         with self._mem_lock:
             self._mem_items[item.id] = (item, dense_vector)
@@ -151,7 +161,9 @@ class QdrantCandidateSource:
             self._mem_items.pop(item_id, None)
 
     def _reindex_in_memory(
-        self, items: Sequence[tuple[MemoryItem, list[float]]]
+        self,
+        items: Sequence[tuple[MemoryItem, list[float]]],
+        model_name: str | None = None,
     ) -> None:
         assert self._mem_items is not None and self._mem_lock is not None
         with self._mem_lock:
@@ -195,6 +207,7 @@ class QdrantCandidateSource:
         dense_vector: list[float],
         sparse_indices: list[int] | None = None,
         sparse_values: list[float] | None = None,
+        model_name: str | None = None,
     ) -> None:
         from qdrant_client.models import PointStruct, SparseVector
 
@@ -202,10 +215,14 @@ class QdrantCandidateSource:
         if sparse_indices is not None and sparse_values is not None:
             vectors["sparse"] = SparseVector(indices=sparse_indices, values=sparse_values)
 
+        payload = self._item_to_payload(item)
+        if model_name:
+            payload["model_name"] = model_name
+
         point = PointStruct(
             id=str(item.id),
             vector=vectors,
-            payload=self._item_to_payload(item),
+            payload=payload,
         )
         self._client.upsert(collection_name=self.collection, points=[point])  # type: ignore[union-attr]
 
@@ -218,7 +235,9 @@ class QdrantCandidateSource:
         )
 
     def _reindex_qdrant(
-        self, items: Sequence[tuple[MemoryItem, list[float]]]
+        self,
+        items: Sequence[tuple[MemoryItem, list[float]]],
+        model_name: str | None = None,
     ) -> None:
         from qdrant_client.models import PointStruct
 
@@ -229,11 +248,15 @@ class QdrantCandidateSource:
         # Batch upsert in chunks of 100.
         batch: list[PointStruct] = []
         for item, vec in items:
+            payload = self._item_to_payload(item)
+            if model_name:
+                payload["model_name"] = model_name
+
             batch.append(
                 PointStruct(
                     id=str(item.id),
                     vector={"dense": vec},
-                    payload=self._item_to_payload(item),
+                    payload=payload,
                 )
             )
             if len(batch) >= 100:

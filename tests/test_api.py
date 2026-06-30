@@ -106,3 +106,33 @@ def test_document_endpoint_rejects_invalid_base64() -> None:
     )
 
     assert response.status_code == 422
+
+
+def test_reindex_triggers_embedding_service() -> None:
+    container = build_in_memory_container()
+    client = TestClient(create_app(container))
+
+    client.post(
+        "/v1/memory/retain",
+        json={
+            "layer": "semantic",
+            "scope": "workspace",
+            "kind": "fact",
+            "text": "Fact 1",
+        },
+    )
+    client.post(
+        "/v1/memory/retain",
+        json={
+            "layer": "semantic",
+            "scope": "workspace",
+            "kind": "fact",
+            "text": "Fact 2",
+        },
+    )
+
+    url = f"/v1/workspaces/{DEFAULT_PROJECT_ID}/reindex?tenant_id={DEFAULT_SERVER_ID}"
+    response = client.post(url)
+
+    assert response.status_code == 202
+    assert response.json() == {"reindexed_count": 2}

@@ -315,6 +315,12 @@ def create_app(
             "observation_ids": [str(row.id) for row in observations],
         }
 
+    @app.post("/v1/workspaces/{workspace_id}/reindex", status_code=202)
+    def reindex(workspace_id: UUID, tenant_id: UUID) -> dict[str, Any]:
+        """Re-generate all embeddings for the workspace."""
+        count = services.embedding.reindex_all(tenant_id, workspace_id)
+        return {"reindexed_count": count}
+
     # ── Checkpoint endpoints ────────────────────────────────────────
 
     @app.post("/v1/checkpoints", status_code=201)
