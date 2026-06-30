@@ -55,6 +55,14 @@ curl -X POST http://localhost:8080/v1/memory/recall \
 
 OpenAPI доступен на `http://localhost:8080/docs`.
 
+## SDK
+
+- [Python client](sdk/python/README.md)
+- [TypeScript client](sdk/typescript/README.md)
+
+Оба клиента типизируют retain/recall/ingest, сохраняют один idempotency key при
+повторе запроса и преобразуют HTTP failures в специализированные ошибки.
+
 ## Что уже работает
 
 - append-only memory и provenance;

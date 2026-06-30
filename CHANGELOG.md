@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added dependency-free Python and platform-fetch TypeScript SDKs.
+- Added stable retain idempotency keys, bounded retries and typed SDK errors.
 - Added leased PostgreSQL outbox delivery to NATS JetStream.
 - Added retry/dead-letter state and durable per-consumer event deduplication.
 - Added a standalone `outbox-relay` Docker service and end-to-end coverage.

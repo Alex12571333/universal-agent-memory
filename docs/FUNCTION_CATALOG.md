@@ -119,3 +119,13 @@
 
 `QdrantCandidateSource.connect()` пока остаётся явной seam-точкой следующего
 work package.
+
+## SDK — `sdk/python`, `sdk/typescript`
+
+| Функция | Назначение | Гарантия |
+|---|---|---|
+| `MemoryClient.retain()` | Сохраняет memory | Один generated idempotency key на все retries |
+| `MemoryClient.recall()` | Возвращает typed results и context | Standalone defaults остаются server-side |
+| `MemoryClient.ingest_text()` / `ingestText()` | Загружает текст | Typed checksum и memory IDs |
+| retry loop | Повторяет network/429/502/503/504 | Bounded exponential backoff, `Retry-After` |
+| typed errors | Нормализует HTTP failures | Сохраняет status code |

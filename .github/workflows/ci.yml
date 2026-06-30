@@ -39,16 +39,24 @@ jobs:
           python-version: "3.11"
           cache: pip
       - name: Install project
-        run: pip install -e ".[dev,api,postgres,nats]"
+        run: |
+          pip install -e ".[dev,api,postgres,nats]"
+          pip install -e sdk/python
       - name: Apply database schema
         run: python scripts/migrate.py
       - name: Start NATS JetStream
         run: docker run -d --name nats-test -p 4222:4222 nats:2.10-alpine -js
       - name: Test
-        run: pytest
+        run: |
+          pytest
+          pytest sdk/python/tests
       - name: Lint
         run: ruff check .
       - name: Type check
-        run: mypy src
+        run: mypy src sdk/python/uam_client
+      - name: TypeScript SDK
+        run: |
+          npm ci --prefix sdk/typescript
+          npm test --prefix sdk/typescript
       - name: Build standalone server image
         run: docker build -t universal-agent-memory:test .
