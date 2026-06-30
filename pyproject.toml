@@ -1,0 +1,39 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "universal-agent-memory"
+version = "0.1.0"
+description = "A modular, multi-agent, multi-layer memory plane"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+dependencies = []
+
+[project.optional-dependencies]
+api = ["fastapi>=0.115,<1", "uvicorn[standard]>=0.30,<1"]
+postgres = ["psycopg[binary,pool]>=3.2,<4"]
+qdrant = ["qdrant-client>=1.12,<2"]
+nats = ["nats-py>=2.9,<3"]
+s3 = ["boto3>=1.35,<2"]
+dev = ["pytest>=8.3,<9", "ruff>=0.8,<1", "mypy>=1.13,<2", "httpx>=0.27,<1"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/memory_plane"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+packages = ["memory_plane"]
