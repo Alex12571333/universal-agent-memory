@@ -99,6 +99,7 @@
 | `build_postgres_container(...)` | Собирает durable standalone server graph |
 | `create_app(container=None)` | Создаёт FastAPI app; позволяет dependency injection |
 | `GET /health` | Liveness, не readiness |
+| API-key middleware | Защищает все non-health routes при `UAM_API_KEY` |
 | `POST /v1/memory/retain` | REST boundary для retain |
 | `POST /v1/ingest/text` | Детерминированный text ingestion |
 | `POST /v1/memory/recall` | Recall + context compilation |

@@ -11,6 +11,7 @@ class FakeTransport:
     def __init__(self, responses: list[HttpResponse]) -> None:
         self.responses = responses
         self.bodies: list[dict | None] = []
+        self.headers: list[Mapping[str, str]] = []
 
     def send(
         self,
@@ -21,6 +22,7 @@ class FakeTransport:
         timeout: float,
     ) -> HttpResponse:
         self.bodies.append(body)
+        self.headers.append(headers)
         return self.responses.pop(0)
 
 
@@ -78,3 +80,11 @@ def test_retry_after_header_controls_delay() -> None:
     ).retain(RetainRequest(text="Retry safely", idempotency_key="stable"))
 
     assert delays == [2.0]
+
+
+def test_api_key_is_sent_as_bearer_token() -> None:
+    transport = FakeTransport([HttpResponse(200, {"status": "ok"}, {})])
+
+    MemoryClient(api_key="secret", transport=transport).health()
+
+    assert transport.headers[0]["Authorization"] == "Bearer secret"

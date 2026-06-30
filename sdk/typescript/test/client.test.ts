@@ -70,3 +70,18 @@ test("Retry-After controls retry delay", async () => {
 
   assert.deepEqual(delays, [2000]);
 });
+
+test("API key is sent as a bearer token", async () => {
+  let authorization: string | null = null;
+  const client = new MemoryClient({
+    apiKey: "secret",
+    fetch: async (_input, init) => {
+      authorization = new Headers(init?.headers).get("Authorization");
+      return response(200, { status: "ok" });
+    },
+  });
+
+  await client.health();
+
+  assert.equal(authorization, "Bearer secret");
+});

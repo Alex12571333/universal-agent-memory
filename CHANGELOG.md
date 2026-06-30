@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added optional constant-time bearer API-key protection with public health checks.
 - Added dependency-free Python and platform-fetch TypeScript SDKs.
 - Added stable retain idempotency keys, bounded retries and typed SDK errors.
 - Added leased PostgreSQL outbox delivery to NATS JetStream.

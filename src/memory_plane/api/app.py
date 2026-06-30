@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import os
+import secrets
 from typing import Any
 from uuid import UUID
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from memory_plane.bootstrap import (
@@ -74,14 +76,36 @@ class IngestTextBody(BaseModel):
     chunk_overlap_chars: int = Field(default=240, ge=0)
 
 
-def create_app(container: Container | None = None) -> FastAPI:
+def create_app(
+    container: Container | None = None,
+    *,
+    api_key: str | None = None,
+) -> FastAPI:
     """Create the standalone memory server around an injected service graph."""
     services = container or _build_runtime_container()
+    configured_key = api_key if api_key is not None else os.getenv("UAM_API_KEY")
     app = FastAPI(
         title="Universal Agent Memory Server",
         version="0.1.0",
         description="Self-hosted memory API for local and team AI agents.",
     )
+
+    @app.middleware("http")
+    async def require_api_key(request: Request, call_next: Any) -> Any:
+        """Protect every endpoint except liveness when a server key is configured."""
+        if not configured_key or request.url.path == "/health":
+            return await call_next(request)
+        authorization = request.headers.get("Authorization", "")
+        scheme, _, credential = authorization.partition(" ")
+        credential_matches = secrets.compare_digest(credential, configured_key)
+        valid = scheme.casefold() == "bearer" and credential_matches
+        if not valid:
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "invalid or missing API key"},
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        return await call_next(request)
 
     @app.get("/health")
     def health() -> dict[str, str]:
