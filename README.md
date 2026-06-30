@@ -55,6 +55,23 @@ curl -X POST http://localhost:8080/v1/memory/recall \
 
 OpenAPI доступен на `http://localhost:8080/docs`.
 
+## Доступ по API key
+
+Без `UAM_API_KEY` сервер работает в удобном локальном режиме без авторизации.
+Перед публикацией порта в LAN задайте ключ:
+
+```bash
+UAM_API_KEY='replace-with-a-long-random-secret' docker compose up -d
+curl -H 'Authorization: Bearer replace-with-a-long-random-secret' \
+  http://localhost:8080/v1/memory/recall \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"project context"}'
+```
+
+`/health` остаётся публичным для Docker probes. Остальные маршруты, включая
+OpenAPI/docs, требуют bearer key. Не публикуйте порт `8080` в интернет без TLS
+reverse proxy.
+
 ## SDK
 
 - [Python client](sdk/python/README.md)
