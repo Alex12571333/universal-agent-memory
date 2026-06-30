@@ -8,6 +8,8 @@ services:
       UAM_DATABASE_URL: postgresql://memory_app:memory@postgres:5432/memory
       UAM_SERVER_ID: 00000000-0000-0000-0000-000000000001
       UAM_PROJECT_ID: 00000000-0000-0000-0000-000000000002
+      UAM_QDRANT_URL: ${UAM_QDRANT_URL:-}
+      UAM_EMBEDDING_DIM: ${UAM_EMBEDDING_DIM:-1536}
     ports: ["8080:8080"]
     depends_on:
       postgres:

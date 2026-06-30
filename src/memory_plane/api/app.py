@@ -210,4 +210,12 @@ def _build_runtime_container() -> Container:
         return build_in_memory_container()
     server_id = UUID(os.getenv("UAM_SERVER_ID", str(DEFAULT_SERVER_ID)))
     project_id = UUID(os.getenv("UAM_PROJECT_ID", str(DEFAULT_PROJECT_ID)))
-    return build_postgres_container(dsn, server_id=server_id, project_id=project_id)
+    qdrant_url = os.getenv("UAM_QDRANT_URL")
+    qdrant_dim = int(os.getenv("UAM_EMBEDDING_DIM", "1536"))
+    return build_postgres_container(
+        dsn,
+        server_id=server_id,
+        project_id=project_id,
+        qdrant_url=qdrant_url,
+        qdrant_dim=qdrant_dim,
+    )
