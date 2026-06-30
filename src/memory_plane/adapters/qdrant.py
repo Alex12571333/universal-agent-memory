@@ -61,8 +61,8 @@ class QdrantCandidateSource:
         and ``sparse`` named vectors if it does not already exist.
         """
         try:
-            from qdrant_client import QdrantClient  # type: ignore[import-not-found]
-            from qdrant_client.models import (  # type: ignore[import-not-found]
+            from qdrant_client import QdrantClient
+            from qdrant_client.models import (
                 Distance,
                 SparseVectorParams,
                 VectorParams,

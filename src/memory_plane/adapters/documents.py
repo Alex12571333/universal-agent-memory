@@ -68,7 +68,7 @@ class PdfParser:
         factory = self._reader_factory
         if factory is None:
             try:
-                from pypdf import PdfReader  # type: ignore[import-not-found]
+                from pypdf import PdfReader
             except ImportError as error:
                 raise RuntimeError(
                     'PDF support is not installed; use ".[documents]"'
