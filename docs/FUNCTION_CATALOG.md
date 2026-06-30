@@ -173,3 +173,25 @@
 | `delete(item_id)` | Remove point by memory item ID | Нет ошибки если не существует |
 | `reindex(items)` | Drop collection and re-insert from scratch | Блокирующий; batch по 100 |
 | `_use_in_memory_backend()` | Activate test-only in-memory fallback | Нет зависимости на qdrant-client |
+
+## Embedding ports — `ports/embeddings.py`
+
+| Функция / Свойство | Назначение | Гарантия |
+|---|---|---|
+| `EmbeddingClient.model_name` | Название и версия модели | Уникальный строковый ID |
+| `EmbeddingClient.dimension` | Размерность выходного вектора | Фиксированный `int` |
+| `EmbeddingClient.embed(text)` | Генерация dense вектора | Возвращает `list[float]` |
+
+## Embedding adapters — `adapters/embeddings.py`
+
+| Класс / Функция | Назначение | Гарантия |
+|---|---|---|
+| `FakeEmbeddingClient` | Генерация детерминированных мок-векторов | Векторы воспроизводимы по MD5 от текста |
+
+## Embedding service — `services/embedding.py`
+
+| Функция | Назначение | Гарантия |
+|---|---|---|
+| `process_memory_retained(tenant, id)` | Асинхронная обработка и индексация памяти | Загружает память и делает upsert в Qdrant |
+| `reindex_all(tenant, workspace)` | Полная переиндексация воркспейса | Удаляет и заново заливает коллекцию в Qdrant |
+

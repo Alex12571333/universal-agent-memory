@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Added `EmbeddingService` to coordinate generation and indexing of dense memory representations (WP-04).
+- Added `EmbeddingClient` port protocol and `FakeEmbeddingClient` adapter for test-driven embedding workflows.
+- Added an executable `embedding-worker` daemon to process retention events and generate vector embeddings asynchronously.
+- Added support for full workspace reindexing via `EmbeddingService.reindex_all`.
+
 - Added deterministic Markdown/PDF extraction with binary checksum and page provenance.
 - Added a base64 document-ingestion endpoint with stable retry identities.
 - Added optional constant-time bearer API-key protection with public health checks.

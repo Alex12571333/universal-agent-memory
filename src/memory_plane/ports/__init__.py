@@ -1,5 +1,6 @@
 """Dependency-inversion ports implemented by infrastructure adapters."""
 
+from memory_plane.ports.embeddings import EmbeddingClient
 from memory_plane.ports.repositories import (
     CandidateSource,
     EventPublisher,
@@ -7,4 +8,10 @@ from memory_plane.ports.repositories import (
     ObservationRepository,
 )
 
-__all__ = ["CandidateSource", "EventPublisher", "MemoryLedger", "ObservationRepository"]
+__all__ = [
+    "CandidateSource",
+    "EmbeddingClient",
+    "EventPublisher",
+    "MemoryLedger",
+    "ObservationRepository",
+]
