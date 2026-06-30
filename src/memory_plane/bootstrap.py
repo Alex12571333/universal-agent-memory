@@ -30,7 +30,7 @@ class Container:
 def build_in_memory_container() -> Container:
     """Build a zero-infrastructure container for development and contract tests."""
     store = InMemoryMemoryStore()
-    retention = RetentionService(store, store)
+    retention = RetentionService(store)
     return Container(
         retention=retention,
         ingestion=IngestionService(retention),

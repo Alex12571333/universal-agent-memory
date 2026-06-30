@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: memory
+          POSTGRES_USER: memory_admin
+          POSTGRES_PASSWORD: memory
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U memory_admin -d memory"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      PYTHONPATH: src
+      UAM_TEST_DATABASE_URL: postgresql://memory_app:memory@localhost:5432/memory
+      UAM_ADMIN_DATABASE_URL: postgresql://memory_admin:memory@localhost:5432/memory
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install project
+        run: pip install -e ".[dev,api,postgres]"
+      - name: Apply database schema
+        run: |
+          psql "$UAM_ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/001_initial.sql
+          psql "$UAM_ADMIN_DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/dev/002_app_role.sql
+      - name: Test
+        run: pytest
+      - name: Lint
+        run: ruff check .
+      - name: Type check
+        run: mypy src

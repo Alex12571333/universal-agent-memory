@@ -53,7 +53,19 @@ docker compose up -d
 ## Статус
 
 Это foundation, а не законченный SaaS. Уже реализованы исполняемые domain-модели,
-retain/recall/context/reflection, in-memory адаптер, REST endpoints и unit tests.
-Также работает детерминированный text ingestion с SHA-256 provenance и
-идемпотентными chunks. Production-адаптеры намеренно оставлены за стабильными
-портами, чтобы разные агенты могли реализовывать их независимо.
+retain/recall/context/reflection, REST endpoints и unit tests. In-memory профиль
+подходит для локальной разработки. PostgreSQL-профиль уже умеет атомарно сохранять
+memory item, provenance, idempotency key и outbox event с tenant RLS. Также работает
+детерминированный text ingestion с SHA-256 provenance и идемпотентными chunks.
+Qdrant, NATS и S3 production-адаптеры остаются независимыми work packages.
+
+PostgreSQL integration tests запускаются отдельно:
+
+```bash
+UAM_TEST_DATABASE_URL=postgresql://memory_app:memory@localhost:5432/memory \
+  pytest tests/integration
+```
+
+В Compose миграции выполняет `memory_admin`, а приложение подключается как
+`memory_app` из `.env.example`. Это разделение обязательно: PostgreSQL superuser
+обходит RLS.

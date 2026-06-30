@@ -5,14 +5,15 @@ services:
     image: postgres:17-alpine
     environment:
       POSTGRES_DB: memory
-      POSTGRES_USER: memory
+      POSTGRES_USER: memory_admin
       POSTGRES_PASSWORD: memory
     ports: ["5432:5432"]
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./migrations/001_initial.sql:/docker-entrypoint-initdb.d/001_initial.sql:ro
+      - ./migrations/dev/002_app_role.sql:/docker-entrypoint-initdb.d/002_app_role.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U memory -d memory"]
+      test: ["CMD-SHELL", "pg_isready -U memory_admin -d memory"]
       interval: 5s
       timeout: 3s
       retries: 10

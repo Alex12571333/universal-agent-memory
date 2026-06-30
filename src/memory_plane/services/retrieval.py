@@ -91,4 +91,4 @@ class RetrievalService:
     def _recency(created_at: datetime) -> float:
         """Map age to a smooth 0..1 score with a 30-day half-life."""
         age_days = max(0.0, (datetime.now(UTC) - created_at).total_seconds() / 86_400)
-        return 0.5 ** (age_days / 30.0)
+        return float(0.5 ** (age_days / 30.0))

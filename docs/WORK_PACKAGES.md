@@ -4,7 +4,8 @@
 
 | ID | Результат | Зависит от | Основные acceptance tests |
 |---|---|---|---|
-| WP-01 | Psycopg `MemoryLedger` + transactional outbox | schema, ports | rollback, RLS, idempotency, CAS |
+| WP-01a ✅ | Psycopg `MemoryLedger` + transactional outbox | schema, ports | rollback, RLS, idempotency |
+| WP-01b | Optimistic revision/CAS workflow | WP-01a | stale revision, concurrent supersede |
 | WP-02 | Qdrant named dense+sparse adapter | `CandidateSource` | tenant filter, fusion fixture, delete/reindex |
 | WP-03 | NATS outbox relay + dedupe consumer | events | crash/replay, poison message, DLQ |
 | WP-04 | S3/MinIO object adapter | provenance conventions | checksum, prefix isolation, presigned URL |
