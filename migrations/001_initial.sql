@@ -165,6 +165,20 @@ alter table idempotency_keys enable row level security;
 alter table outbox_events enable row level security;
 alter table checkpoints enable row level security;
 
+-- FORCE keeps RLS active for table owners too, preventing local success from
+-- masking production leaks if an owner role is accidentally used by the app.
+alter table workspaces force row level security;
+alter table agents force row level security;
+alter table threads force row level security;
+alter table memory_items force row level security;
+alter table memory_provenance force row level security;
+alter table memory_edges force row level security;
+alter table observations force row level security;
+alter table observation_evidence force row level security;
+alter table idempotency_keys force row level security;
+alter table outbox_events force row level security;
+alter table checkpoints force row level security;
+
 do $$
 declare table_name text;
 begin

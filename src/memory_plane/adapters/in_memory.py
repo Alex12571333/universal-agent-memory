@@ -8,7 +8,7 @@ from uuid import UUID
 
 from memory_plane.contracts.dto import Candidate, RecallQuery
 from memory_plane.contracts.events import IntegrationEvent
-from memory_plane.domain.models import MemoryItem, MemoryLayer, Observation
+from memory_plane.domain.models import MemoryItem, MemoryLayer, MemoryScope, Observation
 
 _WORD = re.compile(r"\w+", re.UNICODE)
 
@@ -29,7 +29,9 @@ class InMemoryMemoryStore:
         """Return the stable retrieval diagnostic name."""
         return "sql_lexical"
 
-    def append(self, item: MemoryItem, idempotency_key: str | None = None) -> tuple[MemoryItem, bool]:
+    def append(
+        self, item: MemoryItem, idempotency_key: str | None = None
+    ) -> tuple[MemoryItem, bool]:
         """Atomically append or return an idempotent prior result."""
         with self._lock:
             if idempotency_key:
@@ -41,6 +43,19 @@ class InMemoryMemoryStore:
             if idempotency_key:
                 self._idempotency[(item.tenant_id, idempotency_key)] = item.id
             return item, True
+
+    def retain(
+        self,
+        item: MemoryItem,
+        event: IntegrationEvent,
+        idempotency_key: str | None = None,
+    ) -> tuple[MemoryItem, bool]:
+        """Atomically append canonical memory and its outbox event."""
+        with self._lock:
+            stored, created = self.append(item, idempotency_key)
+            if created:
+                self.publish(event)
+            return stored, created
 
     def get(self, tenant_id: UUID, item_id: UUID) -> MemoryItem | None:
         """Return an item only when its tenant matches exactly."""
@@ -71,7 +86,7 @@ class InMemoryMemoryStore:
         for item in self.list_for_workspace(
             query.tenant_id, query.workspace_id, layers=query.layers
         ):
-            if query.thread_id and item.scope.value == "thread" and item.thread_id != query.thread_id:
+            if item.scope == MemoryScope.THREAD and item.thread_id != query.thread_id:
                 continue
             if query.labels and not set(query.labels).issubset(item.labels):
                 continue

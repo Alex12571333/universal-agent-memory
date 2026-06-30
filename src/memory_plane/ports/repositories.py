@@ -13,7 +13,9 @@ from memory_plane.domain.models import MemoryItem, MemoryLayer, Observation
 class MemoryLedger(Protocol):
     """Transactional append-only memory system of record."""
 
-    def append(self, item: MemoryItem, idempotency_key: str | None = None) -> tuple[MemoryItem, bool]:
+    def append(
+        self, item: MemoryItem, idempotency_key: str | None = None
+    ) -> tuple[MemoryItem, bool]:
         """Append an item or return the existing item for the same idempotency key."""
         ...
 
@@ -29,6 +31,19 @@ class MemoryLedger(Protocol):
         layers: tuple[MemoryLayer, ...] = (),
     ) -> tuple[MemoryItem, ...]:
         """List canonical items for deterministic fallback and maintenance jobs."""
+        ...
+
+
+class RetentionStore(MemoryLedger, Protocol):
+    """Atomic boundary for canonical memory and its outbox event."""
+
+    def retain(
+        self,
+        item: MemoryItem,
+        event: IntegrationEvent,
+        idempotency_key: str | None = None,
+    ) -> tuple[MemoryItem, bool]:
+        """Append memory and event in one transaction, or return an earlier result."""
         ...
 
 

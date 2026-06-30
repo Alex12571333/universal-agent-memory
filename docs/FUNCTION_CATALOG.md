@@ -25,8 +25,8 @@
 
 | Функция | Вход → выход | Гарантия |
 |---|---|---|
-| `RetentionService.__init__(ledger, events)` | Ports → service | Не открывает соединения |
-| `RetentionService.retain(command)` | `RetainCommand` → `RetainResult` | Append-only; idempotent через key; один outbox event только для новой записи |
+| `RetentionService.__init__(store)` | Atomic retention port → service | Не открывает соединения |
+| `RetentionService.retain(command)` | `RetainCommand` → `RetainResult` | Append-only; memory и outbox фиксируются одной транзакцией |
 
 ## Ingestion — `services/ingestion.py`
 
@@ -82,6 +82,7 @@
 | Функция | Назначение |
 |---|---|
 | `build_in_memory_container()` | Собирает полностью рабочий local/test graph |
+| `build_postgres_container(...)` | Собирает durable standalone server graph |
 | `create_app(container=None)` | Создаёт FastAPI app; позволяет dependency injection |
 | `GET /health` | Liveness, не readiness |
 | `POST /v1/memory/retain` | REST boundary для retain |
@@ -89,8 +90,18 @@
 | `POST /v1/memory/recall` | Recall + context compilation |
 | `POST /v1/workspaces/{id}/reflect` | Запуск baseline sleep/reflection |
 
-## Production adapter placeholders
+## PostgreSQL adapter
 
-`PostgresMemoryLedger.connect()` и `QdrantCandidateSource.connect()` специально
-возвращают `NotImplementedError`. Это честные seam-точки, а не «тихие» заглушки.
-Их work packages описаны ниже.
+| Функция | Назначение | Гарантия |
+|---|---|---|
+| `PostgresMemoryLedger.connect()` | Проверяет соединение и наличие schema | Не оставляет открытое соединение |
+| `ensure_standalone_scope(...)` | Создаёт fixed server/project namespace | Идемпотентно |
+| `retain(item, event, key)` | Записывает item, provenance, key и outbox | Одна транзакция; concurrent idempotency через advisory lock |
+| `append(item, key)` | Импортирует memory без события | Append-only и tenant-bound |
+| `get(tenant, item)` | Загружает memory с provenance | Устанавливает RLS tenant context |
+| `list_for_workspace(...)` | Детализация workspace с layer filter | Детерминированный порядок |
+| `search(query)` | PostgreSQL lexical fallback | Project/thread/label/time filters |
+| `save(observation)` | Хранит reflection и evidence links | Evidence не меняется |
+
+`QdrantCandidateSource.connect()` пока остаётся явной seam-точкой следующего
+work package.

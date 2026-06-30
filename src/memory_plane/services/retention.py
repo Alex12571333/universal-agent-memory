@@ -5,16 +5,15 @@ from __future__ import annotations
 from memory_plane.contracts.dto import RetainCommand, RetainResult
 from memory_plane.contracts.events import IntegrationEvent
 from memory_plane.domain.models import MemoryItem
-from memory_plane.ports.repositories import EventPublisher, MemoryLedger
+from memory_plane.ports.repositories import RetentionStore
 
 
 class RetentionService:
     """Append canonical memory and enqueue derived processing."""
 
-    def __init__(self, ledger: MemoryLedger, events: EventPublisher) -> None:
-        """Bind the service to a transactional ledger and outbox."""
-        self._ledger = ledger
-        self._events = events
+    def __init__(self, store: RetentionStore) -> None:
+        """Bind the service to one atomic ledger/outbox boundary."""
+        self._store = store
 
     def retain(self, command: RetainCommand) -> RetainResult:
         """Validate, append and emit one `memory.retained.v1` event.
@@ -36,20 +35,19 @@ class RetentionService:
             importance=command.importance,
             confidence=command.confidence,
         )
-        stored, created = self._ledger.append(item, command.idempotency_key)
-        if not created:
-            return RetainResult(item=stored, created=False, queued_event_ids=())
-
         event = IntegrationEvent(
             name="memory.retained.v1",
-            tenant_id=stored.tenant_id,
-            workspace_id=stored.workspace_id,
-            correlation_id=stored.id,
+            tenant_id=item.tenant_id,
+            workspace_id=item.workspace_id,
+            correlation_id=item.id,
             payload={
-                "memory_id": str(stored.id),
-                "layer": stored.layer.value,
+                "memory_id": str(item.id),
+                "layer": item.layer.value,
                 "jobs": ["embed", "dedupe", "graph", "reflect"],
             },
         )
-        self._events.publish(event)
+        stored, created = self._store.retain(item, event, command.idempotency_key)
+        if not created:
+            return RetainResult(item=stored, created=False, queued_event_ids=())
+
         return RetainResult(item=stored, created=True, queued_event_ids=(event.id,))

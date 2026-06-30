@@ -68,6 +68,40 @@ class MemoryPlaneTest(unittest.TestCase):
         self.assertEqual(expected.item.id, result.candidates[0].item.id)
         self.assertTrue(all(row.item.tenant_id == self.tenant for row in result.candidates))
 
+    def test_recall_hides_thread_memory_without_matching_thread(self) -> None:
+        thread = uuid4()
+        self.container.retention.retain(
+            RetainCommand(
+                tenant_id=self.tenant,
+                workspace_id=self.workspace,
+                thread_id=thread,
+                layer=MemoryLayer.WORKING,
+                scope=MemoryScope.THREAD,
+                kind="note",
+                text="Thread-only launch code",
+                provenance=Provenance(source_kind="test"),
+            )
+        )
+
+        without_thread = self.container.retrieval.recall(
+            RecallQuery(
+                tenant_id=self.tenant,
+                workspace_id=self.workspace,
+                text="launch code",
+            )
+        )
+        with_thread = self.container.retrieval.recall(
+            RecallQuery(
+                tenant_id=self.tenant,
+                workspace_id=self.workspace,
+                thread_id=thread,
+                text="launch code",
+            )
+        )
+
+        self.assertEqual((), without_thread.candidates)
+        self.assertEqual(1, len(with_thread.candidates))
+
     def test_context_compiler_honors_budget_and_layer_priority(self) -> None:
         self.retain("Always obey workspace policy", layer=MemoryLayer.CORE)
         self.retain("Alpha release fact")

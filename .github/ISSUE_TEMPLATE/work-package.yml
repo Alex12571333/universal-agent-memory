@@ -1,0 +1,33 @@
+name: Agent work package
+description: Independently mergeable task for one agent
+title: "[WP] "
+labels: ["status:available"]
+body:
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Outcome
+      description: What observable result must exist after merge?
+    validations:
+      required: true
+  - type: textarea
+    id: boundaries
+    attributes:
+      label: Owned files and shared hotspots
+      description: List the primary area and any contracts, migrations, or Compose files.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance tests
+      description: Concrete checks that prove the work is complete.
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies
+      description: Related issues or contracts; write "none" when independent.
+    validations:
+      required: true

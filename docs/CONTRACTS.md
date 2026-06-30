@@ -1,10 +1,12 @@
 # Контракты совместимости
 
-## Identity и scope
+## Server/project identity и scope
 
-Каждый command, query, event и persisted row содержит `tenant_id`. Всё
-workspace-scoped также содержит `workspace_id`. `agent_id` и `thread_id`
-опциональны только там, где память действительно shared.
+В текущей версии wire-поля `tenant_id` и `workspace_id` сохранены для
+совместимости с foundation. В standalone deployment они означают соответственно
+`server_id` и `project_id`, а не SaaS customer/account. API подставляет fixed
+defaults, поэтому обычный клиент их не передаёт. `agent_id` и `thread_id`
+разделяют память агентов внутри проекта.
 
 ## Event envelope
 
@@ -31,8 +33,8 @@ workspace-scoped также содержит `workspace_id`. `agent_id` и `thre
 Production implementation объединяет item, provenance и outbox в одну
 транзакцию.
 
-`CandidateSource.search` не имеет права возвращать другой tenant. Retrieval
-service повторно проверяет boundary как defense in depth.
+`CandidateSource.search` не имеет права возвращать другой project/server.
+Retrieval service повторно проверяет boundary как defense in depth.
 
 `ObservationRepository` хранит только derived data. Удаление observation не
 удаляет evidence.
@@ -46,7 +48,6 @@ service повторно проверяет boundary как defense in depth.
 - `permission_denied`;
 - `not_found`;
 - `revision_conflict`;
-- `quota_exceeded`;
 - `dependency_unavailable`;
 - `index_stale`.
 
