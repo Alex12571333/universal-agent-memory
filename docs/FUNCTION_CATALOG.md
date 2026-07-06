@@ -109,6 +109,24 @@
 | `backup.py` | Запускает `pg_dump --format=custom` | URL из `UAM_BACKUP_DATABASE_URL`/admin/database env |
 | `restore.py` | Запускает `pg_restore` | Non-destructive by default; `--clean` opt-in |
 
+## Vault — `services/vault.py`, `scripts/export_vault.py`
+
+| Функция | Назначение | Семантика |
+|---|---|---|
+| `VaultExporter.export()` | Workspace → in-memory Markdown vault snapshot | Stable file names; deterministic file ordering |
+| `VaultExporter.export_workspace()` | Workspace → folder on disk | Safe relative paths; memory/observation counts |
+| `VaultExporter._memory_file()` | `MemoryItem` → Obsidian note | Frontmatter + provenance + supersede backlinks |
+| `VaultExporter._observation_file()` | `Observation` → reflection note | Evidence backlinks to `mem-*` notes |
+| `export_vault.py` | PostgreSQL workspace → folder | One-way export; no destructive import |
+
+## Native integrations — `agent-integrations/`
+
+| Файл | Назначение | Семантика |
+|---|---|---|
+| `shared/lifecycle.py` | Runtime-agnostic plugin contract | before-run, after-event, run-complete hooks |
+| `openclaw/README.md` | OpenClaw native adapter plan | Plugin-level integration, not skill/MCP-only |
+| `hermes/README.md` | Hermes native adapter plan | Same shared lifecycle contract |
+
 ## Composition/API
 
 | Функция | Назначение |

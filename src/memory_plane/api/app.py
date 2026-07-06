@@ -391,6 +391,26 @@ def create_app(
         count = services.embedding.reindex_all(tenant_id, workspace_id)
         return {"reindexed_count": count}
 
+    @app.get("/v1/workspaces/{workspace_id}/vault")
+    def export_vault(
+        workspace_id: UUID,
+        tenant_id: UUID = DEFAULT_SERVER_ID,
+    ) -> dict[str, Any]:
+        """Export one workspace as deterministic Obsidian-style Markdown files."""
+        vault = services.vault.export(tenant_id, workspace_id)
+        return {
+            "tenant_id": str(vault.tenant_id),
+            "workspace_id": str(vault.workspace_id),
+            "file_count": len(vault.files),
+            "files": [
+                {
+                    "path": file.path,
+                    "content": file.content,
+                }
+                for file in vault.files
+            ],
+        }
+
     # ── Checkpoint endpoints ────────────────────────────────────────
 
     @app.post("/v1/checkpoints", status_code=201)

@@ -23,6 +23,7 @@ from memory_plane.services.ingestion import IngestionService
 from memory_plane.services.reflection import ReflectionService
 from memory_plane.services.retention import RetentionService
 from memory_plane.services.retrieval import RetrievalService
+from memory_plane.services.vault import VaultExporter
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,6 +37,7 @@ class Container:
     reflection: ReflectionService
     checkpoint: CheckpointService
     embedding: EmbeddingService
+    vault: VaultExporter
     store: object
 
 
@@ -49,15 +51,17 @@ def build_in_memory_container() -> Container:
     qdrant._use_in_memory_backend()
     client = FakeEmbeddingClient()
     embedding = EmbeddingService(store, qdrant, client)
+    observations = InMemoryObservationRepository(store)
 
     return Container(
         retention=retention,
         ingestion=IngestionService(retention),
         retrieval=RetrievalService((store, qdrant)),
         context=ContextCompiler(),
-        reflection=ReflectionService(store, InMemoryObservationRepository(store)),
+        reflection=ReflectionService(store, observations),
         checkpoint=CheckpointService(InMemoryCheckpointStore()),
         embedding=embedding,
+        vault=VaultExporter(store, observations),
         store=store,
     )
 
@@ -75,6 +79,7 @@ def build_postgres_container(
     store.connect()
     store.ensure_standalone_scope(server_id, project_id)
     retention = RetentionService(store)
+    observations = PostgresObservationRepository(store)
 
     import os
 
@@ -111,8 +116,9 @@ def build_postgres_container(
         ingestion=IngestionService(retention),
         retrieval=RetrievalService(tuple(sources)),
         context=ContextCompiler(),
-        reflection=ReflectionService(store, PostgresObservationRepository(store)),
+        reflection=ReflectionService(store, observations),
         checkpoint=CheckpointService(PostgresCheckpointStore(store)),
         embedding=embedding,
+        vault=VaultExporter(store, observations),
         store=store,
     )

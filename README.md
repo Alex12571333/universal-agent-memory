@@ -98,6 +98,45 @@ docker compose --profile ops run --rm restore
 Restore не делает destructive clean, если явно не запустить `scripts/restore.py`
 с `--clean`.
 
+## Obsidian/vault export
+
+Чтобы человек мог читать память как knowledge vault, ops-профиль умеет
+экспортировать workspace в Markdown-файлы с frontmatter и Obsidian backlinks:
+
+```bash
+docker compose --profile ops run --rm vault-export
+```
+
+По умолчанию экспорт пишется в `./vault`:
+
+```text
+vault/
+  README.md
+  semantic/mem-<uuid>.md
+  core/mem-<uuid>.md
+  reflections/obs-<uuid>.md
+```
+
+Это one-way export: редактирование файлов в Obsidian пока не меняет
+PostgreSQL. Для обратной синхронизации нужен будущий import/supersede workflow,
+чтобы ручные правки не превращались в destructive overwrite. Подробности:
+[docs/VAULT.md](docs/VAULT.md).
+
+## Native agent integrations
+
+`agent-integrations/` содержит следующий слой интеграции для OpenClaw, Hermes и
+похожих runtimes. Это не skill и не MCP-first подход: цель — plugin/runtime
+hooks, которые подключают память до, во время и после agent run:
+
+- before run: recall core/working/task context;
+- before model call: inject compact context package;
+- after tool call/message: retain observations, traces and errors;
+- checkpoint: save working state;
+- run complete: retain summary and trigger reflection.
+
+MCP можно оставить как совместимость, но для агентов с plugin API основная
+интеграция должна быть native.
+
 ## SDK
 
 - [Python client](sdk/python/README.md)
@@ -118,6 +157,7 @@ Restore не делает destructive clean, если явно не запуст
 - text ingestion и baseline reflection;
 - Markdown/PDF ingestion с checksum, page provenance и idempotent retry;
 - Prometheus-style `/metrics` и Docker-friendly PostgreSQL backup/restore;
+- Obsidian-compatible Markdown vault export;
 - изоляция проектов через PostgreSQL RLS;
 - in-memory режим для unit-тестов;
 - Docker image, Compose и CI.
