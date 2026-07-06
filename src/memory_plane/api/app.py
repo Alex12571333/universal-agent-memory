@@ -27,6 +27,11 @@ from memory_plane.contracts.dto import (
     SupersedeMemoryCommand,
 )
 from memory_plane.domain.checkpoint import Checkpoint, StaleRevisionError
+from memory_plane.domain.conflict import (
+    ConflictCase,
+    ConflictReviewDecision,
+    ConflictReviewStatus,
+)
 from memory_plane.domain.models import (
     MemoryLayer,
     MemoryRevisionConflictError,
@@ -179,6 +184,57 @@ class VaultImportBody(BaseModel):
     tenant_id: UUID = DEFAULT_SERVER_ID
     dry_run: bool = True
     files: list[VaultImportFileBody]
+
+
+class ConflictDecisionBody(BaseModel):
+    """Persist a human decision for one conflict case."""
+
+    tenant_id: UUID = DEFAULT_SERVER_ID
+    status: ConflictReviewStatus
+    winner_value: str | None = None
+    reason: str = ""
+
+
+def _conflict_case_response(case: ConflictCase) -> dict[str, Any]:
+    """Render a conflict case as JSON."""
+    return {
+        "id": str(case.id),
+        "tenant_id": str(case.tenant_id),
+        "workspace_id": str(case.workspace_id),
+        "subject": case.subject,
+        "predicate": case.predicate,
+        "review_status": case.review_status.value,
+        "suggested_winner_value": case.suggested_winner_value,
+        "suggested_reason": case.suggested_reason,
+        "review": _conflict_decision_response(case.review) if case.review else None,
+        "candidates": [
+            {
+                "value": candidate.value,
+                "status": candidate.status,
+                "evidence_ids": [str(item_id) for item_id in candidate.evidence_ids],
+                "confidence": candidate.confidence,
+                "latest_created_at": candidate.latest_created_at.isoformat(),
+            }
+            for candidate in case.candidates
+        ],
+    }
+
+
+def _conflict_decision_response(
+    decision: ConflictReviewDecision | None,
+) -> dict[str, Any] | None:
+    """Render a persisted conflict review decision."""
+    if decision is None:
+        return None
+    return {
+        "tenant_id": str(decision.tenant_id),
+        "workspace_id": str(decision.workspace_id),
+        "case_id": str(decision.case_id),
+        "status": decision.status.value,
+        "winner_value": decision.winner_value,
+        "reason": decision.reason,
+        "updated_at": decision.updated_at.isoformat(),
+    }
 
 
 def create_app(
@@ -400,6 +456,45 @@ def create_app(
             "created": len(observations),
             "observation_ids": [str(row.id) for row in observations],
         }
+
+    @app.get("/v1/workspaces/{workspace_id}/conflicts")
+    def list_conflicts(
+        workspace_id: UUID,
+        tenant_id: UUID = DEFAULT_SERVER_ID,
+        include_resolved: bool = False,
+    ) -> dict[str, Any]:
+        """List inspectable conflict cases for a workspace."""
+        cases = services.conflicts.list_cases(
+            tenant_id,
+            workspace_id,
+            include_resolved=include_resolved,
+        )
+        return {
+            "tenant_id": str(tenant_id),
+            "workspace_id": str(workspace_id),
+            "count": len(cases),
+            "cases": [_conflict_case_response(case) for case in cases],
+        }
+
+    @app.put("/v1/workspaces/{workspace_id}/conflicts/{case_id}/decision")
+    def decide_conflict(
+        workspace_id: UUID,
+        case_id: UUID,
+        body: ConflictDecisionBody,
+    ) -> dict[str, Any]:
+        """Persist a human/operator decision for one conflict case."""
+        try:
+            decision = services.conflicts.decide(
+                body.tenant_id,
+                workspace_id,
+                case_id,
+                status=body.status,
+                winner_value=body.winner_value,
+                reason=body.reason,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return _conflict_decision_response(decision) or {}
 
     @app.post("/v1/workspaces/{workspace_id}/reindex", status_code=202)
     def reindex(workspace_id: UUID, tenant_id: UUID) -> dict[str, Any]:

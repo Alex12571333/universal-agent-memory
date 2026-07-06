@@ -118,7 +118,7 @@ Acceptance:
 - full reindex job after model change; ✅ existing `/reindex`
 - tests for provider selection and dimension mismatch. ✅
 
-## WP-13 Conflict resolver and review inbox
+## WP-13 Conflict resolver and review inbox — complete
 
 Reflection v2 can mark stale/conflicting observations. The next step is an
 explicit conflict case model.
@@ -150,11 +150,19 @@ Resolution policy examples:
 
 Acceptance:
 
-- conflict inbox API;
-- deterministic resolver with inspectable reason strings;
-- human override endpoint;
-- review status persisted;
-- retrieval can demote unresolved/disputed memories.
+- conflict inbox API; ✅ `GET /v1/workspaces/{id}/conflicts`
+- deterministic resolver with inspectable reason strings; ✅
+- human override endpoint; ✅ `PUT /v1/workspaces/{id}/conflicts/{case_id}/decision`
+- review status persisted; ✅ `conflict_reviews` table / in-memory repository
+- retrieval can demote unresolved/disputed memories. pending retrieval policy hook
+
+Current behavior:
+
+- raw memory evidence remains append-only;
+- conflict cases are derived from semantic memories grouped by subject/predicate;
+- candidates are marked `active`/`stale` based on newest evidence;
+- accepted/overridden/dismissed decisions hide cases from the default inbox;
+- `include_resolved=true` shows historical reviewed cases.
 
 ## WP-14 Human memory UI
 

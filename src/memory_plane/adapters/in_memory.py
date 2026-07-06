@@ -9,6 +9,7 @@ from uuid import UUID
 from memory_plane.contracts.dto import Candidate, RecallQuery
 from memory_plane.contracts.events import IntegrationEvent
 from memory_plane.domain.checkpoint import Checkpoint, StaleRevisionError
+from memory_plane.domain.conflict import ConflictReviewDecision
 from memory_plane.domain.models import (
     MemoryItem,
     MemoryLayer,
@@ -28,6 +29,7 @@ class InMemoryMemoryStore:
         self._items: dict[UUID, MemoryItem] = {}
         self._idempotency: dict[tuple[UUID, str], UUID] = {}
         self._observations: dict[UUID, Observation] = {}
+        self._conflict_reviews: dict[tuple[UUID, UUID], ConflictReviewDecision] = {}
         self.events: list[IntegrationEvent] = []
         self._lock = RLock()
 
@@ -216,6 +218,24 @@ class InMemoryMemoryStore:
             if row.tenant_id == tenant_id and row.workspace_id == workspace_id
         )
 
+    def save_conflict_review(
+        self, decision: ConflictReviewDecision
+    ) -> ConflictReviewDecision:
+        """Persist or replace a human conflict-review decision."""
+        with self._lock:
+            self._conflict_reviews[(decision.tenant_id, decision.case_id)] = decision
+            return decision
+
+    def list_conflict_reviews(
+        self, tenant_id: UUID, workspace_id: UUID
+    ) -> tuple[ConflictReviewDecision, ...]:
+        """List persisted conflict-review decisions."""
+        return tuple(
+            row
+            for row in self._conflict_reviews.values()
+            if row.tenant_id == tenant_id and row.workspace_id == workspace_id
+        )
+
     @staticmethod
     def _terms(text: str) -> set[str]:
         """Tokenize text for a dependency-free lexical fallback."""
@@ -238,6 +258,24 @@ class InMemoryObservationRepository:
     ) -> tuple[Observation, ...]:
         """Delegate tenant-safe observation listing."""
         return self._store.list_observations(tenant_id, workspace_id)
+
+
+class InMemoryConflictReviewRepository:
+    """Conflict-review port view over the shared in-memory store."""
+
+    def __init__(self, store: InMemoryMemoryStore) -> None:
+        """Retain a shared store for local review decisions."""
+        self._store = store
+
+    def save(self, decision: ConflictReviewDecision) -> ConflictReviewDecision:
+        """Delegate decision persistence."""
+        return self._store.save_conflict_review(decision)
+
+    def list_for_workspace(
+        self, tenant_id: UUID, workspace_id: UUID
+    ) -> tuple[ConflictReviewDecision, ...]:
+        """Delegate tenant-safe review listing."""
+        return self._store.list_conflict_reviews(tenant_id, workspace_id)
 
 
 class InMemoryCheckpointStore:

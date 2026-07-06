@@ -12,6 +12,7 @@ from memory_plane.contracts.dto import (
     SupersedeMemoryCommand,
 )
 from memory_plane.contracts.events import IntegrationEvent
+from memory_plane.domain.conflict import ConflictReviewStatus
 from memory_plane.domain.models import (
     MemoryLayer,
     MemoryRevisionConflictError,
@@ -225,6 +226,46 @@ class MemoryPlaneTest(unittest.TestCase):
         self.assertFalse(by_summary[new.item.text].stale)
         self.assertEqual((old.item.id,), by_summary[old.item.text].evidence_ids)
         self.assertEqual((new.item.id,), by_summary[new.item.text].evidence_ids)
+
+    def test_conflict_inbox_lists_candidates_and_suggests_active_winner(self) -> None:
+        old = self.retain("Release Alpha is July 15.")
+        new = self.retain("Release Alpha is July 16.")
+
+        cases = self.container.conflicts.list_cases(self.tenant, self.workspace)
+
+        self.assertEqual(1, len(cases))
+        case = cases[0]
+        self.assertEqual("release alpha", case.subject)
+        self.assertEqual("state", case.predicate)
+        self.assertEqual("july 16", case.suggested_winner_value)
+        by_value = {candidate.value: candidate for candidate in case.candidates}
+        self.assertEqual("stale", by_value["july 15"].status)
+        self.assertEqual("active", by_value["july 16"].status)
+        self.assertEqual((old.item.id,), by_value["july 15"].evidence_ids)
+        self.assertEqual((new.item.id,), by_value["july 16"].evidence_ids)
+
+    def test_conflict_review_decision_is_persisted_and_filters_resolved(self) -> None:
+        self.retain("Ivan owns Alpha release.")
+        self.retain("Alex owns Alpha release.")
+        case = self.container.conflicts.list_cases(self.tenant, self.workspace)[0]
+
+        decision = self.container.conflicts.decide(
+            self.tenant,
+            self.workspace,
+            case.id,
+            status=ConflictReviewStatus.ACCEPTED,
+            winner_value=case.suggested_winner_value,
+            reason="newer explicit correction",
+        )
+
+        self.assertEqual(ConflictReviewStatus.ACCEPTED, decision.status)
+        self.assertEqual((), self.container.conflicts.list_cases(self.tenant, self.workspace))
+        with_resolved = self.container.conflicts.list_cases(
+            self.tenant,
+            self.workspace,
+            include_resolved=True,
+        )
+        self.assertEqual("accepted", with_resolved[0].review_status)
 
     def test_reflection_is_idempotent_across_repeated_runs(self) -> None:
         self.retain("Release Alpha is July 15.")
