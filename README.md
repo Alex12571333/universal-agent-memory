@@ -145,6 +145,17 @@ hooks, которые подключают память до, во время и
 MCP можно оставить как совместимость, но для агентов с plugin API основная
 интеграция должна быть native.
 
+Сейчас есть installable adapters:
+
+- OpenClaw: `agent-integrations/openclaw/plugin` — ESM plugin с
+  `agent_turn_prepare`, `after_tool_call`, `agent_end`;
+- Hermes: `agent-integrations/hermes/universal_agent_memory` — native
+  `MemoryProvider`, подключаемый как `memory.provider: universal_agent_memory`.
+
+Оба читают `UAM_URL`, `UAM_API_KEY`, `UAM_TENANT_ID`, `UAM_WORKSPACE_ID`,
+`UAM_AGENT_ID` и могут работать без SaaS onboarding, deriving stable local UUIDs
+when IDs are omitted.
+
 ## Embedding providers
 
 По умолчанию сервер использует deterministic `fake` embeddings, чтобы локальный
@@ -195,8 +206,8 @@ UAM_EMBEDDING_API_KEY=...
 - in-memory режим для unit-тестов;
 - Docker image, Compose и CI.
 
-Дальше по roadmap: native OpenClaw/Hermes adapters, conflict review inbox,
-secrets/PII guard и local UI.
+Дальше по roadmap: live install smoke tests for OpenClaw/Hermes, conflict
+review inbox, secrets/PII guard и local UI.
 
 ## Совместная работа агентов
 

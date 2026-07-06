@@ -1,0 +1,19 @@
+{
+  "name": "@universal-agent-memory/openclaw-plugin",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "description": "Native OpenClaw lifecycle integration for Universal Agent Memory",
+  "main": "./index.js",
+  "openclaw": {
+    "extensions": [
+      "./index.js"
+    ]
+  },
+  "peerDependencies": {
+    "openclaw": "*"
+  },
+  "scripts": {
+    "check": "node --check index.js"
+  }
+}
