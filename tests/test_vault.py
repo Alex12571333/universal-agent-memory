@@ -6,7 +6,7 @@ from uuid import uuid4
 from memory_plane.bootstrap import build_in_memory_container
 from memory_plane.contracts.dto import RetainCommand, SupersedeMemoryCommand
 from memory_plane.domain.models import MemoryLayer, MemoryScope, Provenance
-from memory_plane.services.vault import VaultWriteResult
+from memory_plane.services.vault import VaultImportSource, VaultWriteResult
 
 
 def test_vault_export_renders_memory_frontmatter_and_reflection_links() -> None:
@@ -98,3 +98,113 @@ def test_vault_export_can_write_obsidian_folder(tmp_path: Path) -> None:
     exported = list((tmp_path / "core").glob("mem-*.md"))
     assert len(exported) == 1
     assert "Use PostgreSQL" in exported[0].read_text(encoding="utf-8")
+
+
+def test_vault_import_dry_run_detects_changed_memory_note() -> None:
+    container = build_in_memory_container()
+    tenant = uuid4()
+    workspace = uuid4()
+    container.retention.retain(
+        RetainCommand(
+            tenant_id=tenant,
+            workspace_id=workspace,
+            layer=MemoryLayer.SEMANTIC,
+            scope=MemoryScope.WORKSPACE,
+            kind="fact",
+            text="Alpha release is July 15.",
+            provenance=Provenance(source_kind="api"),
+        )
+    )
+    export = container.vault.export(tenant, workspace)
+    note = next(file for file in export.files if file.path.startswith("semantic/"))
+    edited = note.content.replace("Alpha release is July 15.", "Alpha release is July 16.")
+
+    plan = container.vault.plan_import(
+        tenant,
+        workspace,
+        (VaultImportSource(note.path, edited),),
+    )
+
+    assert plan.dry_run is True
+    assert plan.supersede_count == 1
+    assert len(plan.changes) == 1
+    assert plan.changes[0].action == "supersede"
+    assert plan.changes[0].new_item_id is None
+
+
+def test_vault_import_apply_creates_superseding_revision_without_overwrite() -> None:
+    container = build_in_memory_container()
+    tenant = uuid4()
+    workspace = uuid4()
+    retained = container.retention.retain(
+        RetainCommand(
+            tenant_id=tenant,
+            workspace_id=workspace,
+            layer=MemoryLayer.CORE,
+            scope=MemoryScope.WORKSPACE,
+            kind="decision",
+            text="Use fake embeddings in production.",
+            provenance=Provenance(source_kind="api"),
+        )
+    )
+    export = container.vault.export(tenant, workspace)
+    note = next(file for file in export.files if file.path.startswith("core/"))
+    edited = note.content.replace(
+        "Use fake embeddings in production.",
+        "Use versioned production embeddings.",
+    )
+
+    result = container.vault.apply_import(
+        tenant,
+        workspace,
+        (VaultImportSource(note.path, edited),),
+    )
+    memories = container.store.list_for_workspace(tenant, workspace)
+    new_item = next(
+        item for item in memories if item.text == "Use versioned production embeddings."
+    )
+
+    assert result.dry_run is False
+    assert result.changes[0].action == "supersede"
+    assert result.changes[0].new_item_id == new_item.id
+    assert new_item.revision == 2
+    assert new_item.supersedes_id == retained.item.id
+    assert any(item.text == "Use fake embeddings in production." for item in memories)
+
+
+def test_vault_import_reports_conflict_for_stale_export() -> None:
+    container = build_in_memory_container()
+    tenant = uuid4()
+    workspace = uuid4()
+    retained = container.retention.retain(
+        RetainCommand(
+            tenant_id=tenant,
+            workspace_id=workspace,
+            layer=MemoryLayer.SEMANTIC,
+            scope=MemoryScope.WORKSPACE,
+            kind="fact",
+            text="Beta launches Monday.",
+            provenance=Provenance(source_kind="api"),
+        )
+    )
+    export = container.vault.export(tenant, workspace)
+    stale_note = next(file for file in export.files if file.path.startswith("semantic/"))
+    container.retention.supersede(
+        SupersedeMemoryCommand(
+            tenant_id=tenant,
+            item_id=retained.item.id,
+            replacement_text="Beta launches Tuesday.",
+            expected_revision=1,
+        )
+    )
+    edited = stale_note.content.replace("Beta launches Monday.", "Beta launches Wednesday.")
+
+    result = container.vault.apply_import(
+        tenant,
+        workspace,
+        (VaultImportSource(stale_note.path, edited),),
+    )
+
+    assert result.changes[0].action == "conflict"
+    assert result.changes[0].expected_revision == 1
+    assert "actual 2" in result.changes[0].message

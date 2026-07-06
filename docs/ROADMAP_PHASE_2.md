@@ -30,7 +30,7 @@ ingestion → normalization → storage → indexing → reflection
 - Смена embedding model не должна ломать старую память: индексы версионируются.
 - Secrets/PII не должны попадать в вечную память без policy decision.
 
-## WP-11 Obsidian/vault mode — started
+## WP-11 Obsidian/vault mode — complete
 
 Сделать human-readable слой поверх PostgreSQL: export/import/sync в Markdown
 vault, открываемый в Obsidian или любом редакторе.
@@ -82,12 +82,12 @@ labels: [project, architecture]
 
 Acceptance:
 
-- deterministic export from PostgreSQL to vault; ✅ first one-way export
+- deterministic export from PostgreSQL to vault; ✅
 - stable file names; ✅ `mem-<uuid>.md` / `obs-<uuid>.md`
 - backlinks for `supersedes`, evidence, conflicts and related memories; partial
-- frontmatter round-trip parser;
-- safe import path that creates revisions, not destructive overwrites;
-- docs for opening the vault in Obsidian.
+- frontmatter round-trip parser; ✅
+- safe import path that creates revisions, not destructive overwrites; ✅
+- docs for opening the vault in Obsidian. ✅
 
 ## WP-12 Real embedding providers
 

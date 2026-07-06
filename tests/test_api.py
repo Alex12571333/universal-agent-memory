@@ -232,3 +232,44 @@ def test_vault_endpoint_exports_markdown_files() -> None:
     memory_path = next(path for path in files if path.startswith("core/"))
     assert "type: \"memory\"" in files[memory_path]
     assert "Universal Agent Memory exposes an Obsidian vault." in files[memory_path]
+
+
+def test_vault_import_endpoint_plans_and_applies_supersede() -> None:
+    container = build_in_memory_container()
+    client = TestClient(create_app(container))
+    retained = client.post(
+        "/v1/memory/retain",
+        json={
+            "layer": "semantic",
+            "scope": "workspace",
+            "kind": "fact",
+            "text": "Vault import starts as dry run.",
+        },
+    )
+    export = client.get(f"/v1/workspaces/{DEFAULT_PROJECT_ID}/vault")
+    files = export.json()["files"]
+    memory_file = next(row for row in files if row["path"].startswith("semantic/"))
+    memory_file["content"] = memory_file["content"].replace(
+        "Vault import starts as dry run.",
+        "Vault import can apply through supersede.",
+    )
+
+    dry_run = client.post(
+        f"/v1/workspaces/{DEFAULT_PROJECT_ID}/vault/import",
+        json={"files": [memory_file]},
+    )
+    applied = client.post(
+        f"/v1/workspaces/{DEFAULT_PROJECT_ID}/vault/import",
+        json={"dry_run": False, "files": [memory_file]},
+    )
+
+    assert retained.status_code == 201
+    assert dry_run.status_code == 200
+    assert dry_run.json()["dry_run"] is True
+    assert dry_run.json()["changes"][0]["action"] == "supersede"
+    assert applied.status_code == 200
+    assert applied.json()["dry_run"] is False
+    assert applied.json()["changes"][0]["action"] == "supersede"
+    assert applied.json()["changes"][0]["new_item_id"] is not None
+    rows = container.store.list_for_workspace(DEFAULT_SERVER_ID, DEFAULT_PROJECT_ID)
+    assert any(row.text == "Vault import can apply through supersede." for row in rows)

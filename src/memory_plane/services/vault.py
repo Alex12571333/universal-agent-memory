@@ -8,8 +8,10 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
-from memory_plane.domain.models import MemoryItem, Observation
+from memory_plane.contracts.dto import SupersedeMemoryCommand
+from memory_plane.domain.models import MemoryItem, MemoryRevisionConflictError, Observation
 from memory_plane.ports.repositories import MemoryLedger, ObservationRepository
+from memory_plane.services.retention import RetentionService
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,6 +41,41 @@ class VaultWriteResult:
     observation_count: int
 
 
+@dataclass(frozen=True, slots=True)
+class VaultImportSource:
+    """One Markdown file supplied by a vault import client."""
+
+    path: str
+    content: str
+
+
+@dataclass(frozen=True, slots=True)
+class VaultImportChange:
+    """One planned or applied import action."""
+
+    path: str
+    action: str
+    item_id: UUID | None = None
+    expected_revision: int | None = None
+    new_item_id: UUID | None = None
+    message: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class VaultImportResult:
+    """Safe import result: planned changes plus applied supersede ids."""
+
+    tenant_id: UUID
+    workspace_id: UUID
+    dry_run: bool
+    changes: tuple[VaultImportChange, ...]
+
+    @property
+    def supersede_count(self) -> int:
+        """Number of files that require or performed a supersede action."""
+        return sum(1 for change in self.changes if change.action == "supersede")
+
+
 class VaultExporter:
     """Export canonical memory into an Obsidian-compatible Markdown vault."""
 
@@ -46,10 +83,12 @@ class VaultExporter:
         self,
         ledger: MemoryLedger,
         observations: ObservationRepository,
+        retention: RetentionService | None = None,
     ) -> None:
         """Bind export to tenant-safe memory and observation repositories."""
         self._ledger = ledger
         self._observations = observations
+        self._retention = retention
 
     def export(self, tenant_id: UUID, workspace_id: UUID) -> VaultExport:
         """Render all memories and observations for a workspace."""
@@ -95,6 +134,84 @@ class VaultExporter:
             observation_count=sum(
                 1 for file in export.files if file.path.startswith("reflections/")
             ),
+        )
+
+    def plan_import(
+        self,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        files: tuple[VaultImportSource, ...],
+    ) -> VaultImportResult:
+        """Inspect Markdown vault files and plan safe CAS supersede operations."""
+        changes = tuple(
+            self._plan_file_import(tenant_id, workspace_id, file) for file in files
+        )
+        return VaultImportResult(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            dry_run=True,
+            changes=changes,
+        )
+
+    def apply_import(
+        self,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        files: tuple[VaultImportSource, ...],
+    ) -> VaultImportResult:
+        """Apply a vault import by creating new memory revisions only."""
+        if self._retention is None:
+            raise RuntimeError("vault import requires a retention service")
+        planned = self.plan_import(tenant_id, workspace_id, files)
+        applied: list[VaultImportChange] = []
+        for change in planned.changes:
+            if (
+                change.action != "supersede"
+                or change.item_id is None
+                or change.expected_revision is None
+            ):
+                applied.append(change)
+                continue
+            note = _parse_markdown_note(
+                next(file.content for file in files if file.path == change.path)
+            )
+            try:
+                result = self._retention.supersede(
+                    SupersedeMemoryCommand(
+                        tenant_id=tenant_id,
+                        item_id=change.item_id,
+                        replacement_text=note.body,
+                        expected_revision=change.expected_revision,
+                        confidence=_optional_float(note.frontmatter.get("confidence")),
+                        idempotency_key=f"vault-import:{change.path}:{change.expected_revision}",
+                    )
+                )
+            except MemoryRevisionConflictError as exc:
+                applied.append(
+                    VaultImportChange(
+                        path=change.path,
+                        action="conflict",
+                        item_id=change.item_id,
+                        expected_revision=change.expected_revision,
+                        message=str(exc),
+                    )
+                )
+                continue
+            applied.append(
+                VaultImportChange(
+                    path=change.path,
+                    action="supersede",
+                    item_id=change.item_id,
+                    expected_revision=change.expected_revision,
+                    new_item_id=result.item.id,
+                    message="created new memory revision",
+                )
+            )
+        return VaultImportResult(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            dry_run=False,
+            changes=tuple(applied),
         )
 
     _MEMORY_PREFIXES = (
@@ -272,6 +389,82 @@ class VaultExporter:
     def _observation_name(observation_id: UUID) -> str:
         return f"obs-{observation_id}"
 
+    def _plan_file_import(
+        self,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        file: VaultImportSource,
+    ) -> VaultImportChange:
+        try:
+            note = _parse_markdown_note(file.content)
+        except ValueError as exc:
+            return VaultImportChange(file.path, "error", message=str(exc))
+
+        frontmatter = note.frontmatter
+        if frontmatter.get("type") != "memory":
+            return VaultImportChange(
+                file.path,
+                "skip",
+                message="only memory notes are imported",
+            )
+        if frontmatter.get("status") == "superseded":
+            return VaultImportChange(
+                file.path,
+                "skip",
+                message="superseded notes are audit history, not import heads",
+            )
+        try:
+            item_id = _parse_note_id(frontmatter.get("id"))
+            expected_revision = int(str(frontmatter["revision"]))
+            note_tenant_id = UUID(str(frontmatter["tenant_id"]))
+            note_workspace_id = UUID(str(frontmatter["workspace_id"]))
+        except (KeyError, TypeError, ValueError) as exc:
+            return VaultImportChange(
+                file.path,
+                "error",
+                message=f"invalid memory frontmatter: {exc}",
+            )
+        if note_tenant_id != tenant_id or note_workspace_id != workspace_id:
+            return VaultImportChange(
+                file.path,
+                "error",
+                item_id=item_id,
+                expected_revision=expected_revision,
+                message="tenant/workspace mismatch",
+            )
+        current = self._ledger.get(tenant_id, item_id)
+        if current is None:
+            return VaultImportChange(
+                file.path,
+                "error",
+                item_id=item_id,
+                expected_revision=expected_revision,
+                message="memory item not found",
+            )
+        if current.revision != expected_revision:
+            return VaultImportChange(
+                file.path,
+                "conflict",
+                item_id=item_id,
+                expected_revision=expected_revision,
+                message=f"expected revision {expected_revision}, actual {current.revision}",
+            )
+        if current.text.strip() == note.body.strip():
+            return VaultImportChange(
+                file.path,
+                "unchanged",
+                item_id=item_id,
+                expected_revision=expected_revision,
+                message="memory text unchanged",
+            )
+        return VaultImportChange(
+            file.path,
+            "supersede",
+            item_id=item_id,
+            expected_revision=expected_revision,
+            message="memory text changed",
+        )
+
 
 def _frontmatter(values: dict[str, Any]) -> str:
     """Render dependency-free YAML-compatible frontmatter for simple values."""
@@ -324,3 +517,99 @@ def _optional_datetime(value: datetime | None) -> str | None:
 def _blockquote(text: str) -> str:
     """Render provenance quotes without breaking Markdown structure."""
     return "\n".join(f"> {line}" for line in text.splitlines())
+
+
+@dataclass(frozen=True, slots=True)
+class _ParsedMarkdownNote:
+    frontmatter: dict[str, Any]
+    body: str
+
+
+def _parse_markdown_note(content: str) -> _ParsedMarkdownNote:
+    """Parse the subset of Markdown/frontmatter emitted by the vault exporter."""
+    lines = content.splitlines()
+    if not lines or lines[0].strip() != "---":
+        raise ValueError("missing YAML frontmatter")
+    try:
+        end = next(index for index, line in enumerate(lines[1:], start=1) if line == "---")
+    except StopIteration as exc:
+        raise ValueError("unterminated YAML frontmatter") from exc
+    frontmatter = _parse_frontmatter(lines[1:end])
+    body_lines = lines[end + 1 :]
+    body: list[str] = []
+    for line in body_lines:
+        if line in {"## Provenance", "## Quote", "## Links", "## Evidence"}:
+            break
+        body.append(line)
+    return _ParsedMarkdownNote(
+        frontmatter=frontmatter,
+        body="\n".join(body).strip(),
+    )
+
+
+def _parse_frontmatter(lines: list[str]) -> dict[str, Any]:
+    """Parse conservative YAML scalars and list blocks without a YAML dependency."""
+    result: dict[str, Any] = {}
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        if not line.strip():
+            index += 1
+            continue
+        if line.startswith(" ") or ":" not in line:
+            raise ValueError(f"unsupported frontmatter line: {line}")
+        key, raw_value = line.split(":", 1)
+        raw_value = raw_value.strip()
+        if raw_value == "":
+            values: list[Any] = []
+            index += 1
+            while index < len(lines) and lines[index].startswith("  - "):
+                values.append(_parse_yaml_scalar(lines[index][4:].strip()))
+                index += 1
+            result[key] = values
+            continue
+        result[key] = _parse_yaml_scalar(raw_value)
+        index += 1
+    return result
+
+
+def _parse_yaml_scalar(value: str) -> Any:
+    """Parse one scalar from exporter-generated YAML."""
+    if value == "null":
+        return None
+    if value == "true":
+        return True
+    if value == "false":
+        return False
+    if value == "[]":
+        return []
+    if value == "{}":
+        return {}
+    if len(value) >= 2 and value[0] == '"' and value[-1] == '"':
+        return value[1:-1].replace('\\"', '"').replace("\\\\", "\\")
+    try:
+        return int(value)
+    except ValueError:
+        pass
+    try:
+        return float(value)
+    except ValueError:
+        return value
+
+
+def _parse_note_id(value: Any) -> UUID:
+    """Parse `mem-<uuid>` note ids from frontmatter."""
+    text = str(value)
+    if not text.startswith("mem-"):
+        raise ValueError("memory id must start with mem-")
+    return UUID(text.removeprefix("mem-"))
+
+
+def _optional_float(value: Any) -> float | None:
+    """Return a bounded float when frontmatter contains a numeric confidence."""
+    if value is None:
+        return None
+    parsed = float(value)
+    if not 0 <= parsed <= 1:
+        raise ValueError("confidence must be between 0 and 1")
+    return parsed
