@@ -22,6 +22,7 @@ def _load_script(name: str) -> ModuleType:
 backup = _load_script("backup")
 restore = _load_script("restore")
 export_vault = _load_script("export_vault")
+import_vault = _load_script("import_vault")
 
 
 def test_backup_invokes_pg_dump(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -95,3 +96,63 @@ def test_export_vault_builds_postgres_exporter(
     vault.export.assert_called_once()
     assert (tmp_path / "README.md").read_text(encoding="utf-8") == "# Vault\n"
     assert (tmp_path / "semantic" / "fact-alpha.md").read_text(encoding="utf-8") == "Alpha\n"
+
+
+def test_import_vault_defaults_to_dry_run(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    (tmp_path / "semantic").mkdir()
+    (tmp_path / "semantic" / "mem-alpha.md").write_text("Alpha\n", encoding="utf-8")
+    vault = Mock()
+    vault.plan_import.return_value = Mock(
+        changes=(
+            Mock(
+                action="unchanged",
+                path="semantic/mem-alpha.md",
+                message="ok",
+                new_item_id=None,
+            ),
+        ),
+        supersede_count=0,
+    )
+    container = Mock(vault=vault)
+    build_container = Mock(return_value=container)
+    monkeypatch.setattr(import_vault, "build_postgres_container", build_container)
+    monkeypatch.setenv("UAM_DATABASE_URL", "postgresql://example/db")
+    monkeypatch.setattr("sys.argv", ["import_vault.py", str(tmp_path)])
+
+    assert import_vault.main() == 0
+
+    build_container.assert_called_once()
+    vault.plan_import.assert_called_once()
+    vault.apply_import.assert_not_called()
+
+
+def test_import_vault_apply_uses_apply_import(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    (tmp_path / "core").mkdir()
+    (tmp_path / "core" / "mem-alpha.md").write_text("Alpha\n", encoding="utf-8")
+    vault = Mock()
+    vault.apply_import.return_value = Mock(
+        changes=(
+            Mock(
+                action="supersede",
+                path="core/mem-alpha.md",
+                message="ok",
+                new_item_id=None,
+            ),
+        ),
+        supersede_count=1,
+    )
+    container = Mock(vault=vault)
+    build_container = Mock(return_value=container)
+    monkeypatch.setattr(import_vault, "build_postgres_container", build_container)
+    monkeypatch.setenv("UAM_DATABASE_URL", "postgresql://example/db")
+    monkeypatch.setattr("sys.argv", ["import_vault.py", str(tmp_path), "--apply"])
+
+    assert import_vault.main() == 0
+
+    build_container.assert_called_once()
+    vault.apply_import.assert_called_once()
+    vault.plan_import.assert_not_called()

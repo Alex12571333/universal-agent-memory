@@ -109,15 +109,18 @@
 | `backup.py` | Запускает `pg_dump --format=custom` | URL из `UAM_BACKUP_DATABASE_URL`/admin/database env |
 | `restore.py` | Запускает `pg_restore` | Non-destructive by default; `--clean` opt-in |
 
-## Vault — `services/vault.py`, `scripts/export_vault.py`
+## Vault — `services/vault.py`, `scripts/export_vault.py`, `scripts/import_vault.py`
 
 | Функция | Назначение | Семантика |
 |---|---|---|
 | `VaultExporter.export()` | Workspace → in-memory Markdown vault snapshot | Stable file names; deterministic file ordering |
 | `VaultExporter.export_workspace()` | Workspace → folder on disk | Safe relative paths; memory/observation counts |
+| `VaultExporter.plan_import()` | Markdown vault files → safe import plan | Dry-run; detects changed/unchanged/conflict/error files |
+| `VaultExporter.apply_import()` | Markdown vault files → CAS supersede writes | Creates new revisions only; never overwrites rows |
 | `VaultExporter._memory_file()` | `MemoryItem` → Obsidian note | Frontmatter + provenance + supersede backlinks |
 | `VaultExporter._observation_file()` | `Observation` → reflection note | Evidence backlinks to `mem-*` notes |
-| `export_vault.py` | PostgreSQL workspace → folder | One-way export; no destructive import |
+| `export_vault.py` | PostgreSQL workspace → folder | Deterministic materialized export |
+| `import_vault.py` | Folder → dry-run/apply import | Dry-run by default; `--apply` required for writes |
 
 ## Native integrations — `agent-integrations/`
 
@@ -139,6 +142,7 @@
 | `GET /metrics` | Prometheus counters/lag; защищён API key |
 | `POST /v1/memory/retain` | REST boundary для retain |
 | `PUT /v1/memory/{id}/supersede` | CAS replacement; stale revision → `409 revision_conflict` |
+| `POST /v1/workspaces/{id}/vault/import` | Dry-run/apply edited vault notes | Applies through `supersede`; conflicts on stale revisions |
 | `POST /v1/ingest/text` | Детерминированный text ingestion |
 | `POST /v1/ingest/document` | Base64 Markdown/PDF ingestion, лимит 20 MiB |
 | `POST /v1/memory/recall` | Recall + context compilation |

@@ -13,7 +13,7 @@ RUN apt-get update \
 COPY pyproject.toml README.md ./
 COPY src ./src
 COPY migrations ./migrations
-COPY scripts/migrate.py scripts/backup.py scripts/restore.py scripts/export_vault.py ./scripts/
+COPY scripts/migrate.py scripts/backup.py scripts/restore.py scripts/export_vault.py scripts/import_vault.py ./scripts/
 RUN python -m pip install ".[api,postgres,nats,documents]"
 
 EXPOSE 8080

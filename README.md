@@ -117,10 +117,18 @@ vault/
   reflections/obs-<uuid>.md
 ```
 
-Это one-way export: редактирование файлов в Obsidian пока не меняет
-PostgreSQL. Для обратной синхронизации нужен будущий import/supersede workflow,
-чтобы ручные правки не превращались в destructive overwrite. Подробности:
-[docs/VAULT.md](docs/VAULT.md).
+Vault можно открыть в Obsidian через **Open folder as vault**. Изменения лучше
+сначала проверять через dry-run import: сервер сравнит `mem-*` note с
+канонической памятью и применит изменение только через CAS `supersede`, без
+destructive overwrite. Подробности: [docs/VAULT.md](docs/VAULT.md).
+
+```bash
+# dry-run: показать, какие notes создадут новую ревизию
+docker compose --profile ops run --rm vault-import
+
+# apply: реально создать новые ревизии через supersede
+docker compose --profile ops run --rm vault-import python scripts/import_vault.py /vault --apply
+```
 
 ## Native agent integrations
 

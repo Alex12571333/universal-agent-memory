@@ -34,6 +34,7 @@ from memory_plane.domain.models import (
     Provenance,
 )
 from memory_plane.services.metrics import render_prometheus
+from memory_plane.services.vault import VaultImportSource
 
 DEFAULT_SERVER_ID = UUID("00000000-0000-0000-0000-000000000001")
 DEFAULT_PROJECT_ID = UUID("00000000-0000-0000-0000-000000000002")
@@ -163,6 +164,21 @@ class IngestDocumentBody(BaseModel):
     labels: list[str] = Field(default_factory=list)
     chunk_size_chars: int = Field(default=2400, ge=256)
     chunk_overlap_chars: int = Field(default=240, ge=0)
+
+
+class VaultImportFileBody(BaseModel):
+    """One Markdown file being imported from a human-editable vault."""
+
+    path: str
+    content: str
+
+
+class VaultImportBody(BaseModel):
+    """Dry-run or apply a vault import safely through supersede."""
+
+    tenant_id: UUID = DEFAULT_SERVER_ID
+    dry_run: bool = True
+    files: list[VaultImportFileBody]
 
 
 def create_app(
@@ -408,6 +424,40 @@ def create_app(
                     "content": file.content,
                 }
                 for file in vault.files
+            ],
+        }
+
+    @app.post("/v1/workspaces/{workspace_id}/vault/import")
+    def import_vault(workspace_id: UUID, body: VaultImportBody) -> dict[str, Any]:
+        """Plan or apply a Markdown vault import without destructive overwrites."""
+        files = tuple(
+            VaultImportSource(path=file.path, content=file.content) for file in body.files
+        )
+        try:
+            result = (
+                services.vault.plan_import(body.tenant_id, workspace_id, files)
+                if body.dry_run
+                else services.vault.apply_import(body.tenant_id, workspace_id, files)
+            )
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return {
+            "tenant_id": str(result.tenant_id),
+            "workspace_id": str(result.workspace_id),
+            "dry_run": result.dry_run,
+            "supersede_count": result.supersede_count,
+            "changes": [
+                {
+                    "path": change.path,
+                    "action": change.action,
+                    "item_id": str(change.item_id) if change.item_id else None,
+                    "expected_revision": change.expected_revision,
+                    "new_item_id": str(change.new_item_id) if change.new_item_id else None,
+                    "message": change.message,
+                }
+                for change in result.changes
             ],
         }
 

@@ -61,7 +61,7 @@ def build_in_memory_container() -> Container:
         reflection=ReflectionService(store, observations),
         checkpoint=CheckpointService(InMemoryCheckpointStore()),
         embedding=embedding,
-        vault=VaultExporter(store, observations),
+        vault=VaultExporter(store, observations, retention),
         store=store,
     )
 
@@ -119,6 +119,6 @@ def build_postgres_container(
         reflection=ReflectionService(store, observations),
         checkpoint=CheckpointService(PostgresCheckpointStore(store)),
         embedding=embedding,
-        vault=VaultExporter(store, observations),
+        vault=VaultExporter(store, observations, retention),
         store=store,
     )
