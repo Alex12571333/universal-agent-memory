@@ -33,6 +33,17 @@ class MemoryLedger(Protocol):
         """List canonical items for deterministic fallback and maintenance jobs."""
         ...
 
+    def supersede_if_current(
+        self,
+        item: MemoryItem,
+        event: IntegrationEvent,
+        *,
+        expected_revision: int,
+        idempotency_key: str | None = None,
+    ) -> tuple[MemoryItem, bool]:
+        """Append a replacement only if its parent is still the current head."""
+        ...
+
 
 class RetentionStore(MemoryLedger, Protocol):
     """Atomic boundary for canonical memory and its outbox event."""

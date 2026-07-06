@@ -9,7 +9,13 @@ from uuid import UUID
 from memory_plane.contracts.dto import Candidate, RecallQuery
 from memory_plane.contracts.events import IntegrationEvent
 from memory_plane.domain.checkpoint import Checkpoint, StaleRevisionError
-from memory_plane.domain.models import MemoryItem, MemoryLayer, MemoryScope, Observation
+from memory_plane.domain.models import (
+    MemoryItem,
+    MemoryLayer,
+    MemoryRevisionConflictError,
+    MemoryScope,
+    Observation,
+)
 
 _WORD = re.compile(r"\w+", re.UNICODE)
 
@@ -58,10 +64,61 @@ class InMemoryMemoryStore:
                 self.publish(event)
             return stored, created
 
+    def supersede_if_current(
+        self,
+        item: MemoryItem,
+        event: IntegrationEvent,
+        *,
+        expected_revision: int,
+        idempotency_key: str | None = None,
+    ) -> tuple[MemoryItem, bool]:
+        """CAS append a replacement and enqueue its derived-work event."""
+        if item.supersedes_id is None:
+            raise ValueError("replacement item must declare supersedes_id")
+        with self._lock:
+            if idempotency_key:
+                key = (item.tenant_id, idempotency_key)
+                existing_id = self._idempotency.get(key)
+                if existing_id is not None:
+                    return self._items[existing_id], False
+
+            parent = self.get(item.tenant_id, item.supersedes_id)
+            if parent is None:
+                raise KeyError("memory item not found")
+            child = self._latest_descendant(parent)
+            actual = child.revision
+            if child.id != parent.id or parent.revision != expected_revision:
+                raise MemoryRevisionConflictError(
+                    item.supersedes_id, expected_revision, actual
+                )
+
+            self._items[item.id] = item
+            if idempotency_key:
+                self._idempotency[(item.tenant_id, idempotency_key)] = item.id
+            self.publish(event)
+            return item, True
+
     def get(self, tenant_id: UUID, item_id: UUID) -> MemoryItem | None:
         """Return an item only when its tenant matches exactly."""
         item = self._items.get(item_id)
         return item if item is not None and item.tenant_id == tenant_id else None
+
+    def _latest_descendant(self, item: MemoryItem) -> MemoryItem:
+        """Follow the append-only supersedes chain to its latest known head."""
+        head = item
+        changed = True
+        while changed:
+            changed = False
+            for candidate in self._items.values():
+                if (
+                    candidate.tenant_id == item.tenant_id
+                    and candidate.supersedes_id == head.id
+                    and candidate.revision > head.revision
+                ):
+                    head = candidate
+                    changed = True
+                    break
+        return head
 
     def list_for_workspace(
         self,
