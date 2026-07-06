@@ -179,7 +179,7 @@ Acceptance:
 - edits use `supersede`;
 - never performs direct destructive update of memory rows.
 
-## WP-15 Native OpenClaw/Hermes integrations — started
+## WP-15 Native OpenClaw/Hermes integrations — complete
 
 Goal: integrate as a plugin/runtime extension, not merely as a skill or MCP
 server. MCP remains useful as compatibility, but deep integration should hook
@@ -213,12 +213,13 @@ agent-integrations/
     plugin/
     README.md
   hermes/
-    plugin/
+    universal_agent_memory/
     README.md
   shared/
     lifecycle.py
     config.py
     client.py
+    identity.py
 ```
 
 Shared lifecycle hooks:
@@ -243,19 +244,25 @@ Memory scopes:
 Acceptance:
 
 - shared runtime-agnostic lifecycle contract; ✅ initial skeleton
+- stable identity resolver for local/non-SaaS deployments; ✅
 - OpenClaw plugin loads UAM config and injects recalled context before the model
-  call or planning step;
-- Hermes plugin does the same for its runtime lifecycle;
-- both plugins retain run summaries and tool/error memories after execution;
-- both use the same Universal Agent Memory server and SDK;
-- each plugin can be disabled with one env/config flag;
-- plugins never require a hosted SaaS service;
-- MCP bridge remains optional compatibility, not the primary integration.
+  call or planning step; ✅ `agent_turn_prepare`
+- Hermes plugin does the same for its runtime lifecycle; ✅ `prefetch`
+- both plugins retain run summaries and tool/error memories after execution; ✅
+- both use the same Universal Agent Memory server and HTTP API; ✅
+- each plugin can be disabled with one env/config flag; ✅ `UAM_MEMORY_ENABLED`
+- plugins never require a hosted SaaS service; ✅
+- MCP bridge remains optional compatibility, not the primary integration. ✅
 
-Open question: exact OpenClaw/Hermes plugin APIs must be verified against their
-current runtime interfaces before implementation. The integration contract above
-is intentionally runtime-agnostic so adapters can be rewritten without changing
-the memory server.
+Runtime APIs verified against `.14`:
+
+- OpenClaw native plugin: `openclaw.extensions`, `definePluginEntry`,
+  `api.registerHook("agent_turn_prepare" | "after_tool_call" | "agent_end")`.
+- Hermes memory provider: `$HERMES_HOME/plugins/<name>/`, `MemoryProvider`
+  methods `initialize`, `prefetch`, `sync_turn`, `on_session_end`, tool schemas.
+
+Next hardening step: install these adapters into the live `.14` runtimes and run
+end-to-end smoke tests against a local UAM server.
 
 ## WP-16 Secrets and PII guard
 

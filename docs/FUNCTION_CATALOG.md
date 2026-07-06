@@ -127,8 +127,14 @@
 | Файл | Назначение | Семантика |
 |---|---|---|
 | `shared/lifecycle.py` | Runtime-agnostic plugin contract | before-run, after-event, run-complete hooks |
-| `openclaw/README.md` | OpenClaw native adapter plan | Plugin-level integration, not skill/MCP-only |
-| `hermes/README.md` | Hermes native adapter plan | Same shared lifecycle contract |
+| `shared/config.py` | Env/config for native plugins | Reads `UAM_*` runtime flags |
+| `shared/identity.py` | Stable UUID resolution | Explicit env UUID or deterministic UUIDv5 fallback |
+| `shared/client.py` | Stdlib HTTP client for plugin runtimes | Bearer auth, retain/recall/checkpoint/reflect |
+| `shared/plugin.py` | Runtime-neutral memory plugin core | Maps lifecycle events to retain/recall calls |
+| `openclaw/plugin/index.js` | Installable OpenClaw native plugin | `agent_turn_prepare`, `after_tool_call`, `agent_end` hooks |
+| `openclaw/plugin/package.json` | OpenClaw extension metadata | `openclaw.extensions: ["./index.js"]` |
+| `hermes/universal_agent_memory/__init__.py` | Hermes `MemoryProvider` | `prefetch`, `sync_turn`, `on_session_end`, explicit tools |
+| `hermes/universal_agent_memory/plugin.yaml` | Hermes provider metadata | User-installed memory provider manifest |
 
 ## Composition/API
 
