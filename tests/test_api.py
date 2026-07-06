@@ -111,6 +111,30 @@ def test_api_key_protects_memory_routes_but_not_health() -> None:
     assert valid.status_code == 201
 
 
+def test_metrics_endpoint_uses_prometheus_text_and_api_key() -> None:
+    container = build_in_memory_container()
+    client = TestClient(create_app(container, api_key="secret"))
+    client.post(
+        "/v1/memory/retain",
+        json={
+            "layer": "semantic",
+            "scope": "workspace",
+            "kind": "fact",
+            "text": "Metrics count this memory",
+        },
+        headers={"Authorization": "Bearer secret"},
+    )
+
+    denied = client.get("/metrics")
+    response = client.get("/metrics", headers={"Authorization": "Bearer secret"})
+
+    assert denied.status_code == 401
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/plain")
+    assert "uam_memory_items_total 1" in response.text
+    assert "uam_outbox_pending_total 1" in response.text
+
+
 def test_api_key_is_disabled_when_not_configured(monkeypatch) -> None:
     monkeypatch.delenv("UAM_API_KEY", raising=False)
     client = TestClient(create_app(build_in_memory_container()))

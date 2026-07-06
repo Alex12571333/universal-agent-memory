@@ -169,6 +169,37 @@ class InMemoryMemoryStore:
             if all(existing.id != event.id for existing in self.events):
                 self.events.append(event)
 
+    def collect_metrics(self, tenant_id: UUID | None = None) -> dict[str, float | int]:
+        """Return lightweight local counters for the standalone/dev adapter."""
+        with self._lock:
+            return {
+                "memory_items_total": len(
+                    [
+                        item
+                        for item in self._items.values()
+                        if tenant_id is None or item.tenant_id == tenant_id
+                    ]
+                ),
+                "observations_total": len(
+                    [
+                        item
+                        for item in self._observations.values()
+                        if tenant_id is None or item.tenant_id == tenant_id
+                    ]
+                ),
+                "outbox_pending_total": len(
+                    [
+                        event
+                        for event in self.events
+                        if tenant_id is None or event.tenant_id == tenant_id
+                    ]
+                ),
+                "outbox_dead_letter_total": 0,
+                "outbox_lag_seconds": 0.0,
+                "processed_events_inflight_total": 0,
+                "checkpoints_total": 0,
+            }
+
     def save(self, observation: Observation) -> Observation:
         """Store a derived observation without mutating evidence."""
         with self._lock:

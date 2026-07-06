@@ -10,7 +10,7 @@ from typing import Any, Literal
 from uuid import UUID
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 
 from memory_plane.adapters.documents import BinaryDocumentCommand, DocumentIngestor
@@ -33,6 +33,7 @@ from memory_plane.domain.models import (
     MemoryScope,
     Provenance,
 )
+from memory_plane.services.metrics import render_prometheus
 
 DEFAULT_SERVER_ID = UUID("00000000-0000-0000-0000-000000000001")
 DEFAULT_PROJECT_ID = UUID("00000000-0000-0000-0000-000000000002")
@@ -200,6 +201,18 @@ def create_app(
     def health() -> dict[str, str]:
         """Report process liveness; adapters should extend readiness separately."""
         return {"status": "ok"}
+
+    @app.get("/metrics", response_class=PlainTextResponse)
+    def metrics(tenant_id: UUID = DEFAULT_SERVER_ID) -> str:
+        """Expose core server counters in Prometheus text format."""
+        collector = getattr(services.store, "collect_metrics", None)
+        if collector is None:
+            raise HTTPException(status_code=503, detail="metrics unavailable")
+        try:
+            rows = collector(tenant_id)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        return render_prometheus(rows)
 
     @app.post("/v1/memory/retain", status_code=201)
     def retain(body: RetainBody) -> dict[str, Any]:

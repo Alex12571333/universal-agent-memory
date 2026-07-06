@@ -76,6 +76,7 @@
 | `list_for_workspace()` | Канонический fallback/listing |
 | `search()` | Dependency-free lexical retrieval + metadata filters |
 | `publish()` | In-memory idempotent outbox |
+| `collect_metrics()` | Local counters for tests/dev `/metrics` |
 | `save()` / `list_observations()` | Derived observation storage |
 | `InMemoryObservationRepository.*` | Адаптирует observation port без конфликта имён |
 
@@ -100,6 +101,14 @@
 | `NatsPullWorker.run_once()` | Pull → decode → handler → ack/nak | Busy/error delivery не подтверждается |
 | `migrate(dsn)` | Применяет forward-only SQL migrations | Advisory lock; повторный запуск безопасен |
 
+## Metrics/ops — `services/metrics.py`, `scripts/backup.py`, `scripts/restore.py`
+
+| Функция | Назначение | Семантика |
+|---|---|---|
+| `render_prometheus(metrics)` | Numeric mapping → Prometheus text | Stable sort, `uam_` prefix |
+| `backup.py` | Запускает `pg_dump --format=custom` | URL из `UAM_BACKUP_DATABASE_URL`/admin/database env |
+| `restore.py` | Запускает `pg_restore` | Non-destructive by default; `--clean` opt-in |
+
 ## Composition/API
 
 | Функция | Назначение |
@@ -109,6 +118,7 @@
 | `create_app(container=None)` | Создаёт FastAPI app; позволяет dependency injection |
 | `GET /health` | Liveness, не readiness |
 | API-key middleware | Защищает все non-health routes при `UAM_API_KEY` |
+| `GET /metrics` | Prometheus counters/lag; защищён API key |
 | `POST /v1/memory/retain` | REST boundary для retain |
 | `PUT /v1/memory/{id}/supersede` | CAS replacement; stale revision → `409 revision_conflict` |
 | `POST /v1/ingest/text` | Детерминированный text ingestion |
@@ -129,6 +139,7 @@
 | `list_for_workspace(...)` | Детализация workspace с layer filter | Детерминированный порядок |
 | `search(query)` | PostgreSQL lexical fallback | Project/thread/label/time filters |
 | `save(observation)` | Хранит reflection и evidence links | Evidence не меняется |
+| `collect_metrics(tenant)` | Считает counters и outbox lag | Устанавливает RLS tenant context |
 
 ## Checkpoint domain — `domain/checkpoint.py`
 

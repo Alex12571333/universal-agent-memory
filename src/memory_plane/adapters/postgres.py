@@ -399,6 +399,51 @@ class PostgresMemoryLedger:
             ).fetchone()
         return row is not None
 
+    def collect_metrics(self, tenant_id: UUID) -> dict[str, float | int]:
+        """Collect operational counters under the tenant RLS boundary."""
+        with self._connection() as connection:
+            self._set_tenant(connection, tenant_id)
+            row = connection.execute(
+                """
+                select
+                  (select count(*) from memory_items where deleted_at is null)
+                    as memory_items_total,
+                  (select count(*) from observations) as observations_total,
+                  (select count(*) from checkpoints) as checkpoints_total,
+                  (
+                    select count(*)
+                    from outbox_events
+                    where published_at is null and dead_lettered_at is null
+                  ) as outbox_pending_total,
+                  (
+                    select count(*)
+                    from outbox_events
+                    where dead_lettered_at is not null
+                  ) as outbox_dead_letter_total,
+                  coalesce((
+                    select extract(epoch from clock_timestamp() - min(occurred_at))
+                    from outbox_events
+                    where published_at is null and dead_lettered_at is null
+                  ), 0) as outbox_lag_seconds,
+                  (
+                    select count(*)
+                    from processed_events
+                    where processed_at is null
+                      and lease_until is not null
+                      and lease_until >= clock_timestamp()
+                  ) as processed_events_inflight_total
+                """
+            ).fetchone()
+        return {
+            "memory_items_total": row["memory_items_total"],
+            "observations_total": row["observations_total"],
+            "checkpoints_total": row["checkpoints_total"],
+            "outbox_pending_total": row["outbox_pending_total"],
+            "outbox_dead_letter_total": row["outbox_dead_letter_total"],
+            "outbox_lag_seconds": float(row["outbox_lag_seconds"]),
+            "processed_events_inflight_total": row["processed_events_inflight_total"],
+        }
+
     def append(
         self, item: MemoryItem, idempotency_key: str | None = None
     ) -> tuple[MemoryItem, bool]:

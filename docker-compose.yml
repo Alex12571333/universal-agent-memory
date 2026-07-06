@@ -96,6 +96,34 @@ services:
         condition: service_started
     restart: unless-stopped
 
+  backup:
+    profiles: ["ops"]
+    build:
+      context: .
+    command: ["python", "scripts/backup.py", "/backups/uam.dump"]
+    environment:
+      UAM_BACKUP_DATABASE_URL: postgresql://memory_admin:memory@postgres:5432/memory
+    volumes:
+      - ./backups:/backups
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: "no"
+
+  restore:
+    profiles: ["ops"]
+    build:
+      context: .
+    command: ["python", "scripts/restore.py", "/backups/uam.dump"]
+    environment:
+      UAM_RESTORE_DATABASE_URL: postgresql://memory_admin:memory@postgres:5432/memory
+    volumes:
+      - ./backups:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
 volumes:
   postgres_data:
   qdrant_data:
