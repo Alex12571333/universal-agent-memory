@@ -157,6 +157,8 @@
 | `GET /health` | Liveness, не readiness |
 | API-key middleware | Защищает все non-health routes при `UAM_API_KEY` |
 | `GET /metrics` | Prometheus counters/lag; защищён API key |
+| `GET /ui` | Local operator console | Same API-key middleware as API routes |
+| `GET /v1/workspaces/{id}/memories` | Operator memory list | Optional layer/label filters |
 | `POST /v1/memory/retain` | REST boundary для retain |
 | `PUT /v1/memory/{id}/supersede` | CAS replacement; stale revision → `409 revision_conflict` |
 | `POST /v1/workspaces/{id}/vault/import` | Dry-run/apply edited vault notes | Applies through `supersede`; conflicts on stale revisions |

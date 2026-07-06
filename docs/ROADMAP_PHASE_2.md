@@ -164,7 +164,7 @@ Current behavior:
 - accepted/overridden/dismissed decisions hide cases from the default inbox;
 - `include_resolved=true` shows historical reviewed cases.
 
-## WP-14 Human memory UI
+## WP-14 Human memory UI — complete
 
 Add a simple local web UI. It does not need to become SaaS; it is an operator
 console for a self-hosted Docker deployment.
@@ -182,10 +182,18 @@ Views:
 
 Acceptance:
 
-- local UI served by the memory server or companion container;
-- API-key protected;
-- edits use `supersede`;
-- never performs direct destructive update of memory rows.
+- local UI served by the memory server or companion container; ✅ `/ui`
+- API-key protected; ✅ inherited by global middleware
+- edits use `supersede`; ✅ UI does not perform destructive writes
+- never performs direct destructive update of memory rows. ✅
+
+Current operator console:
+
+- list memory rows by workspace/layer;
+- semantic recall preview;
+- conflict inbox view;
+- reflect/reindex triggers;
+- no separate SaaS/frontend build pipeline.
 
 ## WP-15 Native OpenClaw/Hermes integrations — complete
 
