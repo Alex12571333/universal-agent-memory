@@ -11,6 +11,7 @@ from uuid import UUID
 from memory_plane.contracts.dto import Candidate, RecallQuery
 from memory_plane.contracts.events import ClaimedEvent, ConsumerClaim, IntegrationEvent
 from memory_plane.domain.checkpoint import Checkpoint, StaleRevisionError
+from memory_plane.domain.conflict import ConflictReviewDecision, ConflictReviewStatus
 from memory_plane.domain.models import (
     MemoryItem,
     MemoryLayer,
@@ -573,6 +574,64 @@ class PostgresMemoryLedger:
                 )
         return observation
 
+    def save_conflict_review(
+        self, decision: ConflictReviewDecision
+    ) -> ConflictReviewDecision:
+        """Create or replace a persisted human decision for one conflict case."""
+        with self._connection() as connection:
+            self._set_tenant(connection, decision.tenant_id)
+            connection.execute(
+                """
+                insert into conflict_reviews (
+                  tenant_id, workspace_id, case_id, status, winner_value, reason, updated_at
+                ) values (%s, %s, %s, %s, %s, %s, %s)
+                on conflict (tenant_id, case_id) do update set
+                  workspace_id = excluded.workspace_id,
+                  status = excluded.status,
+                  winner_value = excluded.winner_value,
+                  reason = excluded.reason,
+                  updated_at = excluded.updated_at
+                """,
+                (
+                    decision.tenant_id,
+                    decision.workspace_id,
+                    decision.case_id,
+                    decision.status.value,
+                    decision.winner_value,
+                    decision.reason,
+                    decision.updated_at,
+                ),
+            )
+        return decision
+
+    def list_conflict_reviews(
+        self, tenant_id: UUID, workspace_id: UUID
+    ) -> tuple[ConflictReviewDecision, ...]:
+        """List conflict-review decisions under RLS."""
+        with self._connection() as connection:
+            self._set_tenant(connection, tenant_id)
+            rows = connection.execute(
+                """
+                select tenant_id, workspace_id, case_id, status, winner_value, reason, updated_at
+                from conflict_reviews
+                where workspace_id = %s
+                order by updated_at, case_id
+                """,
+                (workspace_id,),
+            ).fetchall()
+        return tuple(
+            ConflictReviewDecision(
+                tenant_id=row["tenant_id"],
+                workspace_id=row["workspace_id"],
+                case_id=row["case_id"],
+                status=ConflictReviewStatus(row["status"]),
+                winner_value=row["winner_value"],
+                reason=row["reason"],
+                updated_at=row["updated_at"],
+            )
+            for row in rows
+        )
+
     def list_observations(
         self, tenant_id: UUID, workspace_id: UUID
     ) -> tuple[Observation, ...]:
@@ -794,6 +853,24 @@ class PostgresObservationRepository:
         self, tenant_id: UUID, workspace_id: UUID
     ) -> tuple[Observation, ...]:
         return self._store.list_observations(tenant_id, workspace_id)
+
+
+class PostgresConflictReviewRepository:
+    """Conflict-review port view over the shared PostgreSQL ledger."""
+
+    def __init__(self, store: PostgresMemoryLedger) -> None:
+        """Retain shared connection configuration."""
+        self._store = store
+
+    def save(self, decision: ConflictReviewDecision) -> ConflictReviewDecision:
+        """Delegate decision persistence."""
+        return self._store.save_conflict_review(decision)
+
+    def list_for_workspace(
+        self, tenant_id: UUID, workspace_id: UUID
+    ) -> tuple[ConflictReviewDecision, ...]:
+        """Delegate tenant-safe review listing."""
+        return self._store.list_conflict_reviews(tenant_id, workspace_id)
 
 
 class PostgresCheckpointStore:

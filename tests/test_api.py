@@ -209,6 +209,51 @@ def test_reindex_triggers_embedding_service() -> None:
     assert response.json() == {"reindexed_count": 2}
 
 
+def test_conflict_inbox_endpoint_lists_and_persists_review_decision() -> None:
+    client = TestClient(create_app(build_in_memory_container()))
+    client.post(
+        "/v1/memory/retain",
+        json={
+            "layer": "semantic",
+            "scope": "workspace",
+            "kind": "fact",
+            "text": "Alpha releases on July 15",
+        },
+    )
+    client.post(
+        "/v1/memory/retain",
+        json={
+            "layer": "semantic",
+            "scope": "workspace",
+            "kind": "fact",
+            "text": "Alpha releases on July 16",
+        },
+    )
+
+    inbox = client.get(f"/v1/workspaces/{DEFAULT_PROJECT_ID}/conflicts")
+    case = inbox.json()["cases"][0]
+    decision = client.put(
+        f"/v1/workspaces/{DEFAULT_PROJECT_ID}/conflicts/{case['id']}/decision",
+        json={
+            "status": "accepted",
+            "winner_value": case["suggested_winner_value"],
+            "reason": "newer memory wins",
+        },
+    )
+    unresolved = client.get(f"/v1/workspaces/{DEFAULT_PROJECT_ID}/conflicts")
+    resolved = client.get(
+        f"/v1/workspaces/{DEFAULT_PROJECT_ID}/conflicts?include_resolved=true"
+    )
+
+    assert inbox.status_code == 200
+    assert inbox.json()["count"] == 1
+    assert case["suggested_winner_value"] == "july 16"
+    assert decision.status_code == 200
+    assert decision.json()["status"] == "accepted"
+    assert unresolved.json()["count"] == 0
+    assert resolved.json()["cases"][0]["review_status"] == "accepted"
+
+
 def test_vault_endpoint_exports_markdown_files() -> None:
     client = TestClient(create_app(build_in_memory_container()))
     retained = client.post(

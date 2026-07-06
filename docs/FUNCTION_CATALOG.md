@@ -66,6 +66,16 @@
 | `_extract_slot(text)` | Text → subject/predicate/value | Deterministic fixtures для `X is Y`, `A owns B`, `X releases on D` |
 | `_confidence(rows, conflict=...)` | Evidence → score | Повторы усиливают, конфликтующие значения штрафуются |
 
+## Conflicts — `domain/conflict.py`, `services/conflicts.py`
+
+| Функция | Вход → выход | Гарантия |
+|---|---|---|
+| `ConflictCase.review_status` | Case → status | Defaults to `unresolved` without persisted review |
+| `ConflictService.list_cases()` | Tenant/workspace → conflict inbox | Deterministic grouping from append-only semantic evidence |
+| `ConflictService.decide()` | Case decision → persisted review | Requires `winner_value` for accepted/overridden decisions |
+| `_extract_slot(text)` | Memory text → subject/predicate/value | Conservative deterministic patterns matching reflection v2 |
+| `_candidate_confidence(rows, is_active=...)` | Evidence rows → score | Repeated evidence and active newest value get bounded boost |
+
 ## In-memory adapter — `adapters/in_memory.py`
 
 | Функция | Назначение |
@@ -79,6 +89,7 @@
 | `collect_metrics()` | Local counters for tests/dev `/metrics` |
 | `save()` / `list_observations()` | Derived observation storage |
 | `InMemoryObservationRepository.*` | Адаптирует observation port без конфликта имён |
+| `InMemoryConflictReviewRepository.*` | Human conflict-review decisions | Replaces decision by `(tenant_id, case_id)` |
 
 ## Workers — `workers/handlers.py`
 
@@ -153,6 +164,8 @@
 | `POST /v1/ingest/document` | Base64 Markdown/PDF ingestion, лимит 20 MiB |
 | `POST /v1/memory/recall` | Recall + context compilation |
 | `POST /v1/workspaces/{id}/reflect` | Запуск baseline sleep/reflection |
+| `GET /v1/workspaces/{id}/conflicts` | Conflict review inbox | Derived cases; `include_resolved=true` optional |
+| `PUT /v1/workspaces/{id}/conflicts/{case_id}/decision` | Persist human review decision | accepted/overridden/dismissed/unresolved |
 
 ## PostgreSQL adapter
 
@@ -167,6 +180,8 @@
 | `list_for_workspace(...)` | Детализация workspace с layer filter | Детерминированный порядок |
 | `search(query)` | PostgreSQL lexical fallback | Project/thread/label/time filters |
 | `save(observation)` | Хранит reflection и evidence links | Evidence не меняется |
+| `save_conflict_review(decision)` | Upsert human decision | RLS tenant-bound; no mutation of raw evidence |
+| `list_conflict_reviews(...)` | Read persisted review decisions | Workspace-scoped and deterministic |
 | `collect_metrics(tenant)` | Считает counters и outbox lag | Устанавливает RLS tenant context |
 
 ## Checkpoint domain — `domain/checkpoint.py`

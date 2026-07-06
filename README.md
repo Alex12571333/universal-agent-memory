@@ -202,12 +202,13 @@ UAM_EMBEDDING_API_KEY=...
 - Markdown/PDF ingestion с checksum, page provenance и idempotent retry;
 - Prometheus-style `/metrics` и Docker-friendly PostgreSQL backup/restore;
 - Obsidian-compatible Markdown vault export/import;
+- deterministic conflict review inbox with persisted human decisions;
 - изоляция проектов через PostgreSQL RLS;
 - in-memory режим для unit-тестов;
 - Docker image, Compose и CI.
 
-Дальше по roadmap: live install smoke tests for OpenClaw/Hermes, conflict
-review inbox, secrets/PII guard и local UI.
+Дальше по roadmap: live install smoke tests for OpenClaw/Hermes, retrieval
+demotion policy for unresolved conflicts, secrets/PII guard и local UI.
 
 ## Совместная работа агентов
 

@@ -7,6 +7,7 @@ from uuid import UUID
 
 from memory_plane.contracts.dto import Candidate, RecallQuery
 from memory_plane.contracts.events import ClaimedEvent, ConsumerClaim, IntegrationEvent
+from memory_plane.domain.conflict import ConflictReviewDecision
 from memory_plane.domain.models import MemoryItem, MemoryLayer, Observation
 
 
@@ -167,4 +168,18 @@ class ObservationRepository(Protocol):
 
     def list_for_workspace(self, tenant_id: UUID, workspace_id: UUID) -> tuple[Observation, ...]:
         """List tenant-safe observations for recall or audit."""
+        ...
+
+
+class ConflictReviewRepository(Protocol):
+    """Storage boundary for human decisions on conflict cases."""
+
+    def save(self, decision: ConflictReviewDecision) -> ConflictReviewDecision:
+        """Create or replace one review decision."""
+        ...
+
+    def list_for_workspace(
+        self, tenant_id: UUID, workspace_id: UUID
+    ) -> tuple[ConflictReviewDecision, ...]:
+        """List persisted decisions for a workspace."""
         ...
