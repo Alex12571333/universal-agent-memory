@@ -49,6 +49,13 @@ Retrieval service повторно проверяет boundary как defense in
 `ObservationRepository` хранит только derived data. Удаление observation не
 удаляет evidence.
 
+Reflection v2 остаётся deterministic и offline-safe: сервис извлекает простые
+слоты `subject/predicate/value`, создаёт observations только для повторов или
+конфликтов и помечает устаревшие значения `stale=true`. Повторный запуск с тем
+же evidence не создаёт дубликаты. Будущая LLM/embedding-reflection реализация
+должна сохранить эти свойства: audit через `evidence_ids`, отсутствие мутаций
+raw memory и transport-neutral `stale` для конфликтов.
+
 ## Error taxonomy
 
 Планируемые transport-neutral коды:

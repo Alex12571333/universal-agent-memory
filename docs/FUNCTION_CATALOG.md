@@ -62,7 +62,9 @@
 | Функция | Вход → выход | Гарантия |
 |---|---|---|
 | `ReflectionService.__init__(ledger, observations)` | Ports → service | Нет I/O до вызова |
-| `ReflectionService.reflect(tenant, workspace)` | scope → observations | Raw evidence не меняется; baseline требует ≥2 совпадающих facts |
+| `ReflectionService.reflect(tenant, workspace)` | scope → observations | Raw evidence не меняется; repeated/conflicting slots → observations |
+| `_extract_slot(text)` | Text → subject/predicate/value | Deterministic fixtures для `X is Y`, `A owns B`, `X releases on D` |
+| `_confidence(rows, conflict=...)` | Evidence → score | Повторы усиливают, конфликтующие значения штрафуются |
 
 ## In-memory adapter — `adapters/in_memory.py`
 
