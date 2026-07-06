@@ -89,7 +89,7 @@ Acceptance:
 - safe import path that creates revisions, not destructive overwrites; ✅
 - docs for opening the vault in Obsidian. ✅
 
-## WP-12 Real embedding providers
+## WP-12 Real embedding providers — complete
 
 Current pipeline supports embeddings structurally, but uses deterministic fake
 embeddings by default. Add production providers behind the existing
@@ -112,11 +112,11 @@ UAM_EMBEDDING_BASE_URL=...
 
 Acceptance:
 
-- provider selected by env;
-- model/dimension validation before indexing;
-- embedding metadata stored with indexed payload;
-- full reindex job after model change;
-- tests for provider selection and dimension mismatch.
+- provider selected by env; ✅
+- model/dimension validation before indexing; ✅
+- embedding metadata stored with indexed payload; ✅
+- full reindex job after model change; ✅ existing `/reindex`
+- tests for provider selection and dimension mismatch. ✅
 
 ## WP-13 Conflict resolver and review inbox
 
