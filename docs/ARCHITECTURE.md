@@ -129,6 +129,6 @@ Default Compose запускает `memory-server` и PostgreSQL на одной
 - сложный policy engine и identity provider;
 - graph database;
 - distributed worker leases;
-- metrics и backup automation.
+- hosted/SaaS-grade metrics stack и managed backup automation.
 
 Для каждого пункта есть независимый work package.

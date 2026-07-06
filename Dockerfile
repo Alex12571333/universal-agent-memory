@@ -6,10 +6,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY pyproject.toml README.md ./
 COPY src ./src
 COPY migrations ./migrations
-COPY scripts/migrate.py ./scripts/migrate.py
+COPY scripts/migrate.py scripts/backup.py scripts/restore.py ./scripts/
 RUN python -m pip install ".[api,postgres,nats,documents]"
 
 EXPOSE 8080

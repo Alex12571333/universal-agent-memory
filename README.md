@@ -76,6 +76,28 @@ curl -H 'Authorization: Bearer replace-with-a-long-random-secret' \
 OpenAPI/docs, требуют bearer key. Не публикуйте порт `8080` в интернет без TLS
 reverse proxy.
 
+## Метрики и backup
+
+`/metrics` отдаёт Prometheus text format и показывает базовые counters/lag:
+memory items, observations, checkpoints, pending/dead-letter outbox events и
+consumer leases. Если задан `UAM_API_KEY`, маршрут тоже требует bearer key.
+
+```bash
+curl -H 'Authorization: Bearer replace-with-a-long-random-secret' \
+  http://localhost:8080/metrics
+```
+
+PostgreSQL backup/restore делается через ops-профиль:
+
+```bash
+docker compose --profile ops run --rm backup
+docker compose --profile ops run --rm restore
+```
+
+По умолчанию backup пишет `./backups/uam.dump` в custom `pg_dump` format.
+Restore не делает destructive clean, если явно не запустить `scripts/restore.py`
+с `--clean`.
+
 ## SDK
 
 - [Python client](sdk/python/README.md)
@@ -95,6 +117,7 @@ reverse proxy.
 - lexical recall и budgeted context compiler;
 - text ingestion и baseline reflection;
 - Markdown/PDF ingestion с checksum, page provenance и idempotent retry;
+- Prometheus-style `/metrics` и Docker-friendly PostgreSQL backup/restore;
 - изоляция проектов через PostgreSQL RLS;
 - in-memory режим для unit-тестов;
 - Docker image, Compose и CI.
