@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from uuid import UUID
 
 from memory_plane.adapters.in_memory import (
@@ -83,7 +83,7 @@ def build_postgres_container(
 
     import os
 
-    from memory_plane.adapters.embeddings import FakeEmbeddingClient
+    from memory_plane.adapters.embeddings import EmbeddingProviderConfig, build_embedding_client
 
     # Assemble candidate sources: always include PostgreSQL lexical; optionally
     # add Qdrant for dense+sparse hybrid retrieval.
@@ -105,10 +105,8 @@ def build_postgres_container(
         )
         qdrant._use_in_memory_backend()
 
-    client = FakeEmbeddingClient(
-        model_name=os.getenv("UAM_EMBEDDING_MODEL", "fake-embed-v1"),
-        dimension=qdrant_dim,
-    )
+    embedding_config = replace(EmbeddingProviderConfig.from_env(), dimension=qdrant_dim)
+    client = build_embedding_client(embedding_config)
     embedding = EmbeddingService(store, qdrant, client)
 
     return Container(

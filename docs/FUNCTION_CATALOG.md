@@ -227,6 +227,11 @@
 | Класс / Функция | Назначение | Гарантия |
 |---|---|---|
 | `FakeEmbeddingClient` | Генерация детерминированных мок-векторов | Векторы воспроизводимы по MD5 от текста |
+| `OpenAIEmbeddingClient` | OpenAI `/v1/embeddings` | Bearer auth; sends `input`, `model`, `dimensions` |
+| `OllamaEmbeddingClient` | Local Ollama `/api/embeddings` | Uses `prompt` payload; no API key required |
+| `TEIEmbeddingClient` | TEI/vLLM-style `/v1/embeddings` | OpenAI-compatible payload; optional bearer key |
+| `EmbeddingProviderConfig.from_env()` | Env → provider config | Reads `UAM_EMBEDDING_*` variables |
+| `build_embedding_client()` | Provider config → concrete client | Rejects unsupported providers and invalid dimensions |
 
 ## Embedding service — `services/embedding.py`
 
@@ -234,3 +239,4 @@
 |---|---|---|
 | `process_memory_retained(tenant, id)` | Асинхронная обработка и индексация памяти | Загружает память и делает upsert в Qdrant |
 | `reindex_all(tenant, workspace)` | Полная переиндексация воркспейса | Удаляет и заново заливает коллекцию в Qdrant |
+| `_validate_dimension(vector)` | Provider output guard | Mismatch aborts before Qdrant write |

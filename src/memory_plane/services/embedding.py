@@ -32,6 +32,7 @@ class EmbeddingService:
             raise ValueError(f"Memory item {memory_id} not found for tenant {tenant_id}")
 
         vector = self._client.embed(item.text)
+        self._validate_dimension(vector)
         # Store embedding in Qdrant with model metadata in payload
         self._qdrant.upsert(item, dense_vector=vector, model_name=self._client.model_name)
 
@@ -44,7 +45,18 @@ class EmbeddingService:
         pairs = []
         for item in items:
             vector = self._client.embed(item.text)
+            self._validate_dimension(vector)
             pairs.append((item, vector))
 
         self._qdrant.reindex(pairs, model_name=self._client.model_name)
         return len(pairs)
+
+    def _validate_dimension(self, vector: list[float]) -> None:
+        """Reject provider output that cannot fit the configured vector index."""
+        actual = len(vector)
+        expected = self._client.dimension
+        if actual != expected:
+            raise ValueError(
+                f"embedding dimension mismatch for {self._client.model_name}: "
+                f"expected {expected}, got {actual}"
+            )
