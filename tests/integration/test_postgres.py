@@ -8,7 +8,13 @@ from uuid import uuid4
 from memory_plane.adapters.postgres import PostgresMemoryLedger
 from memory_plane.contracts.dto import RecallQuery
 from memory_plane.contracts.events import ConsumerClaim, IntegrationEvent
-from memory_plane.domain.models import MemoryItem, MemoryLayer, MemoryScope, Provenance
+from memory_plane.domain.models import (
+    MemoryItem,
+    MemoryLayer,
+    MemoryRevisionConflictError,
+    MemoryScope,
+    Provenance,
+)
 
 DATABASE_URL = os.getenv("UAM_TEST_DATABASE_URL")
 if DATABASE_URL:
@@ -104,6 +110,40 @@ class PostgresMemoryLedgerTest(unittest.TestCase):
                 (item.id,),
             ).fetchone()["count"]
         self.assertEqual(1, count)
+
+    def test_supersede_if_current_is_cas_and_idempotent(self) -> None:
+        item = self._item("Alpha release is July 15")
+        self.store.retain(item, self._event(item))
+        replacement = item.supersede("Alpha release is July 16")
+        event = self._event(replacement)
+
+        stored, created = self.store.supersede_if_current(
+            replacement,
+            event,
+            expected_revision=1,
+            idempotency_key="supersede-alpha",
+        )
+        retry, retry_created = self.store.supersede_if_current(
+            replacement,
+            event,
+            expected_revision=1,
+            idempotency_key="supersede-alpha",
+        )
+        stale = item.supersede("Alpha release is July 17")
+
+        self.assertTrue(created)
+        self.assertFalse(retry_created)
+        self.assertEqual(stored.id, retry.id)
+        self.assertEqual(2, stored.revision)
+        self.assertEqual(item.id, stored.supersedes_id)
+        with self.assertRaises(MemoryRevisionConflictError) as raised:
+            self.store.supersede_if_current(
+                stale,
+                self._event(stale),
+                expected_revision=1,
+            )
+        self.assertEqual(1, raised.exception.expected)
+        self.assertEqual(2, raised.exception.actual)
 
     def test_outbox_failure_rolls_back_memory_and_provenance(self) -> None:
         first = self._item("first")

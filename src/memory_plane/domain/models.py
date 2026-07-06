@@ -36,6 +36,22 @@ class MemoryScope(StrEnum):
     ORGANIZATION = "organization"
 
 
+class MemoryRevisionConflictError(Exception):
+    """CAS conflict for append-only MemoryItem supersede operations."""
+
+    def __init__(
+        self, item_id: UUID, expected_revision: int, actual_revision: int | None
+    ) -> None:
+        """Describe the stale write attempt without adapter-specific details."""
+        self.item_id = item_id
+        self.expected = expected_revision
+        self.actual = actual_revision
+        super().__init__(
+            f"stale revision for memory {item_id}: "
+            f"expected {expected_revision}, actual {actual_revision}"
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class Provenance:
     """Trace from derived memory back to immutable source evidence."""

@@ -37,6 +37,12 @@ defaults, поэтому обычный клиент их не передаёт.
 Production implementation объединяет item, provenance и outbox в одну
 транзакцию.
 
+`MemoryLedger.supersede_if_current` добавляет новую immutable revision только
+если указанный `expected_revision` всё ещё является head для цепочки
+`supersedes_id`. Успешный supersede публикует обычное `memory.retained.v1`, чтобы
+embedding/reflection workers обработали replacement тем же pipeline. Stale write
+возвращается через transport-neutral `revision_conflict`.
+
 `CandidateSource.search` не имеет права возвращать другой project/server.
 Retrieval service повторно проверяет boundary как defense in depth.
 

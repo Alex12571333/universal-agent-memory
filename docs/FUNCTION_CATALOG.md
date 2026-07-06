@@ -10,6 +10,7 @@
 | `MemoryItem.__post_init__()` | Проверяет текст, score ranges, validity и thread scope | `ValueError` при нарушении инварианта |
 | `MemoryItem.is_valid_at(moment)` | Point-in-time проверка temporal validity | Нет |
 | `MemoryItem.supersede(text, confidence=...)` | Создаёт новый immutable revision с `supersedes_id` | Генерирует UUID/time; старый item не меняет |
+| `MemoryRevisionConflictError` | Ошибка stale CAS для MemoryItem | Содержит `expected`, `actual` |
 | `Observation.__post_init__()` | Запрещает belief без summary/evidence | `ValueError` |
 | `ContextPackage.render_markdown()` | Детерминированно рендерит sections для LLM | Нет |
 
@@ -27,6 +28,7 @@
 |---|---|---|
 | `RetentionService.__init__(store)` | Atomic retention port → service | Не открывает соединения |
 | `RetentionService.retain(command)` | `RetainCommand` → `RetainResult` | Append-only; memory и outbox фиксируются одной транзакцией |
+| `RetentionService.supersede(command)` | `SupersedeMemoryCommand` → `RetainResult` | CAS append; stale revision → `MemoryRevisionConflictError` |
 
 ## Ingestion — `services/ingestion.py`
 
@@ -67,6 +69,7 @@
 | Функция | Назначение |
 |---|---|
 | `InMemoryMemoryStore.append()` | Thread-safe append и idempotency |
+| `supersede_if_current()` | Thread-safe CAS supersede и outbox event |
 | `get()` | Tenant-safe lookup |
 | `list_for_workspace()` | Канонический fallback/listing |
 | `search()` | Dependency-free lexical retrieval + metadata filters |
@@ -105,6 +108,7 @@
 | `GET /health` | Liveness, не readiness |
 | API-key middleware | Защищает все non-health routes при `UAM_API_KEY` |
 | `POST /v1/memory/retain` | REST boundary для retain |
+| `PUT /v1/memory/{id}/supersede` | CAS replacement; stale revision → `409 revision_conflict` |
 | `POST /v1/ingest/text` | Детерминированный text ingestion |
 | `POST /v1/ingest/document` | Base64 Markdown/PDF ingestion, лимит 20 MiB |
 | `POST /v1/memory/recall` | Recall + context compilation |
@@ -117,6 +121,7 @@
 | `PostgresMemoryLedger.connect()` | Проверяет соединение и наличие schema | Не оставляет открытое соединение |
 | `ensure_standalone_scope(...)` | Создаёт fixed server/project namespace | Идемпотентно |
 | `retain(item, event, key)` | Записывает item, provenance, key и outbox | Одна транзакция; concurrent idempotency через advisory lock |
+| `supersede_if_current(item, event, expected_revision, key)` | CAS-запись новой ревизии | `FOR UPDATE` parent + recursive head check; одна outbox-транзакция |
 | `append(item, key)` | Импортирует memory без события | Append-only и tenant-bound |
 | `get(tenant, item)` | Загружает memory с provenance | Устанавливает RLS tenant context |
 | `list_for_workspace(...)` | Детализация workspace с layer filter | Детерминированный порядок |
@@ -194,4 +199,3 @@
 |---|---|---|
 | `process_memory_retained(tenant, id)` | Асинхронная обработка и индексация памяти | Загружает память и делает upsert в Qdrant |
 | `reindex_all(tenant, workspace)` | Полная переиндексация воркспейса | Удаляет и заново заливает коллекцию в Qdrant |
-

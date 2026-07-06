@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from memory_plane.contracts.dto import RetainCommand, RetainResult
+from memory_plane.contracts.dto import RetainCommand, RetainResult, SupersedeMemoryCommand
 from memory_plane.contracts.events import IntegrationEvent
 from memory_plane.domain.models import MemoryItem
 from memory_plane.ports.repositories import RetentionStore
@@ -51,3 +51,37 @@ class RetentionService:
             return RetainResult(item=stored, created=False, queued_event_ids=())
 
         return RetainResult(item=stored, created=True, queued_event_ids=(event.id,))
+
+    def supersede(self, command: SupersedeMemoryCommand) -> RetainResult:
+        """Append a replacement item only if the caller observed the current head."""
+        current = self._store.get(command.tenant_id, command.item_id)
+        if current is None:
+            raise KeyError("memory item not found")
+        replacement = current.supersede(
+            command.replacement_text,
+            confidence=command.confidence,
+        )
+        event = IntegrationEvent(
+            name="memory.retained.v1",
+            tenant_id=replacement.tenant_id,
+            workspace_id=replacement.workspace_id,
+            correlation_id=replacement.id,
+            payload={
+                "memory_id": str(replacement.id),
+                "supersedes_id": str(current.id),
+                "revision": replacement.revision,
+                "layer": replacement.layer.value,
+                "jobs": ["embed", "dedupe", "graph", "reflect"],
+            },
+        )
+        stored, created = self._store.supersede_if_current(
+            replacement,
+            event,
+            expected_revision=command.expected_revision,
+            idempotency_key=command.idempotency_key,
+        )
+        return RetainResult(
+            item=stored,
+            created=created,
+            queued_event_ids=(event.id,) if created else (),
+        )

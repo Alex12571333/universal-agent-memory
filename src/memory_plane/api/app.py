@@ -24,9 +24,15 @@ from memory_plane.contracts.dto import (
     IngestDocumentCommand,
     RecallQuery,
     RetainCommand,
+    SupersedeMemoryCommand,
 )
 from memory_plane.domain.checkpoint import Checkpoint, StaleRevisionError
-from memory_plane.domain.models import MemoryLayer, MemoryScope, Provenance
+from memory_plane.domain.models import (
+    MemoryLayer,
+    MemoryRevisionConflictError,
+    MemoryScope,
+    Provenance,
+)
 
 DEFAULT_SERVER_ID = UUID("00000000-0000-0000-0000-000000000001")
 DEFAULT_PROJECT_ID = UUID("00000000-0000-0000-0000-000000000002")
@@ -64,6 +70,16 @@ class RecallBody(BaseModel):
     minimum_score: float = Field(default=0, ge=0, le=1)
     operation: str = "chat_reply"
     context_budget_tokens: int = Field(default=4000, ge=128)
+
+
+class SupersedeMemoryBody(BaseModel):
+    """CAS request for replacing one memory head with a new immutable revision."""
+
+    tenant_id: UUID = DEFAULT_SERVER_ID
+    text: str
+    expected_revision: int = Field(ge=1)
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    idempotency_key: str | None = None
 
 
 class IngestTextBody(BaseModel):
@@ -115,6 +131,21 @@ def _checkpoint_response(cp: Checkpoint) -> dict[str, Any]:
         "revision": cp.revision,
         "state": cp.state,
         "created_at": cp.created_at.isoformat(),
+    }
+
+
+def _memory_write_response(result: Any) -> dict[str, Any]:
+    """Render a write result with revision metadata needed for CAS clients."""
+    return {
+        "id": str(result.item.id),
+        "created": result.created,
+        "revision": result.item.revision,
+        "supersedes_id": (
+            str(result.item.supersedes_id)
+            if result.item.supersedes_id is not None
+            else None
+        ),
+        "queued_event_ids": [str(event_id) for event_id in result.queued_event_ids],
     }
 
 
@@ -193,11 +224,37 @@ def create_app(
             )
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
-        return {
-            "id": str(result.item.id),
-            "created": result.created,
-            "queued_event_ids": [str(event_id) for event_id in result.queued_event_ids],
-        }
+        return _memory_write_response(result)
+
+    @app.put("/v1/memory/{item_id}/supersede", status_code=201)
+    def supersede_memory(item_id: UUID, body: SupersedeMemoryBody) -> dict[str, Any]:
+        """Append a replacement only when the caller's revision is still current."""
+        try:
+            result = services.retention.supersede(
+                SupersedeMemoryCommand(
+                    tenant_id=body.tenant_id,
+                    item_id=item_id,
+                    replacement_text=body.text,
+                    expected_revision=body.expected_revision,
+                    confidence=body.confidence,
+                    idempotency_key=body.idempotency_key,
+                )
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="memory item not found") from exc
+        except MemoryRevisionConflictError as exc:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error": "revision_conflict",
+                    "message": str(exc),
+                    "expected": exc.expected,
+                    "actual": exc.actual,
+                },
+            ) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return _memory_write_response(result)
 
     @app.post("/v1/memory/recall")
     def recall(body: RecallBody) -> dict[str, Any]:

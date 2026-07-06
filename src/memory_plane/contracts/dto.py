@@ -74,6 +74,27 @@ class RetainResult:
 
 
 @dataclass(frozen=True, slots=True)
+class SupersedeMemoryCommand:
+    """CAS request to append a replacement for the current memory head."""
+
+    tenant_id: UUID
+    item_id: UUID
+    replacement_text: str
+    expected_revision: int
+    confidence: float | None = None
+    idempotency_key: str | None = None
+
+    def __post_init__(self) -> None:
+        """Reject stale-write requests that cannot be evaluated safely."""
+        if not self.replacement_text.strip():
+            raise ValueError("replacement text must not be empty")
+        if self.expected_revision < 1:
+            raise ValueError("expected_revision must be positive")
+        if self.confidence is not None and not 0.0 <= self.confidence <= 1.0:
+            raise ValueError("confidence must be between 0 and 1")
+
+
+@dataclass(frozen=True, slots=True)
 class RecallQuery:
     """A tenant-bound, policy-ready retrieval request."""
 

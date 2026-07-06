@@ -9,9 +9,15 @@ from memory_plane.contracts.dto import (
     IngestDocumentCommand,
     RecallQuery,
     RetainCommand,
+    SupersedeMemoryCommand,
 )
 from memory_plane.contracts.events import IntegrationEvent
-from memory_plane.domain.models import MemoryLayer, MemoryScope, Provenance
+from memory_plane.domain.models import (
+    MemoryLayer,
+    MemoryRevisionConflictError,
+    MemoryScope,
+    Provenance,
+)
 from memory_plane.workers.handlers import RetainedEventRouter
 
 
@@ -52,6 +58,66 @@ class MemoryPlaneTest(unittest.TestCase):
         self.assertFalse(second.created)
         self.assertEqual(first.item.id, second.item.id)
         self.assertEqual(1, len(self.container.store.events))
+
+    def test_supersede_memory_uses_optimistic_revision(self) -> None:
+        first = self.retain("Alpha release is July 15")
+
+        updated = self.container.retention.supersede(
+            SupersedeMemoryCommand(
+                tenant_id=self.tenant,
+                item_id=first.item.id,
+                replacement_text="Alpha release is July 16",
+                expected_revision=1,
+            )
+        )
+
+        self.assertTrue(updated.created)
+        self.assertEqual(2, updated.item.revision)
+        self.assertEqual(first.item.id, updated.item.supersedes_id)
+        self.assertEqual(2, len(self.container.store.events))
+        self.assertEqual("memory.retained.v1", self.container.store.events[-1].name)
+
+    def test_supersede_rejects_stale_revision(self) -> None:
+        first = self.retain("Alpha release is July 15")
+        self.container.retention.supersede(
+            SupersedeMemoryCommand(
+                tenant_id=self.tenant,
+                item_id=first.item.id,
+                replacement_text="Alpha release is July 16",
+                expected_revision=1,
+            )
+        )
+
+        with self.assertRaises(MemoryRevisionConflictError) as raised:
+            self.container.retention.supersede(
+                SupersedeMemoryCommand(
+                    tenant_id=self.tenant,
+                    item_id=first.item.id,
+                    replacement_text="Alpha release is July 17",
+                    expected_revision=1,
+                )
+            )
+
+        self.assertEqual(1, raised.exception.expected)
+        self.assertEqual(2, raised.exception.actual)
+
+    def test_supersede_retry_with_idempotency_key_returns_existing_revision(self) -> None:
+        first = self.retain("Alpha release is July 15")
+        command = SupersedeMemoryCommand(
+            tenant_id=self.tenant,
+            item_id=first.item.id,
+            replacement_text="Alpha release is July 16",
+            expected_revision=1,
+            idempotency_key="supersede-alpha",
+        )
+
+        created = self.container.retention.supersede(command)
+        retry = self.container.retention.supersede(command)
+
+        self.assertTrue(created.created)
+        self.assertFalse(retry.created)
+        self.assertEqual(created.item.id, retry.item.id)
+        self.assertEqual(2, len(self.container.store.events))
 
     def test_recall_enforces_tenant_and_ranks_lexical_match(self) -> None:
         expected = self.retain("Ivan owns the Alpha release")

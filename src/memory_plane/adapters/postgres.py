@@ -14,6 +14,7 @@ from memory_plane.domain.checkpoint import Checkpoint, StaleRevisionError
 from memory_plane.domain.models import (
     MemoryItem,
     MemoryLayer,
+    MemoryRevisionConflictError,
     MemoryScope,
     Observation,
     Provenance,
@@ -94,6 +95,80 @@ class PostgresMemoryLedger:
                 )
                 if existing is not None:
                     return existing, False
+
+            self._insert_item(connection, item)
+            if idempotency_key:
+                connection.execute(
+                    """
+                    insert into idempotency_keys (tenant_id, key, memory_item_id)
+                    values (%s, %s, %s)
+                    """,
+                    (item.tenant_id, idempotency_key, item.id),
+                )
+            self._insert_event(connection, event)
+            return item, True
+
+    def supersede_if_current(
+        self,
+        item: MemoryItem,
+        event: IntegrationEvent,
+        *,
+        expected_revision: int,
+        idempotency_key: str | None = None,
+    ) -> tuple[MemoryItem, bool]:
+        """CAS append a replacement and its outbox event in one transaction."""
+        if item.supersedes_id is None:
+            raise ValueError("replacement item must declare supersedes_id")
+        self._validate_event(item, event)
+        with self._connection() as connection:
+            self._set_tenant(connection, item.tenant_id)
+            if idempotency_key:
+                self._lock_idempotency_key(connection, item.tenant_id, idempotency_key)
+                existing = self._get_by_idempotency_key(
+                    connection, item.tenant_id, idempotency_key
+                )
+                if existing is not None:
+                    return existing, False
+
+            parent = connection.execute(
+                """
+                select id, revision
+                from memory_items
+                where id = %s and deleted_at is null
+                for update
+                """,
+                (item.supersedes_id,),
+            ).fetchone()
+            if parent is None:
+                raise KeyError("memory item not found")
+
+            head = connection.execute(
+                """
+                with recursive chain as (
+                  select id, revision
+                  from memory_items
+                  where id = %s and deleted_at is null
+                  union all
+                  select child.id, child.revision
+                  from memory_items child
+                  join chain parent on child.supersedes_id = parent.id
+                  where child.deleted_at is null
+                )
+                select id, revision
+                from chain
+                order by revision desc, id desc
+                limit 1
+                """,
+                (item.supersedes_id,),
+            ).fetchone()
+            actual = head["revision"] if head is not None else parent["revision"]
+            if head is not None and (
+                head["id"] != item.supersedes_id
+                or parent["revision"] != expected_revision
+            ):
+                raise MemoryRevisionConflictError(
+                    item.supersedes_id, expected_revision, actual
+                )
 
             self._insert_item(connection, item)
             if idempotency_key:

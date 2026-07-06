@@ -36,6 +36,53 @@ def test_standalone_api_uses_default_server_and_project_ids() -> None:
     assert len(rows) == 1
 
 
+def test_memory_supersede_endpoint_returns_revision_and_conflict() -> None:
+    client = TestClient(create_app(build_in_memory_container()))
+    retained = client.post(
+        "/v1/memory/retain",
+        json={
+            "layer": "semantic",
+            "scope": "workspace",
+            "kind": "fact",
+            "text": "Alpha releases on July 15",
+        },
+    )
+    item_id = retained.json()["id"]
+
+    updated = client.put(
+        f"/v1/memory/{item_id}/supersede",
+        json={
+            "text": "Alpha releases on July 16",
+            "expected_revision": 1,
+            "idempotency_key": "api-supersede-alpha",
+        },
+    )
+    retry = client.put(
+        f"/v1/memory/{item_id}/supersede",
+        json={
+            "text": "Alpha releases on July 16",
+            "expected_revision": 1,
+            "idempotency_key": "api-supersede-alpha",
+        },
+    )
+    stale = client.put(
+        f"/v1/memory/{item_id}/supersede",
+        json={"text": "Alpha releases on July 17", "expected_revision": 1},
+    )
+
+    assert retained.status_code == 201
+    assert retained.json()["revision"] == 1
+    assert updated.status_code == 201
+    assert updated.json()["revision"] == 2
+    assert updated.json()["supersedes_id"] == item_id
+    assert retry.status_code == 201
+    assert retry.json()["created"] is False
+    assert retry.json()["id"] == updated.json()["id"]
+    assert stale.status_code == 409
+    assert stale.json()["detail"]["error"] == "revision_conflict"
+    assert stale.json()["detail"]["actual"] == 2
+
+
 def test_api_key_protects_memory_routes_but_not_health() -> None:
     client = TestClient(create_app(build_in_memory_container(), api_key="secret"))
     body = {
