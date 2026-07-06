@@ -200,6 +200,42 @@ class MemoryPlaneTest(unittest.TestCase):
         self.assertEqual(1, len(observations))
         self.assertEqual(2, len(observations[0].evidence_ids))
 
+    def test_reflection_marks_older_conflicting_time_fact_stale(self) -> None:
+        self.retain("Release Alpha is July 15.")
+        latest = self.retain("Release Alpha is July 16.")
+
+        observations = self.container.reflection.reflect(self.tenant, self.workspace)
+
+        self.assertEqual(2, len(observations))
+        stale = [row for row in observations if row.stale]
+        current = [row for row in observations if not row.stale]
+        self.assertEqual(["Release Alpha is July 15."], [row.summary for row in stale])
+        self.assertEqual([latest.item.text], [row.summary for row in current])
+        self.assertLess(stale[0].confidence, 0.7)
+
+    def test_reflection_detects_entity_owner_conflict(self) -> None:
+        old = self.retain("Ivan owns Alpha release.")
+        new = self.retain("Alex owns Alpha release.")
+
+        observations = self.container.reflection.reflect(self.tenant, self.workspace)
+
+        self.assertEqual(2, len(observations))
+        by_summary = {row.summary: row for row in observations}
+        self.assertTrue(by_summary[old.item.text].stale)
+        self.assertFalse(by_summary[new.item.text].stale)
+        self.assertEqual((old.item.id,), by_summary[old.item.text].evidence_ids)
+        self.assertEqual((new.item.id,), by_summary[new.item.text].evidence_ids)
+
+    def test_reflection_is_idempotent_across_repeated_runs(self) -> None:
+        self.retain("Release Alpha is July 15.")
+        self.retain(" release  alpha  is july 15! ")
+
+        first = self.container.reflection.reflect(self.tenant, self.workspace)
+        second = self.container.reflection.reflect(self.tenant, self.workspace)
+
+        self.assertEqual(1, len(first))
+        self.assertEqual((), second)
+
     def test_worker_router_dispatches_registered_jobs(self) -> None:
         calls: list[str] = []
         router = RetainedEventRouter({"embed": lambda event: calls.append(event.name)})
