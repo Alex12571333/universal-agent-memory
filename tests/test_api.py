@@ -254,6 +254,31 @@ def test_conflict_inbox_endpoint_lists_and_persists_review_decision() -> None:
     assert resolved.json()["cases"][0]["review_status"] == "accepted"
 
 
+def test_memory_list_endpoint_and_operator_ui() -> None:
+    client = TestClient(create_app(build_in_memory_container()))
+    retained = client.post(
+        "/v1/memory/retain",
+        json={
+            "layer": "core",
+            "scope": "workspace",
+            "kind": "policy",
+            "text": "Always preserve append-only evidence.",
+            "labels": ["ops"],
+        },
+    )
+
+    listed = client.get(f"/v1/workspaces/{DEFAULT_PROJECT_ID}/memories?layer=core")
+    ui = client.get("/ui")
+
+    assert retained.status_code == 201
+    assert listed.status_code == 200
+    assert listed.json()["count"] == 1
+    assert listed.json()["memories"][0]["text"] == "Always preserve append-only evidence."
+    assert ui.status_code == 200
+    assert "Universal Agent Memory" in ui.text
+    assert "/v1/workspaces/" in ui.text
+
+
 def test_vault_endpoint_exports_markdown_files() -> None:
     client = TestClient(create_app(build_in_memory_container()))
     retained = client.post(

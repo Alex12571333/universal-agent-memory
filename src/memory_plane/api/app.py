@@ -10,7 +10,7 @@ from typing import Any, Literal
 from uuid import UUID
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 
 from memory_plane.adapters.documents import BinaryDocumentCommand, DocumentIngestor
@@ -286,6 +286,11 @@ def create_app(
             raise HTTPException(status_code=503, detail=str(exc)) from exc
         return render_prometheus(rows)
 
+    @app.get("/ui", response_class=HTMLResponse)
+    def operator_ui() -> str:
+        """Serve the local human memory console."""
+        return _OPERATOR_UI_HTML
+
     @app.post("/v1/memory/retain", status_code=201)
     def retain(body: RetainBody) -> dict[str, Any]:
         """Append memory and return its canonical identity and outbox status."""
@@ -388,6 +393,42 @@ def create_app(
                 "markdown": package.render_markdown(),
                 "trace_ids": [str(item_id) for item_id in package.trace_ids],
             },
+        }
+
+    @app.get("/v1/workspaces/{workspace_id}/memories")
+    def list_memories(
+        workspace_id: UUID,
+        tenant_id: UUID = DEFAULT_SERVER_ID,
+        layer: MemoryLayer | None = None,
+        label: str | None = None,
+    ) -> dict[str, Any]:
+        """List memory rows for local operator review."""
+        layers = (layer,) if layer is not None else ()
+        lister = getattr(services.store, "list_for_workspace", None)
+        if lister is None:
+            raise HTTPException(status_code=503, detail="memory listing unavailable")
+        rows = lister(tenant_id, workspace_id, layers=layers)
+        if label:
+            rows = tuple(row for row in rows if label in row.labels)
+        return {
+            "tenant_id": str(tenant_id),
+            "workspace_id": str(workspace_id),
+            "count": len(rows),
+            "memories": [
+                {
+                    "id": str(row.id),
+                    "layer": row.layer.value,
+                    "scope": row.scope.value,
+                    "kind": row.kind,
+                    "text": row.text,
+                    "labels": list(row.labels),
+                    "confidence": row.confidence,
+                    "revision": row.revision,
+                    "supersedes_id": str(row.supersedes_id) if row.supersedes_id else None,
+                    "created_at": row.created_at.isoformat(),
+                }
+                for row in rows
+            ],
         }
 
     @app.post("/v1/ingest/text", status_code=202)
@@ -670,3 +711,154 @@ def _build_runtime_container() -> Container:
         qdrant_url=qdrant_url,
         qdrant_dim=qdrant_dim,
     )
+
+
+_OPERATOR_UI_HTML = """
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Universal Agent Memory</title>
+  <style>
+    :root { color-scheme: light dark; font-family: ui-sans-serif, system-ui, sans-serif; }
+    body { margin: 0; background: #0f1115; color: #e9edf5; }
+    header { padding: 24px; border-bottom: 1px solid #2a2f3a; background: #151924; }
+    main { padding: 24px; display: grid; gap: 20px; grid-template-columns: 1.4fr .9fr; }
+    section { border: 1px solid #2a2f3a; border-radius: 14px; background: #151924; padding: 18px; }
+    input, select, textarea, button {
+      border: 1px solid #394050; border-radius: 10px; padding: 10px;
+      background: #0f1115; color: #e9edf5;
+    }
+    button { cursor: pointer; background: #2d6cdf; border-color: #2d6cdf; }
+    button.secondary { background: #232938; border-color: #394050; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+    .card { border-top: 1px solid #2a2f3a; padding: 12px 0; }
+    .muted { color: #9aa4b2; font-size: 13px; }
+    .pill {
+      display: inline-block; padding: 2px 8px; border-radius: 999px;
+      background: #263044; margin-right: 6px;
+    }
+    pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+    @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Universal Agent Memory</h1>
+    <p class="muted">Local operator console. All edits should go through append/supersede APIs.</p>
+  </header>
+  <main>
+    <section>
+      <h2>Memory search/list</h2>
+      <div class="row">
+        <input id="tenant" placeholder="tenant_id" value="00000000-0000-0000-0000-000000000001">
+        <input id="workspace" placeholder="workspace_id"
+          value="00000000-0000-0000-0000-000000000002">
+      </div>
+      <div class="row">
+        <input id="query" placeholder="semantic recall query">
+        <select id="layer">
+          <option value="">all layers</option>
+          <option>core</option><option>working</option><option>semantic</option>
+          <option>episodic</option><option>procedural</option><option>social</option>
+          <option>reflection</option><option>error</option>
+        </select>
+        <button onclick="listMemories()">List</button>
+        <button onclick="recall()">Recall</button>
+      </div>
+      <div id="memories"></div>
+    </section>
+    <section>
+      <h2>Review / ops</h2>
+      <div class="row">
+        <button onclick="loadConflicts()">Conflict inbox</button>
+        <button class="secondary" onclick="reflect()">Reflect</button>
+        <button class="secondary" onclick="reindex()">Reindex</button>
+      </div>
+      <div id="ops"></div>
+    </section>
+  </main>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const tenant = () => $("tenant").value.trim();
+    const workspace = () => $("workspace").value.trim();
+
+    async function api(path, options = {}) {
+      const res = await fetch(path, {
+        ...options,
+        headers: { "content-type": "application/json", ...(options.headers || {}) },
+      });
+      const text = await res.text();
+      const data = text ? JSON.parse(text) : {};
+      if (!res.ok) throw new Error(JSON.stringify(data));
+      return data;
+    }
+
+    function memoryCard(row) {
+      return `<div class="card">
+        <div><span class="pill">${row.layer}</span><span class="pill">${row.kind}</span>
+        <span class="muted">rev ${row.revision} · confidence ${row.confidence}</span></div>
+        <pre>${escapeHtml(row.text)}</pre>
+        <div class="muted">${row.id}</div>
+      </div>`;
+    }
+
+    async function listMemories() {
+      const params = new URLSearchParams({ tenant_id: tenant() });
+      if ($("layer").value) params.set("layer", $("layer").value);
+      const data = await api(`/v1/workspaces/${workspace()}/memories?${params}`);
+      $("memories").innerHTML = `<p class="muted">${data.count} memories</p>` +
+        data.memories.map(memoryCard).join("");
+    }
+
+    async function recall() {
+      const data = await api("/v1/memory/recall", {
+        method: "POST",
+        body: JSON.stringify({
+          tenant_id: tenant(), workspace_id: workspace(),
+          query: $("query").value || "project memory",
+          layers: $("layer").value ? [$("layer").value] : []
+        }),
+      });
+      $("memories").innerHTML = `<pre>${escapeHtml(data.context.markdown || "")}</pre>`;
+    }
+
+    async function loadConflicts() {
+      const params = new URLSearchParams({ tenant_id: tenant(), include_resolved: "true" });
+      const data = await api(`/v1/workspaces/${workspace()}/conflicts?${params}`);
+      $("ops").innerHTML = `<p class="muted">${data.count} conflict cases</p>` +
+        data.cases.map(c => `<div class="card">
+          <div><span class="pill">${c.review_status}</span>${c.subject} / ${c.predicate}</div>
+          <div class="muted">suggested: ${escapeHtml(c.suggested_winner_value)}</div>
+          ${c.candidates.map(x => `<pre>${x.status}: ${escapeHtml(x.value)}</pre>`).join("")}
+        </div>`).join("");
+    }
+
+    async function reflect() {
+      const data = await api(
+        `/v1/workspaces/${workspace()}/reflect?tenant_id=${tenant()}`,
+        { method: "POST" },
+      );
+      $("ops").innerHTML = `<pre>${escapeHtml(JSON.stringify(data, null, 2))}</pre>`;
+    }
+
+    async function reindex() {
+      const data = await api(
+        `/v1/workspaces/${workspace()}/reindex?tenant_id=${tenant()}`,
+        { method: "POST" },
+      );
+      $("ops").innerHTML = `<pre>${escapeHtml(JSON.stringify(data, null, 2))}</pre>`;
+    }
+
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, ch => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+      }[ch]));
+    }
+
+    listMemories().catch(err => $("memories").textContent = err.message);
+  </script>
+</body>
+</html>
+"""
