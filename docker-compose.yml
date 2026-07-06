@@ -124,6 +124,22 @@ services:
         condition: service_healthy
     restart: "no"
 
+  vault-export:
+    profiles: ["ops"]
+    build:
+      context: .
+    command: ["python", "scripts/export_vault.py", "/vault"]
+    environment:
+      UAM_DATABASE_URL: postgresql://memory_app:memory@postgres:5432/memory
+      UAM_SERVER_ID: 00000000-0000-0000-0000-000000000001
+      UAM_PROJECT_ID: 00000000-0000-0000-0000-000000000002
+    volumes:
+      - ./vault:/vault
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: "no"
+
 volumes:
   postgres_data:
   qdrant_data:

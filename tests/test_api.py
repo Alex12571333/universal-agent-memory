@@ -207,3 +207,28 @@ def test_reindex_triggers_embedding_service() -> None:
 
     assert response.status_code == 202
     assert response.json() == {"reindexed_count": 2}
+
+
+def test_vault_endpoint_exports_markdown_files() -> None:
+    client = TestClient(create_app(build_in_memory_container()))
+    retained = client.post(
+        "/v1/memory/retain",
+        json={
+            "layer": "core",
+            "scope": "workspace",
+            "kind": "decision",
+            "text": "Universal Agent Memory exposes an Obsidian vault.",
+        },
+    )
+
+    response = client.get(f"/v1/workspaces/{DEFAULT_PROJECT_ID}/vault")
+
+    assert retained.status_code == 201
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["file_count"] == 2
+    files = {row["path"]: row["content"] for row in payload["files"]}
+    assert "README.md" in files
+    memory_path = next(path for path in files if path.startswith("core/"))
+    assert "type: \"memory\"" in files[memory_path]
+    assert "Universal Agent Memory exposes an Obsidian vault." in files[memory_path]

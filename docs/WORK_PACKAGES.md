@@ -20,4 +20,20 @@ roadmap и acceptance criteria, но не используется как lock.
 Не входят в roadmap: billing, organizations/customers, Kubernetes control plane,
 SSO, SaaS quotas и hosted multi-region operation.
 
-Порядок: WP-01 → WP-03 → WP-02/WP-04 → WP-06/WP-09 → SDK и качество.
+Порядок foundation: WP-01 → WP-03 → WP-02/WP-04 → WP-06/WP-09 → SDK и качество.
+
+## Phase 2
+
+Следующий этап описан в [ROADMAP_PHASE_2.md](ROADMAP_PHASE_2.md). Он переводит
+проект от working memory server к production-grade “вечной памяти”:
+
+- Obsidian/vault mode для human-readable контроля;
+- реальные embedding providers;
+- conflict resolver и review inbox;
+- web UI для человека;
+- native plugin/runtime интеграции для OpenClaw и Hermes;
+- secrets/PII guard;
+- temporal lifecycle/status policies;
+- graph layer;
+- scheduled maintenance jobs;
+- production ops hardening.

@@ -21,6 +21,7 @@ def _load_script(name: str) -> ModuleType:
 
 backup = _load_script("backup")
 restore = _load_script("restore")
+export_vault = _load_script("export_vault")
 
 
 def test_backup_invokes_pg_dump(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -70,3 +71,27 @@ def test_restore_invokes_pg_restore_with_optional_clean(
         ],
         check=True,
     )
+
+
+def test_export_vault_builds_postgres_exporter(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    vault = Mock()
+    vault.export.return_value = Mock(
+        files=(
+            Mock(path="README.md", content="# Vault\n"),
+            Mock(path="semantic/fact-alpha.md", content="Alpha\n"),
+        )
+    )
+    container = Mock(vault=vault)
+    build_container = Mock(return_value=container)
+    monkeypatch.setattr(export_vault, "build_postgres_container", build_container)
+    monkeypatch.setenv("UAM_DATABASE_URL", "postgresql://example/db")
+    monkeypatch.setattr("sys.argv", ["export_vault.py", str(tmp_path)])
+
+    assert export_vault.main() == 0
+
+    build_container.assert_called_once()
+    vault.export.assert_called_once()
+    assert (tmp_path / "README.md").read_text(encoding="utf-8") == "# Vault\n"
+    assert (tmp_path / "semantic" / "fact-alpha.md").read_text(encoding="utf-8") == "Alpha\n"

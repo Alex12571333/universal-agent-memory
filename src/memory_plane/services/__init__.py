@@ -5,6 +5,7 @@ from memory_plane.services.ingestion import IngestionService, TextChunker
 from memory_plane.services.reflection import ReflectionService
 from memory_plane.services.retention import RetentionService
 from memory_plane.services.retrieval import RetrievalService
+from memory_plane.services.vault import VaultExporter
 
 __all__ = [
     "ContextCompiler",
@@ -13,4 +14,5 @@ __all__ = [
     "RetentionService",
     "RetrievalService",
     "TextChunker",
+    "VaultExporter",
 ]
