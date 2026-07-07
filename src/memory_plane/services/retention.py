@@ -2,18 +2,26 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from memory_plane.contracts.dto import RetainCommand, RetainResult, SupersedeMemoryCommand
 from memory_plane.contracts.events import IntegrationEvent
 from memory_plane.domain.models import MemoryItem
 from memory_plane.ports.repositories import RetentionStore
+from memory_plane.services.privacy import PrivacyGuard
 
 
 class RetentionService:
     """Append canonical memory and enqueue derived processing."""
 
-    def __init__(self, store: RetentionStore) -> None:
+    def __init__(
+        self,
+        store: RetentionStore,
+        privacy: PrivacyGuard | None = None,
+    ) -> None:
         """Bind the service to one atomic ledger/outbox boundary."""
         self._store = store
+        self._privacy = privacy or PrivacyGuard.from_env()
 
     def retain(self, command: RetainCommand) -> RetainResult:
         """Validate, append and emit one `memory.retained.v1` event.
@@ -21,6 +29,7 @@ class RetentionService:
         Extraction, embedding, graph updates and consolidation deliberately stay
         off this hot path. Idempotency is delegated to the ledger transaction.
         """
+        decision = self._privacy.apply(command.text)
         item = MemoryItem(
             tenant_id=command.tenant_id,
             workspace_id=command.workspace_id,
@@ -29,8 +38,9 @@ class RetentionService:
             layer=command.layer,
             scope=command.scope,
             kind=command.kind,
-            text=command.text,
+            text=decision.text,
             labels=command.labels,
+            metadata={**command.metadata, **decision.metadata},
             provenance=command.provenance,
             importance=command.importance,
             confidence=command.confidence,
@@ -57,9 +67,14 @@ class RetentionService:
         current = self._store.get(command.tenant_id, command.item_id)
         if current is None:
             raise KeyError("memory item not found")
+        decision = self._privacy.apply(command.replacement_text)
         replacement = current.supersede(
-            command.replacement_text,
+            decision.text,
             confidence=command.confidence,
+        )
+        replacement = replace(
+            replacement,
+            metadata={**replacement.metadata, **decision.metadata},
         )
         event = IntegrationEvent(
             name="memory.retained.v1",
