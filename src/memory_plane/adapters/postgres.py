@@ -694,7 +694,7 @@ class PostgresMemoryLedger:
                 from memory_edges
                 where workspace_id = %s
                   and (src_id = %s or dst_id = %s)
-                  and (%s is null or edge_type = %s)
+                  and (%s::text is null or edge_type = %s::text)
                 order by created_at, id
                 """,
                 (

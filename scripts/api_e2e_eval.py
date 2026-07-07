@@ -163,6 +163,29 @@ def main() -> int:
     expect(superseded["supersedes_id"] == first["id"], "supersede response missing parent")
     print("PASS supersede_cas")
 
+    graph_edge = api.request(
+        "POST",
+        "/v1/graph/edges",
+        {
+            "tenant_id": str(TENANT),
+            "workspace_id": str(WORKSPACE),
+            "src_id": first["id"],
+            "dst_id": superseded["id"],
+            "edge_type": "supersedes",
+            "weight": 1.0,
+        },
+        expect_status=201,
+    )
+    graph_query = urlencode({"tenant_id": str(TENANT), "workspace_id": str(WORKSPACE)})
+    neighbors = api.request("GET", f"/v1/memory/{first['id']}/neighbors?{graph_query}")
+    expect(graph_edge["dst_id"] == superseded["id"], "graph edge response missing dst")
+    expect(neighbors["count"] >= 1, "graph neighbors returned no edges")
+    expect(
+        any(edge["edge_type"] == "supersedes" for edge in neighbors["edges"]),
+        "graph neighbors missing supersedes edge",
+    )
+    print("PASS graph_neighbors")
+
     retain(api, "Release E2E is July 15.", key="api-e2e:conflict-old")
     retain(api, "Release E2E is July 16.", key="api-e2e:conflict-new")
     conflict_query = urlencode({"tenant_id": str(TENANT), "include_resolved": "true"})
