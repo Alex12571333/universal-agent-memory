@@ -282,7 +282,9 @@ def test_memory_list_endpoint_and_operator_ui() -> None:
     assert "Живая карта памяти" in ui.text
     assert "OpenClaw" in ui.text
     assert "Hermes" in ui.text
-    assert "Копировать файл" in ui.text
+    assert "Редактируй обычный текст памяти" in ui.text
+    assert "Сохранить и пересчитать embedding" in ui.text
+    assert "Frontmatter, ревизии и embedding остаются под капотом" in ui.text
     assert "Сервер предлагает самую свежую активную версию" in ui.text
     assert "/v1/workspaces/" in ui.text
 

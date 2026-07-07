@@ -9,7 +9,7 @@ from typing import Any
 from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
-from uuid import UUID
+from uuid import UUID, uuid4
 
 TENANT = UUID("00000000-0000-0000-0000-000000000001")
 WORKSPACE = UUID("00000000-0000-0000-0000-000000000002")
@@ -204,6 +204,68 @@ def main() -> int:
         "vault missing memories",
     )
     print("PASS vault")
+
+    vault_source_text = f"Vault editor source text {uuid4()}."
+    vault_updated_text = vault_source_text.replace("source", "updated")
+    retain(api, vault_source_text, key=f"api-e2e:vault-edit:{uuid4()}")
+    editable_vault = api.request("GET", f"/v1/workspaces/{WORKSPACE}/vault?{vault_query}")
+    editable_file = next(
+        file
+        for file in editable_vault["files"]
+        if (file["path"].startswith("semantic/") or file["path"].startswith("core/"))
+        and vault_source_text in file["content"]
+    )
+    editable_file["content"] = editable_file["content"].replace(
+        vault_source_text,
+        vault_updated_text,
+    )
+    dry_import = api.request(
+        "POST",
+        f"/v1/workspaces/{WORKSPACE}/vault/import",
+        {
+            "tenant_id": str(TENANT),
+            "dry_run": True,
+            "files": [editable_file],
+        },
+    )
+    applied_import = api.request(
+        "POST",
+        f"/v1/workspaces/{WORKSPACE}/vault/import",
+        {
+            "tenant_id": str(TENANT),
+            "dry_run": False,
+            "files": [editable_file],
+        },
+    )
+    expect(
+        dry_import["changes"][0]["action"] == "supersede",
+        f"vault edit dry-run failed: {dry_import}",
+    )
+    expect(
+        applied_import["changes"][0]["new_item_id"] is not None,
+        "vault edit did not create a new revision",
+    )
+    edited_reindex = api.request(
+        "POST",
+        f"/v1/workspaces/{WORKSPACE}/reindex?{urlencode({'tenant_id': str(TENANT)})}",
+        expect_status=202,
+    )
+    expect(edited_reindex["reindexed_count"] >= 1, "vault edit reindex failed")
+    edited_recall = api.request(
+        "POST",
+        "/v1/memory/recall",
+        {
+            "tenant_id": str(TENANT),
+            "workspace_id": str(WORKSPACE),
+            "query": vault_updated_text,
+            "top_k": 5,
+        },
+    )
+    expect(
+        any(vault_updated_text in row["text"] for row in edited_recall["results"]),
+        "vault edited text was not recallable after reindex",
+    )
+    print("PASS vault_edit_reindex")
 
     reindex = api.request(
         "POST",

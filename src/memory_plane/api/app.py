@@ -1136,6 +1136,23 @@ _OPERATOR_UI_HTML = """
     .pill.hot { color: #fecdd3; background: rgba(244, 63, 94, .12); }
     .split { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
     .list { display: grid; gap: 10px; }
+    .editor {
+      display: grid;
+      gap: 10px;
+    }
+    .editor textarea {
+      min-height: 280px;
+      font-size: 15px;
+      line-height: 1.65;
+      background: rgba(2, 6, 23, .44);
+    }
+    .editor-meta {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+      min-height: 34px;
+    }
     .log {
       max-height: 360px;
       overflow: auto;
@@ -1357,16 +1374,25 @@ _OPERATOR_UI_HTML = """
           <div class="panel-head">
             <div>
               <h2>Obsidian‑хранилище</h2>
-              <p class="muted tiny">Предпросмотр детерминированных Markdown‑заметок и путей.</p>
+              <p class="muted tiny">Редактируй обычный текст памяти. Frontmatter, ревизии и embedding остаются под капотом.</p>
             </div>
             <div class="toolbar">
-              <button class="secondary" onclick="loadVault()">Предпросмотр экспорта</button>
-              <button class="secondary" onclick="copyVaultPreview()">Копировать файл</button>
+              <button class="secondary" onclick="loadVault()">Обновить хранилище</button>
+              <button class="secondary" onclick="planEditedVault()">Проверить изменения</button>
+              <button onclick="saveEditedVault()">Сохранить и пересчитать embedding</button>
             </div>
           </div>
           <div class="panel-body split">
             <div id="vaultFiles" class="list"></div>
-            <pre id="vaultPreview">Выбери файл…</pre>
+            <div class="editor">
+              <div id="vaultMeta" class="editor-meta muted tiny">Выбери воспоминание…</div>
+              <textarea id="vaultEditor" aria-label="Редактор текста воспоминания" placeholder="Текст выбранного воспоминания…"></textarea>
+              <div class="toolbar">
+                <button class="secondary" onclick="copyVaultText()">Копировать текст</button>
+                <button class="secondary" onclick="resetVaultEditor()">Сбросить</button>
+              </div>
+              <div id="vaultResult"></div>
+            </div>
           </div>
         </div>
 
@@ -1562,30 +1588,102 @@ _OPERATOR_UI_HTML = """
       const data = await api(`/v1/workspaces/${workspace()}/vault?${params}`);
       updateKpis({ vault: data.file_count });
       const files = data.files || [];
-      $("vaultFiles").innerHTML = files.length ? files.map((file, index) => `
+      const editable = files
+        .map((file, index) => ({ file, index, note: parseVaultNote(file.content) }))
+        .filter(row => row.note.frontmatter.type === "memory");
+      $("vaultFiles").innerHTML = editable.length ? editable.map(({ file, index, note }) => `
         <button class="secondary" style="width:100%;justify-content:flex-start"
-          onclick="previewVault(${index})">${escapeHtml(file.path)}</button>
-      `).join("") : `<div class="empty">Экспорт хранилища пуст.</div>`;
+          onclick="previewVault(${index})">
+          ${escapeHtml(file.path)}
+          <span class="pill ${note.frontmatter.status === "superseded" ? "warn" : "ok"}" style="margin-left:auto">${escapeHtml(statusName(note.frontmatter.status))}</span>
+        </button>
+      `).join("") : `<div class="empty">Редактируемых воспоминаний нет. README/reflections скрыты из редактора.</div>`;
       window.__vaultFiles = files;
-      window.__vaultSelected = 0;
-      $("vaultPreview").textContent = files[0]?.content || "Выбери файл…";
+      window.__vaultEditable = editable.map(row => row.index);
+      window.__vaultSelected = editable[0]?.index ?? -1;
+      if (window.__vaultSelected >= 0) {
+        previewVault(window.__vaultSelected);
+      } else {
+        $("vaultMeta").textContent = "Нет memory-файлов для редактирования.";
+        $("vaultEditor").value = "";
+      }
     }
 
     function previewVault(index) {
       const file = (window.__vaultFiles || [])[index];
       window.__vaultSelected = index;
-      $("vaultPreview").textContent = file ? file.content : "Файл не найден.";
+      if (!file) {
+        $("vaultMeta").textContent = "Файл не найден.";
+        $("vaultEditor").value = "";
+        return;
+      }
+      const note = parseVaultNote(file.content);
+      $("vaultEditor").value = note.body;
+      $("vaultMeta").innerHTML = `
+        <span class="pill">${escapeHtml(file.path)}</span>
+        <span class="pill">${escapeHtml(note.frontmatter.id || "без id")}</span>
+        <span class="pill">ревизия ${escapeHtml(note.frontmatter.revision || "—")}</span>
+        <span class="pill ${note.frontmatter.status === "superseded" ? "warn" : "ok"}">${escapeHtml(statusName(note.frontmatter.status))}</span>
+      `;
+      $("vaultResult").innerHTML = "";
     }
 
-    async function copyVaultPreview() {
+    async function copyVaultText() {
       const files = window.__vaultFiles || [];
       const selected = files[window.__vaultSelected || 0];
       if (!selected) {
-        log("нечего копировать: файл хранилища не выбран");
+        log("нечего копировать: воспоминание не выбрано");
         return;
       }
-      await navigator.clipboard.writeText(selected.content);
-      log(`скопирован файл хранилища ${selected.path}`);
+      await navigator.clipboard.writeText($("vaultEditor").value);
+      log(`скопирован текст ${selected.path}`);
+    }
+
+    function resetVaultEditor() {
+      if ((window.__vaultSelected ?? -1) >= 0) previewVault(window.__vaultSelected);
+    }
+
+    async function planEditedVault() {
+      return importEditedVault(true);
+    }
+
+    async function saveEditedVault() {
+      const result = await importEditedVault(false);
+      if (!result) return;
+      await reindex();
+      await Promise.allSettled([loadVault(), listMemories()]);
+    }
+
+    async function importEditedVault(dryRun) {
+      const files = window.__vaultFiles || [];
+      const selected = files[window.__vaultSelected ?? -1];
+      if (!selected) {
+        $("vaultResult").innerHTML = `<div class="empty">Сначала выбери воспоминание.</div>`;
+        return null;
+      }
+      const note = parseVaultNote(selected.content);
+      if (note.frontmatter.type !== "memory") {
+        $("vaultResult").innerHTML = `<div class="empty">Этот файл служебный и не редактируется через web UI.</div>`;
+        return null;
+      }
+      const content = composeVaultNote(note, $("vaultEditor").value);
+      const data = await api(`/v1/workspaces/${workspace()}/vault/import`, {
+        method: "POST",
+        body: JSON.stringify({
+          tenant_id: tenant(),
+          dry_run: dryRun,
+          files: [{ path: selected.path, content }],
+        }),
+      });
+      const change = data.changes?.[0] || {};
+      const action = actionName(change.action);
+      $("vaultResult").innerHTML = `<div class="card">
+        <span class="pill ${change.action === "supersede" ? "ok" : "warn"}">${escapeHtml(action)}</span>
+        <span class="muted tiny">${escapeHtml(change.message || "")}</span>
+        ${change.new_item_id ? `<div class="muted tiny">новая ревизия: ${escapeHtml(change.new_item_id)}</div>` : ""}
+        <div class="muted tiny">${dryRun ? "Проверка без записи." : "Сохранено через append-only supersede; embedding пересчитан через reindex."}</div>
+      </div>`;
+      return data;
     }
 
     function inspectGraph(id) {
@@ -1643,6 +1741,61 @@ _OPERATOR_UI_HTML = """
       return String(value).replace(/[&<>"']/g, ch => ({
         "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
       }[ch]));
+    }
+
+    function parseVaultNote(content) {
+      const lines = String(content || "").split(/\\r?\\n/);
+      if (lines[0] !== "---") return { frontmatter: {}, frontmatterBlock: "", body: content || "", tail: "" };
+      const end = lines.findIndex((line, index) => index > 0 && line === "---");
+      if (end < 0) return { frontmatter: {}, frontmatterBlock: "", body: content || "", tail: "" };
+      const frontmatterLines = lines.slice(1, end);
+      const frontmatter = parseFrontmatter(frontmatterLines);
+      const bodyLines = lines.slice(end + 1);
+      const sectionIndex = bodyLines.findIndex(line =>
+        ["## Provenance", "## Quote", "## Links", "## Evidence"].includes(line)
+      );
+      const editableBody = (sectionIndex >= 0 ? bodyLines.slice(0, sectionIndex) : bodyLines).join("\\n").trim();
+      const tail = sectionIndex >= 0 ? "\\n\\n" + bodyLines.slice(sectionIndex).join("\\n").trim() : "";
+      return {
+        frontmatter,
+        frontmatterBlock: lines.slice(0, end + 1).join("\\n"),
+        body: editableBody,
+        tail,
+      };
+    }
+
+    function parseFrontmatter(lines) {
+      const result = {};
+      let currentKey = null;
+      for (const line of lines) {
+        if (line.startsWith("  - ") && currentKey) {
+          result[currentKey] = result[currentKey] || [];
+          result[currentKey].push(parseYamlScalar(line.slice(4).trim()));
+          continue;
+        }
+        const match = line.match(/^([^:]+):\\s*(.*)$/);
+        if (!match) continue;
+        currentKey = match[1];
+        const raw = match[2];
+        result[currentKey] = raw === "" ? [] : parseYamlScalar(raw);
+      }
+      return result;
+    }
+
+    function parseYamlScalar(raw) {
+      if (raw === "null") return null;
+      if (raw === "true") return true;
+      if (raw === "false") return false;
+      if (raw === "[]") return [];
+      if (raw === "{}") return {};
+      if (raw.startsWith('"') && raw.endsWith('"')) return raw.slice(1, -1).replace(/\\\\"/g, '"').replace(/\\\\\\\\/g, "\\\\");
+      const number = Number(raw);
+      return Number.isFinite(number) && raw.trim() !== "" ? number : raw;
+    }
+
+    function composeVaultNote(note, body) {
+      const cleanBody = String(body || "").trim();
+      return `${note.frontmatterBlock}\\n\\n${cleanBody}${note.tail ? note.tail : ""}\\n`;
     }
 
     function log(message) {
@@ -1800,6 +1953,16 @@ _OPERATOR_UI_HTML = """
       return ({
         open: "открыто", accepted: "принято", rejected: "отклонено", overridden: "переопределено"
       })[value] || value;
+    }
+
+    function actionName(value) {
+      return ({
+        supersede: "новая ревизия",
+        unchanged: "без изменений",
+        conflict: "конфликт ревизии",
+        skip: "пропущено",
+        error: "ошибка",
+      })[value] || value || "неизвестно";
     }
 
     function reasonName(value) {
