@@ -953,8 +953,118 @@ _OPERATOR_UI_HTML = """
     }
     .kpi .value { font-size: 28px; font-weight: 850; letter-spacing: -.04em; }
     .kpi .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .12em; }
-    .tabs { padding: 8px; border-bottom: 1px solid var(--line); background: rgba(2, 6, 23, .35); }
+    .cockpit {
+      margin: 18px 0;
+      background:
+        linear-gradient(135deg, rgba(15, 23, 42, .82), rgba(30, 41, 59, .56)),
+        radial-gradient(circle at 50% 30%, rgba(96, 165, 250, .13), transparent 28rem);
+    }
+    .cockpit-layout {
+      display: grid;
+      grid-template-columns: 230px minmax(0, 1fr) 300px;
+      gap: 16px;
+      min-height: 440px;
+    }
+    .side-nav, .inspector {
+      border: 1px solid rgba(148, 163, 184, .14);
+      border-radius: 20px;
+      background: rgba(2, 6, 23, .35);
+      padding: 14px;
+    }
+    .nav-title {
+      margin-bottom: 12px;
+      color: var(--cyan);
+      font-size: 11px;
+      font-weight: 850;
+      letter-spacing: .15em;
+      text-transform: uppercase;
+    }
+    .nav-button {
+      width: 100%;
+      justify-content: flex-start;
+      margin-bottom: 8px;
+      background: rgba(15, 23, 42, .58);
+      box-shadow: none;
+      color: var(--soft);
+    }
+    .nav-button.primary {
+      background: linear-gradient(135deg, rgba(96, 165, 250, .9), rgba(167, 139, 250, .75));
+      color: var(--text);
+    }
+    .graph-stage {
+      position: relative;
+      min-height: 420px;
+      border: 1px solid rgba(148, 163, 184, .16);
+      border-radius: 24px;
+      background:
+        radial-gradient(circle at 50% 45%, rgba(34, 211, 238, .18), transparent 16rem),
+        radial-gradient(circle at 32% 22%, rgba(167, 139, 250, .18), transparent 13rem),
+        rgba(2, 6, 23, .46);
+      overflow: hidden;
+    }
+    .graph-stage::before {
+      content: "";
+      position: absolute;
+      inset: 18px;
+      border: 1px solid rgba(148, 163, 184, .08);
+      border-radius: 999px;
+      pointer-events: none;
+    }
+    .graph-stage::after {
+      content: "";
+      position: absolute;
+      inset: 72px 110px;
+      border: 1px dashed rgba(148, 163, 184, .13);
+      border-radius: 999px;
+      pointer-events: none;
+    }
+    .stage-head {
+      position: absolute;
+      z-index: 2;
+      top: 18px;
+      left: 18px;
+      right: 18px;
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: flex-start;
+    }
+    .stage-title { font-size: 22px; font-weight: 850; letter-spacing: -.035em; }
+    .overview-svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+    .agent-card {
+      display: grid;
+      gap: 6px;
+      padding: 12px;
+      border: 1px solid rgba(148, 163, 184, .14);
+      border-radius: 16px;
+      background: rgba(15, 23, 42, .54);
+      margin-bottom: 10px;
+    }
+    .agent-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: center;
+    }
+    .sparkline {
+      height: 6px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, rgba(34, 211, 238, .85), rgba(167, 139, 250, .85));
+      box-shadow: 0 0 22px rgba(96, 165, 250, .25);
+    }
+    .tabs {
+      position: relative;
+      padding: 8px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(2, 6, 23, .35);
+    }
     .tab {
+      position: relative;
+      z-index: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 104px;
       border: 0;
       box-shadow: none;
       background: transparent;
@@ -1001,6 +1111,8 @@ _OPERATOR_UI_HTML = """
     pre {
       margin: 0;
       padding: 14px;
+      max-height: 520px;
+      overflow: auto;
       border-radius: 16px;
       background: rgba(2, 6, 23, .58);
       border: 1px solid rgba(148, 163, 184, .12);
@@ -1070,7 +1182,7 @@ _OPERATOR_UI_HTML = """
     }
     a { color: var(--cyan); }
     @media (max-width: 1100px) {
-      header.hero, .grid, .split { grid-template-columns: 1fr; }
+      header.hero, .grid, .split, .cockpit-layout { grid-template-columns: 1fr; }
       .hero-actions { justify-content: flex-start; }
       .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .form-grid { grid-template-columns: 1fr 1fr; }
@@ -1124,14 +1236,60 @@ _OPERATOR_UI_HTML = """
       </div>
     </section>
 
+    <section class="panel cockpit" aria-label="Главная карта памяти">
+      <div class="panel-body cockpit-layout">
+        <nav class="side-nav" role="navigation" aria-label="Быстрая навигация пульта">
+          <div class="nav-title">Навигация</div>
+          <button class="nav-button primary" onclick="showTab('memory')">🧠 Память и recall</button>
+          <button class="nav-button" onclick="showTab('graph')">🕸️ Карта связей</button>
+          <button class="nav-button" onclick="showTab('conflicts')">⚠️ Конфликты</button>
+          <button class="nav-button" onclick="showTab('vault')">🗂️ Obsidian vault</button>
+          <button class="nav-button" onclick="showTab('retain')">✍️ Новая память</button>
+          <div class="nav-title" style="margin-top:18px">Слои</div>
+          <span class="pill">ядро</span><span class="pill">рабочая</span>
+          <span class="pill ok">семантика</span><span class="pill warn">спорное</span>
+        </nav>
+
+        <div class="graph-stage">
+          <div class="stage-head">
+            <div>
+              <div class="brand" style="margin-bottom:6px"><span class="orb"></span> Живая карта памяти</div>
+              <div class="stage-title">Общая память как граф</div>
+              <p class="muted tiny">Центр — рабочая область; вокруг — свежие воспоминания, конфликтные зоны и агентские подключения.</p>
+            </div>
+            <button class="secondary" onclick="refreshAll()">Синхронизировать</button>
+          </div>
+          <div id="overviewGraph"></div>
+        </div>
+
+        <aside class="inspector" aria-label="Инспектор системы памяти">
+          <div class="nav-title">Инспектор</div>
+          <div class="agent-card">
+            <div class="agent-row"><strong>OpenClaw</strong><span class="pill ok">plugin-ready</span></div>
+            <div class="muted tiny">Recall перед запуском, retain после tool loop.</div>
+            <div class="sparkline" style="width:82%"></div>
+          </div>
+          <div class="agent-card">
+            <div class="agent-row"><strong>Hermes</strong><span class="pill ok">plugin-ready</span></div>
+            <div class="muted tiny">Prefetch перед turn, sync после ответа.</div>
+            <div class="sparkline" style="width:74%"></div>
+          </div>
+          <div id="selectionInspector" class="agent-card">
+            <div class="agent-row"><strong>Выбор</strong><span class="pill">workspace</span></div>
+            <div class="muted tiny">Выбери воспоминание или узел графа, чтобы увидеть детали.</div>
+          </div>
+        </aside>
+      </div>
+    </section>
+
     <main class="grid">
       <section class="panel">
-        <div class="tabs">
-          <button id="tab-memory" class="tab active" onclick="showTab('memory')">Память</button>
-          <button id="tab-retain" class="tab" onclick="showTab('retain')">Записать</button>
-          <button id="tab-conflicts" class="tab" onclick="showTab('conflicts')">Конфликты</button>
-          <button id="tab-vault" class="tab" onclick="showTab('vault')">Хранилище</button>
-          <button id="tab-graph" class="tab" onclick="showTab('graph')">Граф</button>
+        <div class="tabs" role="tablist" aria-label="Разделы пульта памяти">
+          <button id="tab-memory" type="button" class="tab active" role="tab" aria-controls="view-memory" onclick="showTab('memory')">Память</button>
+          <button id="tab-retain" type="button" class="tab" role="tab" aria-controls="view-retain" onclick="showTab('retain')">Записать</button>
+          <button id="tab-conflicts" type="button" class="tab" role="tab" aria-controls="view-conflicts" onclick="showTab('conflicts')">Конфликты</button>
+          <button id="tab-vault" type="button" class="tab" role="tab" aria-controls="view-vault" onclick="showTab('vault')">Хранилище</button>
+          <button id="tab-graph" type="button" class="tab" role="tab" aria-controls="view-graph" onclick="showTab('graph')">Граф</button>
         </div>
 
         <div id="view-memory" class="view active">
@@ -1143,19 +1301,19 @@ _OPERATOR_UI_HTML = """
           </div>
           <div class="panel-body">
             <div class="form-grid">
-              <input id="query" class="wide" placeholder="запрос для семантического поиска">
-              <select id="layer">
+              <input id="query" class="wide" aria-label="Запрос для семантического поиска" placeholder="запрос для семантического поиска">
+              <select id="layer" aria-label="Фильтр слоя памяти">
                 <option value="">все слои</option>
                 <option>core</option><option>working</option><option>semantic</option>
                 <option>episodic</option><option>procedural</option><option>social</option>
                 <option>reflection</option><option>error</option>
               </select>
-              <select id="status">
+              <select id="status" aria-label="Фильтр статуса памяти">
                 <option value="">все статусы</option>
                 <option>active</option><option>stale</option><option>disputed</option>
                 <option>rejected</option><option>archived</option><option>pinned</option>
               </select>
-              <input id="label" placeholder="фильтр по метке">
+              <input id="label" aria-label="Фильтр по метке" placeholder="фильтр по метке">
               <button onclick="listMemories()">Показать память</button>
               <button class="secondary" onclick="recall()">Собрать recall</button>
             </div>
@@ -1172,11 +1330,11 @@ _OPERATOR_UI_HTML = """
           </div>
           <div class="panel-body">
             <div class="form-grid">
-              <select id="retainLayer"><option>semantic</option><option>core</option><option>working</option><option>episodic</option><option>procedural</option><option>social</option><option>reflection</option><option>error</option></select>
-              <select id="retainScope"><option>workspace</option><option>thread</option><option>agent</option><option>tenant</option></select>
-              <input id="retainKind" placeholder="тип записи" value="operator_note">
-              <input id="retainLabels" placeholder="метки через запятую" value="ui">
-              <textarea id="retainText" class="full" placeholder="Запиши устойчивый факт, решение, предпочтение или наблюдение..."></textarea>
+              <select id="retainLayer" aria-label="Слой новой памяти"><option>semantic</option><option>core</option><option>working</option><option>episodic</option><option>procedural</option><option>social</option><option>reflection</option><option>error</option></select>
+              <select id="retainScope" aria-label="Область новой памяти"><option>workspace</option><option>thread</option><option>agent</option><option>tenant</option></select>
+              <input id="retainKind" aria-label="Тип новой записи" placeholder="тип записи" value="operator_note">
+              <input id="retainLabels" aria-label="Метки новой записи" placeholder="метки через запятую" value="ui">
+              <textarea id="retainText" class="full" aria-label="Текст нового воспоминания" placeholder="Запиши устойчивый факт, решение, предпочтение или наблюдение..."></textarea>
               <button onclick="retainMemory()">Сохранить память</button>
               <button class="secondary" onclick="$('retainText').value=''">Очистить</button>
             </div>
@@ -1201,7 +1359,10 @@ _OPERATOR_UI_HTML = """
               <h2>Obsidian‑хранилище</h2>
               <p class="muted tiny">Предпросмотр детерминированных Markdown‑заметок и путей.</p>
             </div>
-            <button class="secondary" onclick="loadVault()">Предпросмотр экспорта</button>
+            <div class="toolbar">
+              <button class="secondary" onclick="loadVault()">Предпросмотр экспорта</button>
+              <button class="secondary" onclick="copyVaultPreview()">Копировать файл</button>
+            </div>
           </div>
           <div class="panel-body split">
             <div id="vaultFiles" class="list"></div>
@@ -1218,8 +1379,8 @@ _OPERATOR_UI_HTML = """
           </div>
           <div class="panel-body">
             <div class="form-grid">
-              <input id="graphItem" class="wide" placeholder="id воспоминания">
-              <select id="edgeType">
+              <input id="graphItem" class="wide" aria-label="ID воспоминания для графа" placeholder="id воспоминания">
+              <select id="edgeType" aria-label="Фильтр типа связи графа">
                 <option value="">все типы связей</option>
                 <option>supports</option><option>contradicts</option><option>supersedes</option>
                 <option>derived_from</option><option>related_to</option><option>blocks</option>
@@ -1266,7 +1427,12 @@ _OPERATOR_UI_HTML = """
         headers: { "content-type": "application/json", ...(options.headers || {}) },
       });
       const text = await res.text();
-      const data = text ? JSON.parse(text) : {};
+      let data = {};
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch {
+        data = { detail: text || "Ответ сервера не похож на JSON." };
+      }
       if (!res.ok) {
         log(`× ${res.status} ${path}`);
         throw new Error(JSON.stringify(data));
@@ -1276,12 +1442,17 @@ _OPERATOR_UI_HTML = """
     }
 
     function showTab(name) {
-      document.querySelectorAll(".tab").forEach(node => node.classList.remove("active"));
+      document.querySelectorAll(".tab").forEach(node => {
+        node.classList.remove("active");
+        node.setAttribute("aria-selected", "false");
+      });
       document.querySelectorAll(".view").forEach(node => node.classList.remove("active"));
       $(`tab-${name}`).classList.add("active");
+      $(`tab-${name}`).setAttribute("aria-selected", "true");
       $(`view-${name}`).classList.add("active");
       if (name === "conflicts") loadConflicts();
       if (name === "vault") loadVault();
+      if (name === "graph") loadGraph();
     }
 
     async function refreshAll() {
@@ -1322,6 +1493,7 @@ _OPERATOR_UI_HTML = """
       const data = await api(`/v1/workspaces/${workspace()}/memories?${params}`);
       lastMemories = data.memories || [];
       updateKpis({ memories: data.count });
+      renderOverview();
       $("memories").innerHTML = data.count
         ? data.memories.map(memoryCard).join("")
         : `<div class="empty">Под текущие фильтры воспоминаний нет.</div>`;
@@ -1379,7 +1551,7 @@ _OPERATOR_UI_HTML = """
             <span class="pill ${c.review_status === "open" ? "warn" : "ok"}">${escapeHtml(reviewName(c.review_status))}</span>
             <strong>${escapeHtml(c.subject)} / ${escapeHtml(c.predicate)}</strong>
           </div>
-          <p class="muted tiny">${escapeHtml(c.suggested_reason || "Нет автоматического объяснения.")}</p>
+          <p class="muted tiny">${escapeHtml(reasonName(c.suggested_reason))}</p>
           <div class="pill ok">рекомендация: ${escapeHtml(c.suggested_winner_value || "—")}</div>
           ${c.candidates.map(x => `<pre>${escapeHtml(statusName(x.status))} · уверенность ${Number(x.confidence).toFixed(2)}\\n${escapeHtml(x.value)}</pre>`).join("")}
         </div>`).join("") : `<div class="empty">Конфликтов нет. Память спокойна — подозрительно спокойна.</div>`;
@@ -1395,12 +1567,25 @@ _OPERATOR_UI_HTML = """
           onclick="previewVault(${index})">${escapeHtml(file.path)}</button>
       `).join("") : `<div class="empty">Экспорт хранилища пуст.</div>`;
       window.__vaultFiles = files;
+      window.__vaultSelected = 0;
       $("vaultPreview").textContent = files[0]?.content || "Выбери файл…";
     }
 
     function previewVault(index) {
       const file = (window.__vaultFiles || [])[index];
+      window.__vaultSelected = index;
       $("vaultPreview").textContent = file ? file.content : "Файл не найден.";
+    }
+
+    async function copyVaultPreview() {
+      const files = window.__vaultFiles || [];
+      const selected = files[window.__vaultSelected || 0];
+      if (!selected) {
+        log("нечего копировать: файл хранилища не выбран");
+        return;
+      }
+      await navigator.clipboard.writeText(selected.content);
+      log(`скопирован файл хранилища ${selected.path}`);
     }
 
     function inspectGraph(id) {
@@ -1418,13 +1603,18 @@ _OPERATOR_UI_HTML = """
       }
       const params = new URLSearchParams({ tenant_id: tenant(), workspace_id: workspace() });
       if ($("edgeType").value) params.set("edge_type", $("edgeType").value);
-      const data = await api(`/v1/memory/${item}/neighbors?${params}`);
-      $("graphCanvas").innerHTML = renderGraphMap(data.edges || [], item);
-      $("graph").innerHTML = data.count ? data.edges.map(edge => `<div class="card">
-        <span class="pill">${escapeHtml(edgeName(edge.edge_type))}</span>
-        <span class="pill">вес ${Number(edge.weight).toFixed(2)}</span>
-        <pre>${escapeHtml(edge.src_id)}\\n→ ${escapeHtml(edge.dst_id)}</pre>
-      </div>`).join("") : `<div class="empty">У этого воспоминания пока нет связей графа.</div>`;
+      try {
+        const data = await api(`/v1/memory/${item}/neighbors?${params}`);
+        $("graphCanvas").innerHTML = renderGraphMap(data.edges || [], item);
+        $("graph").innerHTML = data.count ? data.edges.map(edge => `<div class="card">
+          <span class="pill">${escapeHtml(edgeName(edge.edge_type))}</span>
+          <span class="pill">вес ${Number(edge.weight).toFixed(2)}</span>
+          <pre>${escapeHtml(edge.src_id)}\\n→ ${escapeHtml(edge.dst_id)}</pre>
+        </div>`).join("") : `<div class="empty">У этого воспоминания пока нет связей графа.</div>`;
+      } catch (err) {
+        $("graphCanvas").innerHTML = renderGraphMap([], item);
+        $("graph").innerHTML = `<div class="empty">Не удалось загрузить граф: ${escapeHtml(err.message)}</div>`;
+      }
     }
 
     async function reflect() {
@@ -1522,6 +1712,63 @@ _OPERATOR_UI_HTML = """
       </div>`;
     }
 
+    function renderOverview() {
+      const memories = (lastMemories || []).slice(0, 9);
+      const width = 900;
+      const height = 420;
+      const cx = 450;
+      const cy = 228;
+      const nodes = memories.map((memory, index) => {
+        const angle = (Math.PI * 2 * index / Math.max(memories.length, 1)) - Math.PI / 2;
+        const radius = 122 + (index % 3) * 34;
+        return {
+          ...memory,
+          x: cx + Math.cos(angle) * radius,
+          y: cy + Math.sin(angle) * radius,
+        };
+      });
+      const links = nodes.map(node => `<line x1="${cx}" y1="${cy}" x2="${node.x}" y2="${node.y}"
+        class="graph-edge ${node.status === "disputed" ? "graph-edge-hot" : "graph-edge-ok"}"></line>`).join("");
+      const circles = nodes.map(node => {
+        const statusClass = node.status === "active" || node.status === "pinned" ? "ok"
+          : node.status === "disputed" || node.status === "stale" ? "warn" : "hot";
+        const fill = statusClass === "ok" ? "rgba(34,211,238,.88)"
+          : statusClass === "warn" ? "rgba(251,191,36,.86)" : "rgba(251,113,133,.88)";
+        return `<g role="button" tabindex="0" onclick="selectOverviewNode('${node.id}')">
+          <circle cx="${node.x}" cy="${node.y}" r="25" fill="${fill}" class="graph-node"></circle>
+          <text x="${node.x}" y="${node.y + 45}" class="graph-label">${escapeHtml(layerName(node.layer))}</text>
+        </g>`;
+      }).join("");
+      $("overviewGraph").innerHTML = `<svg class="overview-svg" viewBox="0 0 ${width} ${height}" aria-label="Обзорный граф памяти">
+        <defs>
+          <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L9,3 z" fill="rgba(203,213,225,.72)"></path>
+          </marker>
+          <linearGradient id="centerGrad" x1="0" x2="1">
+            <stop offset="0%" stop-color="#22d3ee"></stop>
+            <stop offset="100%" stop-color="#a78bfa"></stop>
+          </linearGradient>
+        </defs>
+        ${links}
+        <circle cx="${cx}" cy="${cy}" r="48" fill="url(#centerGrad)" class="graph-node"></circle>
+        <text x="${cx}" y="${cy + 5}" class="graph-label">workspace</text>
+        ${circles}
+      </svg>`;
+    }
+
+    function selectOverviewNode(id) {
+      const memory = (lastMemories || []).find(row => row.id === id);
+      if (!memory) return;
+      $("graphItem").value = id;
+      $("selectionInspector").innerHTML = `<div class="agent-row">
+          <strong>${escapeHtml(layerName(memory.layer))}</strong>
+          <span class="pill ok">${escapeHtml(statusName(memory.status))}</span>
+        </div>
+        <div class="muted tiny">${escapeHtml(memory.id)}</div>
+        <p style="margin:8px 0 0">${escapeHtml(memory.text)}</p>
+        <button class="secondary" style="margin-top:10px;width:100%" onclick="inspectGraph('${memory.id}')">Открыть граф узла</button>`;
+    }
+
     function shortId(value) {
       const text = String(value);
       return text.length > 13 ? `${text.slice(0, 6)}…${text.slice(-4)}` : text;
@@ -1553,6 +1800,14 @@ _OPERATOR_UI_HTML = """
       return ({
         open: "открыто", accepted: "принято", rejected: "отклонено", overridden: "переопределено"
       })[value] || value;
+    }
+
+    function reasonName(value) {
+      return ({
+        "newest active value with strongest evidence; raw memories remain append-only":
+          "Сервер предлагает самую свежую активную версию с сильнейшим доказательством; исходные записи остаются append-only.",
+        "newer memory wins": "Побеждает более свежая запись.",
+      })[value] || value || "Нет автоматического объяснения.";
     }
 
     refreshAll().catch(err => {

@@ -277,6 +277,13 @@ def test_memory_list_endpoint_and_operator_ui() -> None:
     assert ui.status_code == 200
     assert "Универсальная память агентов" in ui.text
     assert "Подробный граф памяти" in ui.text
+    assert 'role="tablist"' in ui.text
+    assert 'role="navigation"' in ui.text
+    assert "Живая карта памяти" in ui.text
+    assert "OpenClaw" in ui.text
+    assert "Hermes" in ui.text
+    assert "Копировать файл" in ui.text
+    assert "Сервер предлагает самую свежую активную версию" in ui.text
     assert "/v1/workspaces/" in ui.text
 
 
