@@ -1,4 +1,5 @@
 """FastAPI application factory; imports remain optional for core users."""
+# ruff: noqa: E501
 
 from __future__ import annotations
 
@@ -794,101 +795,536 @@ def _build_runtime_container() -> Container:
 
 _OPERATOR_UI_HTML = """
 <!doctype html>
-<html lang="en">
+<html lang="ru">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Universal Agent Memory</title>
+  <title>Универсальная память агентов</title>
   <style>
-    :root { color-scheme: light dark; font-family: ui-sans-serif, system-ui, sans-serif; }
-    body { margin: 0; background: #0f1115; color: #e9edf5; }
-    header { padding: 24px; border-bottom: 1px solid #2a2f3a; background: #151924; }
-    main { padding: 24px; display: grid; gap: 20px; grid-template-columns: 1.4fr .9fr; }
-    section { border: 1px solid #2a2f3a; border-radius: 14px; background: #151924; padding: 18px; }
-    input, select, textarea, button {
-      border: 1px solid #394050; border-radius: 10px; padding: 10px;
-      background: #0f1115; color: #e9edf5;
+    :root {
+      color-scheme: dark;
+      --bg: #070914;
+      --panel: rgba(17, 24, 39, .74);
+      --panel-strong: rgba(15, 23, 42, .94);
+      --line: rgba(148, 163, 184, .18);
+      --text: #eef4ff;
+      --muted: #94a3b8;
+      --soft: #cbd5e1;
+      --blue: #60a5fa;
+      --cyan: #22d3ee;
+      --violet: #a78bfa;
+      --green: #34d399;
+      --amber: #fbbf24;
+      --red: #fb7185;
+      --shadow: 0 24px 90px rgba(0, 0, 0, .45);
+      font-family:
+        Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
-    button { cursor: pointer; background: #2d6cdf; border-color: #2d6cdf; }
-    button.secondary { background: #232938; border-color: #394050; }
-    .row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
-    .card { border-top: 1px solid #2a2f3a; padding: 12px 0; }
-    .muted { color: #9aa4b2; font-size: 13px; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 12% 8%, rgba(96, 165, 250, .28), transparent 32rem),
+        radial-gradient(circle at 86% 4%, rgba(167, 139, 250, .26), transparent 30rem),
+        radial-gradient(circle at 60% 90%, rgba(34, 211, 238, .16), transparent 34rem),
+        linear-gradient(135deg, #060711 0%, #0b1020 48%, #111827 100%);
+    }
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background-image:
+        linear-gradient(rgba(148, 163, 184, .04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(148, 163, 184, .04) 1px, transparent 1px);
+      background-size: 42px 42px;
+      mask-image: linear-gradient(to bottom, rgba(0, 0, 0, .9), transparent 80%);
+    }
+    .shell { width: min(1500px, calc(100vw - 36px)); margin: 0 auto; padding: 28px 0; }
+    header.hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 24px;
+      align-items: end;
+      margin-bottom: 18px;
+      padding: 26px;
+      border: 1px solid var(--line);
+      border-radius: 28px;
+      background: linear-gradient(135deg, rgba(15, 23, 42, .86), rgba(30, 41, 59, .62));
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
+    }
+    h1, h2, h3, p { margin-top: 0; }
+    h1 { margin-bottom: 8px; font-size: clamp(34px, 5vw, 62px); letter-spacing: -.055em; }
+    h2 { margin-bottom: 14px; font-size: 18px; letter-spacing: -.02em; }
+    h3 { margin-bottom: 8px; font-size: 14px; color: var(--soft); }
+    .lede { max-width: 820px; color: var(--soft); font-size: 16px; line-height: 1.7; }
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 14px;
+      color: var(--cyan);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+    }
+    .orb {
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+      background: linear-gradient(135deg, var(--cyan), var(--violet));
+      box-shadow: 0 0 24px rgba(34, 211, 238, .75);
+    }
+    .hero-actions, .row, .tabs, .toolbar { display: flex; gap: 10px; flex-wrap: wrap; }
+    .hero-actions { justify-content: flex-end; }
+    button, input, select, textarea {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      color: var(--text);
+      background: rgba(15, 23, 42, .76);
+      outline: none;
+    }
+    input, select, textarea { width: 100%; padding: 12px 13px; }
+    textarea { min-height: 108px; resize: vertical; }
+    input:focus, select:focus, textarea:focus {
+      border-color: rgba(96, 165, 250, .78);
+      box-shadow: 0 0 0 4px rgba(96, 165, 250, .12);
+    }
+    button {
+      cursor: pointer;
+      min-height: 42px;
+      padding: 11px 15px;
+      font-weight: 750;
+      background: linear-gradient(135deg, rgba(96, 165, 250, .98), rgba(167, 139, 250, .92));
+      border-color: rgba(147, 197, 253, .45);
+      box-shadow: 0 12px 30px rgba(59, 130, 246, .22);
+    }
+    button:hover { transform: translateY(-1px); }
+    button.secondary {
+      background: rgba(15, 23, 42, .74);
+      color: var(--soft);
+      box-shadow: none;
+    }
+    button.ghost {
+      background: transparent;
+      color: var(--muted);
+      border-color: transparent;
+      box-shadow: none;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1.25fr .75fr;
+      gap: 18px;
+      align-items: start;
+    }
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
+      overflow: hidden;
+    }
+    .panel-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 14px;
+      align-items: center;
+      padding: 18px 18px 0;
+    }
+    .panel-body { padding: 18px; }
+    .kpis {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+    .kpi {
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background:
+        linear-gradient(135deg, rgba(255,255,255,.08), rgba(255,255,255,.02)),
+        rgba(15, 23, 42, .72);
+    }
+    .kpi .value { font-size: 28px; font-weight: 850; letter-spacing: -.04em; }
+    .kpi .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .12em; }
+    .tabs { padding: 8px; border-bottom: 1px solid var(--line); background: rgba(2, 6, 23, .35); }
+    .tab {
+      border: 0;
+      box-shadow: none;
+      background: transparent;
+      color: var(--muted);
+      min-height: 38px;
+    }
+    .tab.active {
+      color: var(--text);
+      background: rgba(96, 165, 250, .18);
+      border: 1px solid rgba(96, 165, 250, .24);
+    }
+    .view { display: none; }
+    .view.active { display: block; }
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .form-grid .wide { grid-column: span 2; }
+    .form-grid .full { grid-column: 1 / -1; }
+    .card {
+      position: relative;
+      padding: 15px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(15, 23, 42, .62);
+      overflow: hidden;
+    }
+    .card + .card { margin-top: 10px; }
+    .card::before {
+      content: "";
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 3px;
+      background: linear-gradient(var(--cyan), var(--violet));
+      opacity: .75;
+    }
+    .memory-text, pre {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      line-height: 1.55;
+    }
+    pre {
+      margin: 0;
+      padding: 14px;
+      border-radius: 16px;
+      background: rgba(2, 6, 23, .58);
+      border: 1px solid rgba(148, 163, 184, .12);
+    }
+    .muted { color: var(--muted); }
+    .tiny { font-size: 12px; }
     .pill {
-      display: inline-block; padding: 2px 8px; border-radius: 999px;
-      background: #263044; margin-right: 6px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 9px;
+      border-radius: 999px;
+      color: var(--soft);
+      background: rgba(148, 163, 184, .13);
+      border: 1px solid rgba(148, 163, 184, .14);
+      font-size: 12px;
+      margin: 0 6px 6px 0;
     }
-    pre { white-space: pre-wrap; overflow-wrap: anywhere; }
-    @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+    .pill.ok { color: #bbf7d0; background: rgba(34, 197, 94, .12); }
+    .pill.warn { color: #fde68a; background: rgba(245, 158, 11, .12); }
+    .pill.hot { color: #fecdd3; background: rgba(244, 63, 94, .12); }
+    .split { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .list { display: grid; gap: 10px; }
+    .log {
+      max-height: 360px;
+      overflow: auto;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+    }
+    .graph-map {
+      width: 100%;
+      min-height: 360px;
+      border-radius: 18px;
+      background:
+        radial-gradient(circle at 50% 50%, rgba(96, 165, 250, .16), transparent 24rem),
+        rgba(2, 6, 23, .45);
+      border: 1px solid rgba(148, 163, 184, .14);
+      overflow: hidden;
+    }
+    .graph-map svg { display: block; width: 100%; height: 360px; }
+    .graph-node { filter: drop-shadow(0 12px 22px rgba(0, 0, 0, .38)); }
+    .graph-label {
+      fill: #e5edff;
+      font: 700 12px ui-sans-serif, system-ui, sans-serif;
+      text-anchor: middle;
+    }
+    .graph-edge {
+      stroke: rgba(148, 163, 184, .55);
+      stroke-width: 2;
+      marker-end: url(#arrow);
+    }
+    .graph-edge-hot { stroke: rgba(251, 113, 133, .86); }
+    .graph-edge-ok { stroke: rgba(52, 211, 153, .78); }
+    .graph-edge-warn { stroke: rgba(251, 191, 36, .78); }
+    .legend {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+    .empty {
+      padding: 28px;
+      border: 1px dashed rgba(148, 163, 184, .25);
+      border-radius: 18px;
+      color: var(--muted);
+      text-align: center;
+    }
+    a { color: var(--cyan); }
+    @media (max-width: 1100px) {
+      header.hero, .grid, .split { grid-template-columns: 1fr; }
+      .hero-actions { justify-content: flex-start; }
+      .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .form-grid { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 680px) {
+      .shell { width: min(100vw - 20px, 1500px); padding: 10px 0; }
+      header.hero { border-radius: 20px; padding: 18px; }
+      .kpis, .form-grid { grid-template-columns: 1fr; }
+      .form-grid .wide { grid-column: auto; }
+    }
   </style>
 </head>
 <body>
-  <header>
-    <h1>Universal Agent Memory</h1>
-    <p class="muted">Local operator console. All edits should go through append/supersede APIs.</p>
-  </header>
-  <main>
-    <section>
-      <h2>Memory search/list</h2>
-      <div class="row">
-        <input id="tenant" placeholder="tenant_id" value="00000000-0000-0000-0000-000000000001">
-        <input id="workspace" placeholder="workspace_id"
-          value="00000000-0000-0000-0000-000000000002">
+  <div class="shell">
+    <header class="hero">
+      <div>
+        <div class="brand"><span class="orb"></span> Локальный пульт памяти</div>
+        <h1>Универсальная память агентов</h1>
+        <p class="lede">
+          Современная консоль для общей долговременной памяти: поиск и recall,
+          разбор конфликтов, экспорт Obsidian‑хранилища и подробный граф связей
+          вокруг каждого воспоминания. Все записи идут через append-only API.
+        </p>
       </div>
-      <div class="row">
-        <input id="query" placeholder="semantic recall query">
-        <select id="layer">
-          <option value="">all layers</option>
-          <option>core</option><option>working</option><option>semantic</option>
-          <option>episodic</option><option>procedural</option><option>social</option>
-          <option>reflection</option><option>error</option>
-        </select>
-        <button onclick="listMemories()">List</button>
-        <button onclick="recall()">Recall</button>
+      <div class="hero-actions">
+        <button onclick="refreshAll()">Обновить пульт</button>
+        <button class="secondary" onclick="showTab('vault')">Открыть хранилище</button>
       </div>
-      <div id="memories"></div>
+    </header>
+
+    <section class="panel">
+      <div class="panel-body">
+        <div class="form-grid">
+          <label class="wide">
+            <span class="muted tiny">Арендатор</span>
+            <input id="tenant" placeholder="tenant_id"
+              value="00000000-0000-0000-0000-000000000001">
+          </label>
+          <label class="wide">
+            <span class="muted tiny">Рабочая область</span>
+            <input id="workspace" placeholder="workspace_id"
+              value="00000000-0000-0000-0000-000000000002">
+          </label>
+        </div>
+        <div class="kpis">
+          <div class="kpi"><div id="kpiMemories" class="value">—</div><div class="label">Воспоминания</div></div>
+          <div class="kpi"><div id="kpiConflicts" class="value">—</div><div class="label">Конфликты</div></div>
+          <div class="kpi"><div id="kpiVault" class="value">—</div><div class="label">Файлы хранилища</div></div>
+          <div class="kpi"><div id="kpiStatus" class="value">Активно</div><div class="label">Статус</div></div>
+        </div>
+      </div>
     </section>
-    <section>
-      <h2>Review / ops</h2>
-      <div class="row">
-        <button onclick="loadConflicts()">Conflict inbox</button>
-        <button class="secondary" onclick="reflect()">Reflect</button>
-        <button class="secondary" onclick="reindex()">Reindex</button>
-      </div>
-      <div id="ops"></div>
-    </section>
-  </main>
+
+    <main class="grid">
+      <section class="panel">
+        <div class="tabs">
+          <button id="tab-memory" class="tab active" onclick="showTab('memory')">Память</button>
+          <button id="tab-retain" class="tab" onclick="showTab('retain')">Записать</button>
+          <button id="tab-conflicts" class="tab" onclick="showTab('conflicts')">Конфликты</button>
+          <button id="tab-vault" class="tab" onclick="showTab('vault')">Хранилище</button>
+          <button id="tab-graph" class="tab" onclick="showTab('graph')">Граф</button>
+        </div>
+
+        <div id="view-memory" class="view active">
+          <div class="panel-head">
+            <div>
+              <h2>Поиск и recall</h2>
+              <p class="muted tiny">Список воспоминаний или сборка контекстного пакета для агента.</p>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div class="form-grid">
+              <input id="query" class="wide" placeholder="запрос для семантического поиска">
+              <select id="layer">
+                <option value="">все слои</option>
+                <option>core</option><option>working</option><option>semantic</option>
+                <option>episodic</option><option>procedural</option><option>social</option>
+                <option>reflection</option><option>error</option>
+              </select>
+              <select id="status">
+                <option value="">все статусы</option>
+                <option>active</option><option>stale</option><option>disputed</option>
+                <option>rejected</option><option>archived</option><option>pinned</option>
+              </select>
+              <input id="label" placeholder="фильтр по метке">
+              <button onclick="listMemories()">Показать память</button>
+              <button class="secondary" onclick="recall()">Собрать recall</button>
+            </div>
+            <div id="memories" class="list"></div>
+          </div>
+        </div>
+
+        <div id="view-retain" class="view">
+          <div class="panel-head">
+            <div>
+              <h2>Записать воспоминание</h2>
+              <p class="muted tiny">Создаёт обычную запись через `/v1/memory/retain`.</p>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div class="form-grid">
+              <select id="retainLayer"><option>semantic</option><option>core</option><option>working</option><option>episodic</option><option>procedural</option><option>social</option><option>reflection</option><option>error</option></select>
+              <select id="retainScope"><option>workspace</option><option>thread</option><option>agent</option><option>tenant</option></select>
+              <input id="retainKind" placeholder="тип записи" value="operator_note">
+              <input id="retainLabels" placeholder="метки через запятую" value="ui">
+              <textarea id="retainText" class="full" placeholder="Запиши устойчивый факт, решение, предпочтение или наблюдение..."></textarea>
+              <button onclick="retainMemory()">Сохранить память</button>
+              <button class="secondary" onclick="$('retainText').value=''">Очистить</button>
+            </div>
+            <div id="retainResult"></div>
+          </div>
+        </div>
+
+        <div id="view-conflicts" class="view">
+          <div class="panel-head">
+            <div>
+              <h2>Входящие конфликты</h2>
+              <p class="muted tiny">Разбирай пересекающиеся факты, не уничтожая историю доказательств.</p>
+            </div>
+            <button class="secondary" onclick="loadConflicts()">Обновить</button>
+          </div>
+          <div class="panel-body"><div id="ops" class="list"></div></div>
+        </div>
+
+        <div id="view-vault" class="view">
+          <div class="panel-head">
+            <div>
+              <h2>Obsidian‑хранилище</h2>
+              <p class="muted tiny">Предпросмотр детерминированных Markdown‑заметок и путей.</p>
+            </div>
+            <button class="secondary" onclick="loadVault()">Предпросмотр экспорта</button>
+          </div>
+          <div class="panel-body split">
+            <div id="vaultFiles" class="list"></div>
+            <pre id="vaultPreview">Выбери файл…</pre>
+          </div>
+        </div>
+
+        <div id="view-graph" class="view">
+          <div class="panel-head">
+            <div>
+              <h2>Подробный граф памяти</h2>
+              <p class="muted tiny">Узлы, направления, веса, типы связей и статусы вокруг выбранного воспоминания.</p>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div class="form-grid">
+              <input id="graphItem" class="wide" placeholder="id воспоминания">
+              <select id="edgeType">
+                <option value="">все типы связей</option>
+                <option>supports</option><option>contradicts</option><option>supersedes</option>
+                <option>derived_from</option><option>related_to</option><option>blocks</option>
+                <option>resolves</option>
+              </select>
+              <button onclick="loadGraph()">Показать связи</button>
+            </div>
+            <div id="graphCanvas" class="card"></div>
+            <div id="graph" class="list"></div>
+          </div>
+        </div>
+      </section>
+
+      <aside class="panel">
+        <div class="panel-head">
+          <div>
+            <h2>Операции</h2>
+            <p class="muted tiny">Безопасные действия сервера и живой журнал команд.</p>
+          </div>
+        </div>
+        <div class="panel-body">
+          <div class="toolbar">
+            <button onclick="reflect()">Рефлексия</button>
+            <button class="secondary" onclick="reindex()">Переиндексация</button>
+            <button class="secondary" onclick="loadConflicts()">Входящие</button>
+          </div>
+          <h3 style="margin-top:18px">Журнал действий</h3>
+          <div id="log" class="log"><div class="muted">Готово.</div></div>
+        </div>
+      </aside>
+    </main>
+  </div>
+
   <script>
     const $ = (id) => document.getElementById(id);
     const tenant = () => $("tenant").value.trim();
     const workspace = () => $("workspace").value.trim();
+    let lastMemories = [];
 
     async function api(path, options = {}) {
+      log(`→ ${options.method || "GET"} ${path}`);
       const res = await fetch(path, {
         ...options,
         headers: { "content-type": "application/json", ...(options.headers || {}) },
       });
       const text = await res.text();
       const data = text ? JSON.parse(text) : {};
-      if (!res.ok) throw new Error(JSON.stringify(data));
+      if (!res.ok) {
+        log(`× ${res.status} ${path}`);
+        throw new Error(JSON.stringify(data));
+      }
+      log(`✓ ${res.status} ${path}`);
       return data;
     }
 
+    function showTab(name) {
+      document.querySelectorAll(".tab").forEach(node => node.classList.remove("active"));
+      document.querySelectorAll(".view").forEach(node => node.classList.remove("active"));
+      $(`tab-${name}`).classList.add("active");
+      $(`view-${name}`).classList.add("active");
+      if (name === "conflicts") loadConflicts();
+      if (name === "vault") loadVault();
+    }
+
+    async function refreshAll() {
+      await Promise.allSettled([listMemories(), loadConflicts(), loadVault()]);
+    }
+
+    function updateKpis({ memories, conflicts, vault } = {}) {
+      if (memories != null) $("kpiMemories").textContent = memories;
+      if (conflicts != null) $("kpiConflicts").textContent = conflicts;
+      if (vault != null) $("kpiVault").textContent = vault;
+      $("kpiStatus").textContent = "Активно";
+    }
+
     function memoryCard(row) {
+      const statusClass = row.status === "active" || row.status === "pinned" ? "ok"
+        : row.status === "disputed" || row.status === "stale" ? "warn" : "hot";
       return `<div class="card">
-        <div><span class="pill">${row.layer}</span><span class="pill">${row.kind}</span>
-        <span class="muted">rev ${row.revision} · confidence ${row.confidence}</span></div>
-        <pre>${escapeHtml(row.text)}</pre>
-        <div class="muted">${row.id}</div>
+        <div>
+          <span class="pill">${escapeHtml(layerName(row.layer))}</span>
+          <span class="pill ${statusClass}">${escapeHtml(statusName(row.status))}</span>
+          <span class="pill">${escapeHtml(row.kind)}</span>
+          <span class="muted tiny">ревизия ${row.revision} · уверенность ${Number(row.confidence).toFixed(2)}</span>
+        </div>
+        <div class="memory-text">${escapeHtml(row.text)}</div>
+        <div class="row" style="margin-top:12px">
+          <button class="secondary" onclick="inspectGraph('${row.id}')">Граф</button>
+          <button class="ghost" onclick="copyText('${row.id}')">Скопировать id</button>
+        </div>
+        <div class="muted tiny">${escapeHtml(row.id)} · ${escapeHtml(row.created_at || "")}</div>
       </div>`;
     }
 
     async function listMemories() {
       const params = new URLSearchParams({ tenant_id: tenant() });
       if ($("layer").value) params.set("layer", $("layer").value);
+      if ($("status").value) params.set("status", $("status").value);
+      if ($("label").value) params.set("label", $("label").value);
       const data = await api(`/v1/workspaces/${workspace()}/memories?${params}`);
-      $("memories").innerHTML = `<p class="muted">${data.count} memories</p>` +
-        data.memories.map(memoryCard).join("");
+      lastMemories = data.memories || [];
+      updateKpis({ memories: data.count });
+      $("memories").innerHTML = data.count
+        ? data.memories.map(memoryCard).join("")
+        : `<div class="empty">Под текущие фильтры воспоминаний нет.</div>`;
     }
 
     async function recall() {
@@ -896,22 +1332,99 @@ _OPERATOR_UI_HTML = """
         method: "POST",
         body: JSON.stringify({
           tenant_id: tenant(), workspace_id: workspace(),
-          query: $("query").value || "project memory",
+          query: $("query").value || "память проекта",
           layers: $("layer").value ? [$("layer").value] : []
         }),
       });
-      $("memories").innerHTML = `<pre>${escapeHtml(data.context.markdown || "")}</pre>`;
+      $("memories").innerHTML = `<div class="card">
+        <div><span class="pill ok">контекст recall</span>
+        <span class="muted tiny">${(data.sources_used || []).join(", ") || "источников нет"}</span></div>
+        <pre>${escapeHtml(data.context.markdown || "Подходящая память не найдена.")}</pre>
+      </div>`;
+    }
+
+    async function retainMemory() {
+      const text = $("retainText").value.trim();
+      if (!text) {
+        $("retainResult").innerHTML = `<div class="empty">Сначала напиши текст воспоминания.</div>`;
+        return;
+      }
+      const payload = {
+        tenant_id: tenant(),
+        workspace_id: workspace(),
+        layer: $("retainLayer").value,
+        scope: $("retainScope").value,
+        kind: $("retainKind").value || "operator_note",
+        text,
+        source_kind: "operator-ui",
+        labels: $("retainLabels").value.split(",").map(x => x.trim()).filter(Boolean),
+      };
+      const data = await api("/v1/memory/retain", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      $("retainResult").innerHTML = `<div class="card">
+        <span class="pill ok">${data.created ? "создано" : "дубликат"}</span>
+        <span class="muted tiny">${escapeHtml(data.id)} · ревизия ${data.revision}</span>
+      </div>`;
+      await listMemories();
     }
 
     async function loadConflicts() {
       const params = new URLSearchParams({ tenant_id: tenant(), include_resolved: "true" });
       const data = await api(`/v1/workspaces/${workspace()}/conflicts?${params}`);
-      $("ops").innerHTML = `<p class="muted">${data.count} conflict cases</p>` +
-        data.cases.map(c => `<div class="card">
-          <div><span class="pill">${c.review_status}</span>${c.subject} / ${c.predicate}</div>
-          <div class="muted">suggested: ${escapeHtml(c.suggested_winner_value)}</div>
-          ${c.candidates.map(x => `<pre>${x.status}: ${escapeHtml(x.value)}</pre>`).join("")}
-        </div>`).join("");
+      updateKpis({ conflicts: data.count });
+      $("ops").innerHTML = data.count ? data.cases.map(c => `<div class="card">
+          <div>
+            <span class="pill ${c.review_status === "open" ? "warn" : "ok"}">${escapeHtml(reviewName(c.review_status))}</span>
+            <strong>${escapeHtml(c.subject)} / ${escapeHtml(c.predicate)}</strong>
+          </div>
+          <p class="muted tiny">${escapeHtml(c.suggested_reason || "Нет автоматического объяснения.")}</p>
+          <div class="pill ok">рекомендация: ${escapeHtml(c.suggested_winner_value || "—")}</div>
+          ${c.candidates.map(x => `<pre>${escapeHtml(statusName(x.status))} · уверенность ${Number(x.confidence).toFixed(2)}\\n${escapeHtml(x.value)}</pre>`).join("")}
+        </div>`).join("") : `<div class="empty">Конфликтов нет. Память спокойна — подозрительно спокойна.</div>`;
+    }
+
+    async function loadVault() {
+      const params = new URLSearchParams({ tenant_id: tenant() });
+      const data = await api(`/v1/workspaces/${workspace()}/vault?${params}`);
+      updateKpis({ vault: data.file_count });
+      const files = data.files || [];
+      $("vaultFiles").innerHTML = files.length ? files.map((file, index) => `
+        <button class="secondary" style="width:100%;justify-content:flex-start"
+          onclick="previewVault(${index})">${escapeHtml(file.path)}</button>
+      `).join("") : `<div class="empty">Экспорт хранилища пуст.</div>`;
+      window.__vaultFiles = files;
+      $("vaultPreview").textContent = files[0]?.content || "Выбери файл…";
+    }
+
+    function previewVault(index) {
+      const file = (window.__vaultFiles || [])[index];
+      $("vaultPreview").textContent = file ? file.content : "Файл не найден.";
+    }
+
+    function inspectGraph(id) {
+      $("graphItem").value = id;
+      showTab("graph");
+      loadGraph();
+    }
+
+    async function loadGraph() {
+      const item = $("graphItem").value.trim();
+      if (!item) {
+        $("graphCanvas").innerHTML = renderGraphMap([]);
+        $("graph").innerHTML = `<div class="empty">Сначала вставь или выбери id воспоминания.</div>`;
+        return;
+      }
+      const params = new URLSearchParams({ tenant_id: tenant(), workspace_id: workspace() });
+      if ($("edgeType").value) params.set("edge_type", $("edgeType").value);
+      const data = await api(`/v1/memory/${item}/neighbors?${params}`);
+      $("graphCanvas").innerHTML = renderGraphMap(data.edges || [], item);
+      $("graph").innerHTML = data.count ? data.edges.map(edge => `<div class="card">
+        <span class="pill">${escapeHtml(edgeName(edge.edge_type))}</span>
+        <span class="pill">вес ${Number(edge.weight).toFixed(2)}</span>
+        <pre>${escapeHtml(edge.src_id)}\\n→ ${escapeHtml(edge.dst_id)}</pre>
+      </div>`).join("") : `<div class="empty">У этого воспоминания пока нет связей графа.</div>`;
     }
 
     async function reflect() {
@@ -919,7 +1432,8 @@ _OPERATOR_UI_HTML = """
         `/v1/workspaces/${workspace()}/reflect?tenant_id=${tenant()}`,
         { method: "POST" },
       );
-      $("ops").innerHTML = `<pre>${escapeHtml(JSON.stringify(data, null, 2))}</pre>`;
+      log(JSON.stringify(data));
+      await Promise.allSettled([listMemories(), loadConflicts()]);
     }
 
     async function reindex() {
@@ -927,7 +1441,12 @@ _OPERATOR_UI_HTML = """
         `/v1/workspaces/${workspace()}/reindex?tenant_id=${tenant()}`,
         { method: "POST" },
       );
-      $("ops").innerHTML = `<pre>${escapeHtml(JSON.stringify(data, null, 2))}</pre>`;
+      log(JSON.stringify(data));
+    }
+
+    async function copyText(value) {
+      await navigator.clipboard.writeText(value);
+      log(`скопировано ${value}`);
     }
 
     function escapeHtml(value) {
@@ -936,7 +1455,111 @@ _OPERATOR_UI_HTML = """
       }[ch]));
     }
 
-    listMemories().catch(err => $("memories").textContent = err.message);
+    function log(message) {
+      const line = document.createElement("div");
+      line.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+      $("log").prepend(line);
+    }
+
+    function renderGraphMap(edges, center = "") {
+      const nodes = new Map();
+      if (center) nodes.set(center, { id: center, role: "center" });
+      edges.forEach(edge => {
+        nodes.set(edge.src_id, { id: edge.src_id, role: edge.src_id === center ? "center" : "source" });
+        nodes.set(edge.dst_id, { id: edge.dst_id, role: edge.dst_id === center ? "center" : "target" });
+      });
+      const list = Array.from(nodes.values()).slice(0, 13);
+      if (!list.length) {
+        return `<div class="graph-map"><svg viewBox="0 0 900 360">
+          <text x="450" y="180" class="graph-label">Выбери воспоминание, чтобы увидеть карту связей</text>
+        </svg></div>`;
+      }
+      const centerNode = list.find(n => n.id === center) || list[0];
+      const others = list.filter(n => n !== centerNode);
+      centerNode.x = 450; centerNode.y = 178;
+      others.forEach((node, i) => {
+        const angle = (Math.PI * 2 * i / Math.max(others.length, 1)) - Math.PI / 2;
+        const radius = 115 + (i % 3) * 32;
+        node.x = 450 + Math.cos(angle) * radius;
+        node.y = 178 + Math.sin(angle) * radius;
+      });
+      const byId = new Map(list.map(n => [n.id, n]));
+      const lines = edges.filter(e => byId.has(e.src_id) && byId.has(e.dst_id)).map(edge => {
+        const a = byId.get(edge.src_id);
+        const b = byId.get(edge.dst_id);
+        const cls = edge.edge_type === "contradicts" || edge.edge_type === "blocks" ? "graph-edge-hot"
+          : edge.edge_type === "supports" || edge.edge_type === "resolves" ? "graph-edge-ok"
+          : "graph-edge-warn";
+        const midX = (a.x + b.x) / 2;
+        const midY = (a.y + b.y) / 2;
+        return `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" class="graph-edge ${cls}"></line>
+          <text x="${midX}" y="${midY - 8}" class="graph-label">${escapeHtml(edgeName(edge.edge_type))}</text>`;
+      }).join("");
+      const circles = list.map(node => {
+        const fill = node.role === "center" ? "url(#centerGrad)"
+          : node.role === "source" ? "rgba(34, 211, 238, .9)" : "rgba(167, 139, 250, .9)";
+        const r = node.role === "center" ? 34 : 24;
+        return `<circle cx="${node.x}" cy="${node.y}" r="${r}" fill="${fill}" class="graph-node"></circle>
+          <text x="${node.x}" y="${node.y + r + 18}" class="graph-label">${shortId(node.id)}</text>`;
+      }).join("");
+      return `<div class="graph-map"><svg viewBox="0 0 900 360">
+        <defs>
+          <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L9,3 z" fill="rgba(203,213,225,.8)"></path>
+          </marker>
+          <linearGradient id="centerGrad" x1="0" x2="1">
+            <stop offset="0%" stop-color="#22d3ee"></stop>
+            <stop offset="100%" stop-color="#a78bfa"></stop>
+          </linearGradient>
+        </defs>
+        ${lines}${circles}
+      </svg></div>
+      <div class="legend">
+        <span class="pill ok">подтверждает / решает</span>
+        <span class="pill warn">заменяет / связано</span>
+        <span class="pill hot">противоречит / блокирует</span>
+        <span class="pill">узлов: ${list.length}</span>
+      </div>`;
+    }
+
+    function shortId(value) {
+      const text = String(value);
+      return text.length > 13 ? `${text.slice(0, 6)}…${text.slice(-4)}` : text;
+    }
+
+    function layerName(value) {
+      return ({
+        core: "ядро", working: "рабочая", semantic: "семантика", episodic: "эпизод",
+        procedural: "процедура", social: "социальная", reflection: "рефлексия", error: "ошибка"
+      })[value] || value;
+    }
+
+    function statusName(value) {
+      return ({
+        active: "активно", stale: "устарело", disputed: "спорно", rejected: "отклонено",
+        archived: "архив", pinned: "закреплено", open: "открыто", accepted: "принято"
+      })[value] || value;
+    }
+
+    function edgeName(value) {
+      return ({
+        supports: "подтверждает", contradicts: "противоречит", supersedes: "заменяет",
+        derived_from: "получено из", related_to: "связано с", blocks: "блокирует",
+        resolves: "решает"
+      })[value] || value;
+    }
+
+    function reviewName(value) {
+      return ({
+        open: "открыто", accepted: "принято", rejected: "отклонено", overridden: "переопределено"
+      })[value] || value;
+    }
+
+    refreshAll().catch(err => {
+      $("kpiStatus").textContent = "Ошибка";
+      $("memories").innerHTML = `<div class="empty">${escapeHtml(err.message)}</div>`;
+      log(err.message);
+    });
   </script>
 </body>
 </html>
