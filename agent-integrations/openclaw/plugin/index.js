@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import { definePluginEntry } from "openclaw/plugin-sdk";
 
 const DEFAULT_URL = "http://localhost:8080";
 
@@ -103,7 +102,7 @@ async function retain(config, base, body) {
   });
 }
 
-export default definePluginEntry({
+export default {
   id: "universal-agent-memory",
   name: "Universal Agent Memory",
   description: "Native OpenClaw lifecycle hooks for shared long-term agent memory.",
@@ -198,4 +197,4 @@ export default definePluginEntry({
       }
     });
   },
-});
+};

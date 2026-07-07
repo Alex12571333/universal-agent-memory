@@ -156,4 +156,7 @@ def test_openclaw_installable_plugin_package_exists() -> None:
     assert package_json.exists()
     assert index_js.exists()
     assert "openclaw" in package_json.read_text()
-    assert "registerHook(\"agent_turn_prepare\"" in index_js.read_text()
+    index = index_js.read_text()
+    assert "registerHook(\"agent_turn_prepare\"" in index
+    assert "definePluginEntry" not in index
+    assert "export default {" in index
