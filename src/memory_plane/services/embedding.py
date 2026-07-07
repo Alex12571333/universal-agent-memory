@@ -31,7 +31,7 @@ class EmbeddingService:
         if item is None:
             raise ValueError(f"Memory item {memory_id} not found for tenant {tenant_id}")
 
-        vector = self._client.embed(item.text)
+        vector = self._embed_document(item.text)
         self._validate_dimension(vector)
         # Store embedding in Qdrant with model metadata in payload
         self._qdrant.upsert(item, dense_vector=vector, model_name=self._client.model_name)
@@ -44,7 +44,7 @@ class EmbeddingService:
 
         pairs = []
         for item in items:
-            vector = self._client.embed(item.text)
+            vector = self._embed_document(item.text)
             self._validate_dimension(vector)
             pairs.append((item, vector))
 
@@ -60,3 +60,10 @@ class EmbeddingService:
                 f"embedding dimension mismatch for {self._client.model_name}: "
                 f"expected {expected}, got {actual}"
             )
+
+    def _embed_document(self, text: str) -> list[float]:
+        """Use document-specific embeddings when the provider exposes them."""
+        embed_document = getattr(self._client, "embed_document", None)
+        if callable(embed_document):
+            return embed_document(text)
+        return self._client.embed(text)

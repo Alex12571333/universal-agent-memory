@@ -196,12 +196,24 @@ class TEIEmbeddingClient(EmbeddingClient):
 
     def embed(self, text: str) -> list[float]:
         """Call an OpenAI-compatible `/v1/embeddings` endpoint."""
+        return self.embed_document(text)
+
+    def embed_query(self, text: str) -> list[float]:
+        """Embed a retrieval query when the endpoint supports input typing."""
+        return self._embed(text, input_type="query")
+
+    def embed_document(self, text: str) -> list[float]:
+        """Embed a stored memory/document when the endpoint supports input typing."""
+        return self._embed(text, input_type="document")
+
+    def _embed(self, text: str, *, input_type: str) -> list[float]:
+        """Call an OpenAI-compatible `/v1/embeddings` endpoint."""
         headers = (
             {"Authorization": f"Bearer {self._api_key}"} if self._api_key else {}
         )
         data = _post_json(
             f"{self._base_url}/v1/embeddings",
-            {"model": self._model_name, "input": text},
+            {"model": self._model_name, "input": text, "input_type": input_type},
             headers=headers,
             timeout_seconds=self._timeout_seconds,
         )
