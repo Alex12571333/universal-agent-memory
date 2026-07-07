@@ -1459,8 +1459,366 @@ _OPERATOR_UI_HTML = """
       text-align: center;
     }
     a { color: var(--cyan); }
+    /* Reference dashboard skin: matches the supplied generated image layout. */
+    body {
+      background:
+        radial-gradient(circle at 70% 2%, rgba(37, 99, 235, .20), transparent 23rem),
+        radial-gradient(circle at 92% 8%, rgba(124, 58, 237, .23), transparent 26rem),
+        linear-gradient(135deg, #030712 0%, #06101f 42%, #020617 100%);
+    }
+    body::after {
+      content: "";
+      position: fixed;
+      top: 0;
+      left: 210px;
+      right: 0;
+      height: 250px;
+      pointer-events: none;
+      opacity: .84;
+      background:
+        radial-gradient(ellipse at 78% 0%, rgba(124, 58, 237, .42), transparent 24rem),
+        radial-gradient(ellipse at 64% 34%, rgba(37, 99, 235, .45), transparent 18rem),
+        repeating-radial-gradient(ellipse at 76% 18%, rgba(59, 130, 246, .22) 0 1px, transparent 1px 9px);
+      filter: blur(.2px);
+      mask-image: linear-gradient(to bottom, #000, transparent 92%);
+    }
+    .reference-sidebar {
+      position: fixed;
+      z-index: 10;
+      inset: 0 auto 0 0;
+      width: 210px;
+      padding: 28px 12px 18px;
+      border-right: 1px solid rgba(96, 165, 250, .18);
+      background:
+        linear-gradient(180deg, rgba(2, 10, 24, .96), rgba(3, 7, 18, .96)),
+        radial-gradient(circle at 28% 8%, rgba(14, 165, 233, .20), transparent 8rem);
+      box-shadow: 20px 0 60px rgba(0, 0, 0, .28);
+    }
+    .side-logo {
+      width: 42px;
+      height: 42px;
+      margin: 0 0 34px 14px;
+      border-radius: 999px;
+      background:
+        radial-gradient(circle at 50% 50%, rgba(34, 211, 238, .24), transparent 42%),
+        conic-gradient(from 40deg, #38bdf8, #2563eb, #8b5cf6, #38bdf8);
+      box-shadow: 0 0 28px rgba(56, 189, 248, .42), inset 0 0 0 8px rgba(2, 6, 23, .76);
+    }
+    .reference-sidebar .nav-title {
+      margin: 20px 14px 10px;
+      color: #a7b6d8;
+      font-size: 11px;
+      letter-spacing: .09em;
+    }
+    .reference-sidebar .nav-button {
+      min-height: 40px;
+      margin-bottom: 8px;
+      border-radius: 8px;
+      justify-content: flex-start;
+      padding: 10px 12px;
+      color: #c7d2fe;
+      background: transparent;
+      border-color: transparent;
+      box-shadow: none;
+    }
+    .reference-sidebar .nav-button.primary,
+    .reference-sidebar .nav-button:hover {
+      background: linear-gradient(90deg, rgba(37, 99, 235, .58), rgba(59, 130, 246, .16));
+      border-color: rgba(96, 165, 250, .32);
+      color: #f8fbff;
+    }
+    .health-card {
+      position: absolute;
+      left: 12px;
+      right: 12px;
+      bottom: 118px;
+      padding: 14px;
+      border: 1px solid rgba(96, 165, 250, .17);
+      border-radius: 14px;
+      background: rgba(2, 13, 29, .72);
+    }
+    .mini-meter {
+      height: 5px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: rgba(30, 41, 59, .9);
+      margin: 8px 0 14px;
+    }
+    .mini-meter span {
+      display: block;
+      width: 68%;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+    }
+    .shell {
+      position: relative;
+      z-index: 1;
+      width: calc(100vw - 246px);
+      max-width: 1290px;
+      margin: 0 24px 0 222px;
+      padding: 30px 0 10px;
+    }
+    header.hero {
+      min-height: 116px;
+      margin-bottom: 14px;
+      padding: 18px 22px 6px;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      box-shadow: none;
+      overflow: visible;
+    }
+    header.hero::after {
+      content: "";
+      position: absolute;
+      z-index: -1;
+      top: 38px;
+      right: 4%;
+      width: 560px;
+      height: 132px;
+      opacity: .9;
+      background:
+        radial-gradient(ellipse at 40% 55%, rgba(59, 130, 246, .65), transparent 5rem),
+        radial-gradient(ellipse at 70% 40%, rgba(139, 92, 246, .55), transparent 7rem);
+      filter: blur(28px);
+    }
+    header.hero .brand { display: none; }
+    h1 {
+      margin-top: 20px;
+      font-size: clamp(34px, 4vw, 44px);
+      letter-spacing: -.045em;
+      text-shadow: 0 0 34px rgba(96, 165, 250, .22);
+    }
+    .lede { max-width: 630px; font-size: 14px; color: #b8c3da; }
+    .hero-actions { align-self: start; padding-top: 34px; }
+    .hero-actions button:first-child { display: none; }
+    .hero-actions button.secondary {
+      min-height: 34px;
+      border-radius: 999px;
+      padding: 8px 14px;
+      color: #dbeafe;
+      background: rgba(2, 6, 23, .55);
+    }
+    .hero-actions button.secondary::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      margin-right: 8px;
+      border-radius: 999px;
+      display: inline-block;
+      background: #22c55e;
+      box-shadow: 0 0 12px rgba(34, 197, 94, .9);
+    }
+    .identity-kpi {
+      margin-bottom: 14px;
+      border: 0;
+      background: transparent;
+      box-shadow: none;
+      backdrop-filter: none;
+    }
+    .identity-kpi .panel-body { padding: 0 12px; }
+    .identity-kpi .form-grid {
+      position: absolute;
+      left: -9999px;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+    }
+    .kpis {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+      margin: 0;
+    }
+    .kpi {
+      min-height: 108px;
+      padding: 20px 20px 16px 80px;
+      border-radius: 12px;
+      border-color: rgba(96, 165, 250, .24);
+      background:
+        linear-gradient(135deg, rgba(15, 30, 55, .90), rgba(3, 11, 25, .72)),
+        radial-gradient(circle at 10% 20%, rgba(37, 99, 235, .22), transparent 7rem);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, .04);
+    }
+    .kpi::before {
+      content: "▣";
+      position: absolute;
+      left: 18px;
+      top: 23px;
+      width: 42px;
+      height: 42px;
+      display: grid;
+      place-items: center;
+      border-radius: 10px;
+      color: #60a5fa;
+      background: rgba(37, 99, 235, .20);
+      font-size: 24px;
+    }
+    .kpi:nth-child(2)::before { content: "⚖"; color: #c084fc; background: rgba(126, 34, 206, .22); }
+    .kpi:nth-child(3)::before { content: "▰"; color: #67e8f9; background: rgba(8, 145, 178, .20); }
+    .kpi:nth-child(4)::before { content: "⌁"; color: #6ee7b7; background: rgba(5, 150, 105, .18); }
+    .kpi .value { font-size: 25px; line-height: 1.15; }
+    .kpi .label { margin-bottom: 4px; color: #b6c2d9; letter-spacing: .08em; }
+    .cockpit {
+      display: none;
+    }
+    .grid {
+      grid-template-columns: minmax(420px, .92fr) minmax(420px, .9fr) minmax(300px, .62fr);
+      grid-template-areas:
+        "memory graph ops"
+        "vault conflicts ops";
+      gap: 12px;
+      padding: 0 12px 20px;
+      align-items: stretch;
+    }
+    .grid > section.panel:first-child {
+      grid-area: memory;
+      height: 496px;
+      min-height: 496px;
+      overflow: hidden;
+    }
+    .grid > section.panel:first-child .panel-body {
+      max-height: 438px;
+      overflow: auto;
+    }
+    .grid > aside.panel { grid-area: ops; }
+    .dashboard-graph-panel { grid-area: graph; height: 496px; }
+    .dashboard-vault-panel { grid-area: vault; height: 210px; }
+    .dashboard-conflict-panel { grid-area: conflicts; height: 210px; }
+    .panel {
+      border-radius: 12px;
+      border-color: rgba(96, 165, 250, .22);
+      background: rgba(3, 12, 26, .78);
+      box-shadow: none;
+    }
+    .panel-head { padding: 16px 16px 0; }
+    .panel-body { padding: 14px 16px 16px; }
+    .tabs {
+      padding: 0 10px;
+      min-height: 45px;
+      align-items: stretch;
+      background: rgba(3, 12, 26, .72);
+    }
+    .tab {
+      min-width: 84px;
+      min-height: 44px;
+      border-radius: 0;
+      font-weight: 650;
+    }
+    .tab.active {
+      color: #60a5fa;
+      background: transparent;
+      border: 0;
+      border-bottom: 2px solid #3b82f6;
+    }
+    #view-memory .panel-head h2::after { content: "Recent Memories"; font-size: 0; }
+    #view-memory .form-grid {
+      grid-template-columns: 1fr auto auto;
+      align-items: center;
+    }
+    #query, #layer, #status, #label, #view-memory .form-grid button {
+      min-height: 36px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      font-size: 12px;
+    }
+    #label { display: none; }
+    .card {
+      border-radius: 8px;
+      background: rgba(10, 22, 40, .76);
+      border-color: rgba(51, 65, 85, .82);
+      padding: 13px 14px;
+    }
+    .card::before { width: 0; }
+    .memory-text { font-size: 13px; color: #dbeafe; }
+    .memory-text + .row { margin-top: 8px !important; }
+    .pill { border-radius: 6px; padding: 3px 8px; font-size: 11px; }
+    .force-graph {
+      min-height: 390px;
+      border-radius: 10px;
+      border-color: transparent;
+      background:
+        radial-gradient(circle at 50% 46%, rgba(29, 78, 216, .32), transparent 9rem),
+        rgba(2, 8, 20, .28);
+    }
+    #referenceGraph {
+      min-height: 360px;
+      height: 360px;
+      touch-action: auto;
+    }
+    #referenceGraph .force-svg {
+      cursor: default;
+    }
+    .graph-tools {
+      right: 14px;
+      bottom: 14px;
+      border-radius: 8px;
+      transform: scale(.86);
+      transform-origin: bottom right;
+    }
+    .log { max-height: 430px; }
+    .ops-action {
+      display: grid;
+      grid-template-columns: 42px 1fr auto;
+      gap: 12px;
+      align-items: center;
+      padding: 12px;
+      border: 1px solid rgba(96, 165, 250, .22);
+      border-radius: 10px;
+      background: linear-gradient(135deg, rgba(59, 130, 246, .12), rgba(15, 23, 42, .42));
+      margin-bottom: 10px;
+    }
+    .ops-icon {
+      width: 38px;
+      height: 38px;
+      display: grid;
+      place-items: center;
+      border-radius: 10px;
+      background: rgba(59, 130, 246, .17);
+      color: #93c5fd;
+      font-size: 19px;
+    }
+    .activity-item {
+      display: grid;
+      grid-template-columns: 30px 1fr auto;
+      gap: 10px;
+      align-items: start;
+      padding: 10px;
+      border: 1px solid rgba(51, 65, 85, .54);
+      border-radius: 8px;
+      background: rgba(15, 23, 42, .40);
+      margin-bottom: 7px;
+    }
+    .activity-dot {
+      width: 24px;
+      height: 24px;
+      display: grid;
+      place-items: center;
+      border-radius: 7px;
+      background: rgba(37, 99, 235, .16);
+      color: #60a5fa;
+      font-size: 12px;
+    }
+    .dashboard-vault-panel pre { max-height: 158px; font-size: 11px; }
+    .dashboard-vault-tree {
+      display: grid;
+      grid-template-columns: 160px 1fr;
+      gap: 10px;
+    }
+    .tree-list {
+      padding: 8px;
+      border: 1px solid rgba(51, 65, 85, .72);
+      border-radius: 8px;
+      background: rgba(2, 8, 20, .46);
+      font-size: 12px;
+      line-height: 1.9;
+    }
     @media (max-width: 1100px) {
+      .reference-sidebar { display: none; }
+      .shell { width: min(100vw - 24px, 1500px); margin: 0 auto; }
       header.hero, .grid, .split, .cockpit-layout { grid-template-columns: 1fr; }
+      .grid { grid-template-areas: none; }
+      .grid > section.panel, .grid > aside.panel, .dashboard-graph-panel, .dashboard-vault-panel, .dashboard-conflict-panel { grid-area: auto; }
       .hero-actions { justify-content: flex-start; }
       .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .form-grid { grid-template-columns: 1fr 1fr; }
@@ -1474,24 +1832,47 @@ _OPERATOR_UI_HTML = """
   </style>
 </head>
 <body>
+  <aside class="reference-sidebar" aria-label="Главная навигация">
+    <div class="side-logo" aria-hidden="true"></div>
+    <div class="nav-title">Overview</div>
+    <button class="nav-button primary" onclick="showTab('memory')">▦ Dashboard</button>
+    <button class="nav-button" onclick="showTab('conflicts')">✉ Inbox <span class="pill warn" style="margin-left:auto">3</span></button>
+    <button class="nav-button" onclick="refreshAll()">⌁ Activity</button>
+    <button class="nav-button" onclick="showTab('settings')">⚙ Settings</button>
+    <div class="nav-title">System</div>
+    <button class="nav-button" onclick="showTab('memory')">♙ Agents</button>
+    <button class="nav-button" onclick="showTab('memory')">▤ Memory Sources</button>
+    <button class="nav-button" onclick="showTab('settings')">⌬ Integrations</button>
+    <button class="nav-button" onclick="showTab('vault')">▣ Vaults</button>
+    <button class="nav-button" onclick="showTab('settings')">♧ Users</button>
+    <div class="health-card">
+      <div class="agent-row"><strong>System Health</strong><span class="pill ok">Healthy</span></div>
+      <div class="muted tiny" style="margin-top:10px">Version <span style="float:right">0.2.1</span></div>
+      <div class="muted tiny">Uptime <span style="float:right">7d 14h</span></div>
+      <div class="muted tiny">Storage <span style="float:right">2.4 TB / 8 TB</span></div>
+      <div class="mini-meter"><span></span></div>
+      <div class="muted tiny">CPU <span style="float:right">18%</span></div>
+      <div class="sparkline" style="width:88%;height:3px;margin:8px 0 12px"></div>
+      <div class="muted tiny">RAM <span style="float:right">32%</span></div>
+      <div class="sparkline" style="width:72%;height:3px;margin-top:8px"></div>
+    </div>
+  </aside>
   <div class="shell">
     <header class="hero">
       <div>
-        <div class="brand"><span class="orb"></span> Локальный пульт памяти</div>
-        <h1>Универсальная память агентов</h1>
+        <div class="brand"><span class="orb"></span> Self-hosted</div>
+        <h1>Universal Agent Memory</h1>
         <p class="lede">
-          Современная консоль для общей долговременной памяти: поиск и recall,
-          разбор конфликтов, экспорт Obsidian‑хранилища и подробный граф связей
-          вокруг каждого воспоминания. Все записи идут через append-only API.
+          A universal memory layer for all AI agents. Self-hosted. Yours.
         </p>
       </div>
       <div class="hero-actions">
         <button onclick="refreshAll()">Обновить пульт</button>
-        <button class="secondary" onclick="showTab('vault')">Открыть хранилище</button>
+        <button class="secondary" onclick="showTab('settings')">SELF-HOSTED</button>
       </div>
     </header>
 
-    <section class="panel">
+    <section class="panel identity-kpi">
       <div class="panel-body">
         <div class="form-grid">
           <label class="wide">
@@ -1747,6 +2128,66 @@ _OPERATOR_UI_HTML = """
         </div>
       </section>
 
+      <section class="panel dashboard-graph-panel">
+        <div class="panel-head">
+          <div>
+            <h2>Memory Graph <span class="muted tiny">ⓘ</span></h2>
+          </div>
+          <button class="secondary" onclick="showTab('graph')">↗ Expand</button>
+        </div>
+        <div class="panel-body">
+          <div id="referenceGraph" class="force-graph" aria-label="Reference memory graph">
+            <svg class="force-svg" role="img"></svg>
+          </div>
+          <div class="legend">
+            <span class="pill ok">Core Memory</span>
+            <span class="pill warn">Semantic Memory</span>
+            <span class="pill">Contextual Memory</span>
+            <span class="pill">Weak Connection</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel dashboard-vault-panel">
+        <div class="panel-head">
+          <div><h2>Vault Preview</h2></div>
+          <button class="secondary" onclick="showTab('vault')">↗</button>
+        </div>
+        <div class="panel-body dashboard-vault-tree">
+          <div class="tree-list">
+            ▸ 📁 00_Inbox <span class="pill">12</span><br>
+            ▾ 📁 01_Projects<br>
+            &nbsp;&nbsp;› 📄 ai-memory<br>
+            &nbsp;&nbsp;› 📁 research<br>
+            &nbsp;&nbsp;› 📁 personal<br>
+            ▸ 📁 02_Resources<br>
+            ▸ 📁 03_Archives
+          </div>
+          <pre># AI Memory System
+## Goal
+Build a universal memory layer for AI agents that is:
+- Self-hosted
+- Agent-agnostic
+- Privacy-first
+- Extensible
+
+## Core Features</pre>
+        </div>
+      </section>
+
+      <section class="panel dashboard-conflict-panel">
+        <div class="panel-head">
+          <div><h2>Conflict Review Inbox <span class="pill warn">3</span></h2></div>
+          <button class="ghost" onclick="showTab('conflicts')">View all</button>
+        </div>
+        <div class="panel-body">
+          <div class="activity-item"><span class="activity-dot">▣</span><div><strong>Timezone preference mismatch</strong><div class="muted tiny">UTC+2 vs UTC+3</div></div><span class="pill warn">medium</span></div>
+          <div class="activity-item"><span class="activity-dot">↔</span><div><strong>Response length preference</strong><div class="muted tiny">Concise vs Detailed</div></div><span class="pill ok">low</span></div>
+          <div class="activity-item"><span class="activity-dot">⌘</span><div><strong>Tool preference conflict</strong><div class="muted tiny">Obsidian vs Notion</div></div><span class="pill ok">low</span></div>
+          <button style="width:100%;min-height:34px;margin-top:4px" onclick="showTab('conflicts')">Review All Conflicts →</button>
+        </div>
+      </section>
+
       <aside class="panel">
         <div class="panel-head">
           <div>
@@ -1755,12 +2196,16 @@ _OPERATOR_UI_HTML = """
           </div>
         </div>
         <div class="panel-body">
-          <div class="toolbar">
-            <button onclick="reflect()">Рефлексия</button>
-            <button class="secondary" onclick="reindex()">Переиндексация</button>
-            <button class="secondary" onclick="loadConflicts()">Входящие</button>
+          <div>
+            <button class="ops-action" onclick="reflect()"><span class="ops-icon">✣</span><span><strong>Reflect</strong><br><span class="muted tiny">Synthesize & reflect</span></span></button>
+            <button class="ops-action" onclick="reindex()"><span class="ops-icon">⟳</span><span><strong>Reindex</strong><br><span class="muted tiny">Update embeddings</span></span></button>
+            <button class="ops-action" onclick="loadConflicts()"><span class="ops-icon">✉</span><span><strong>Inbox</strong><br><span class="muted tiny">Review conflicts</span></span><span class="pill warn">3</span></button>
           </div>
-          <h3 style="margin-top:18px">Журнал действий</h3>
+          <h3 style="margin-top:18px">Activity Log <button class="ghost" style="float:right;min-height:20px;padding:0">View all</button></h3>
+          <div class="activity-item"><span class="activity-dot">✧</span><div><strong>New memory ingested</strong><div class="muted tiny">User prefers concise answers</div></div><span class="muted tiny">2m</span></div>
+          <div class="activity-item"><span class="activity-dot" style="color:#fb7185">!</span><div><strong style="color:#fb7185">Conflict detected</strong><div class="muted tiny">Timezone preference mismatch</div></div><span class="muted tiny">18m</span></div>
+          <div class="activity-item"><span class="activity-dot">↻</span><div><strong>Memory reindexed</strong><div class="muted tiny">AI Memory System Project</div></div><span class="muted tiny">42m</span></div>
+          <div class="activity-item"><span class="activity-dot">▣</span><div><strong>Vault file added</strong><div class="muted tiny">/Projects/ai-memory/roadmap.md</div></div><span class="muted tiny">1h</span></div>
           <div id="log" class="log"><div class="muted">Готово.</div></div>
         </div>
       </aside>
@@ -2471,6 +2916,9 @@ _OPERATOR_UI_HTML = """
         edge_type: memory.status === "disputed" ? "contradicts" : "related_to",
         weight: memory.confidence || .7,
       }));
+      if ($("referenceGraph")) {
+        $("referenceGraph").innerHTML = renderReferenceGraphScene();
+      }
       $("overviewGraph").innerHTML = renderGraphHost("overview", "Обзорная карта памяти");
       mountForceGraph("overviewGraphHost", nodes, edges, { compact: true });
       const state = graphInstances.overviewGraphHost;
@@ -2492,6 +2940,55 @@ _OPERATOR_UI_HTML = """
         <div class="muted tiny">${escapeHtml(memory.id)}</div>
         <p style="margin:8px 0 0">${escapeHtml(memory.text)}</p>
         <button class="secondary" style="margin-top:10px;width:100%" onclick="inspectGraph('${memory.id}')">Открыть граф узла</button>`;
+    }
+
+    function renderReferenceGraphScene() {
+      const cx = 220;
+      const cy = 178;
+      const nodes = [
+        { label: "Response\\nPreferences", x: 72, y: 112, r: 38, cls: "core" },
+        { label: "Communication\\nStyle", x: 220, y: 58, r: 34, cls: "semantic" },
+        { label: "AI Memory\\nSystem Project", x: 370, y: 120, r: 36, cls: "core" },
+        { label: "Tools &\\nSoftware", x: 78, y: 258, r: 34, cls: "context" },
+        { label: "Obsidian\\nPreference", x: 220, y: 304, r: 34, cls: "semantic" },
+        { label: "Context &\\nEnvironment", x: 365, y: 258, r: 34, cls: "context" },
+      ];
+      const spokes = nodes.map(node => `<line class="edge-line ok" x1="${cx}" y1="${cy}" x2="${node.x}" y2="${node.y}"></line>`).join("");
+      const satellites = Array.from({ length: 26 }, (_, index) => {
+        const angle = index * Math.PI * 2 / 26;
+        const radius = 122 + (index % 4) * 16;
+        const x = cx + Math.cos(angle) * radius;
+        const y = cy + Math.sin(angle) * radius;
+        const opacity = .25 + (index % 5) * .09;
+        return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${index % 3 === 0 ? 5 : 3.5}" fill="#3b82f6" opacity="${opacity.toFixed(2)}"></circle>
+          <line class="edge-line" x1="${cx}" y1="${cy}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" opacity=".18"></line>`;
+      }).join("");
+      const renderedNodes = nodes.map(node => {
+        const fill = node.cls === "semantic" ? "url(#refSemantic)" : node.cls === "context" ? "url(#refContext)" : "url(#refCore)";
+        return `<g>
+          <circle cx="${node.x}" cy="${node.y}" r="${node.r}" fill="rgba(2,8,23,.86)" stroke="rgba(96,165,250,.55)"></circle>
+          <circle cx="${node.x}" cy="${node.y}" r="${node.r - 2}" fill="${fill}" opacity=".42"></circle>
+          ${node.label.split("\\n").map((line, i) => `<text class="node-label" x="${node.x}" y="${node.y - 4 + i * 13}">${escapeHtml(line)}</text>`).join("")}
+        </g>`;
+      }).join("");
+      return `<svg class="force-svg" viewBox="0 0 440 360" role="img" aria-label="Memory graph preview">
+        <defs>
+          <radialGradient id="refCenter"><stop offset="0%" stop-color="#93c5fd"></stop><stop offset="58%" stop-color="#2563eb"></stop><stop offset="100%" stop-color="#020617"></stop></radialGradient>
+          <linearGradient id="refCore" x1="0" x2="1"><stop stop-color="#0ea5e9"></stop><stop offset="1" stop-color="#2563eb"></stop></linearGradient>
+          <linearGradient id="refSemantic" x1="0" x2="1"><stop stop-color="#7c3aed"></stop><stop offset="1" stop-color="#a855f7"></stop></linearGradient>
+          <linearGradient id="refContext" x1="0" x2="1"><stop stop-color="#0891b2"></stop><stop offset="1" stop-color="#22d3ee"></stop></linearGradient>
+        </defs>
+        ${satellites}
+        ${spokes}
+        ${renderedNodes}
+        <g>
+          <circle cx="${cx}" cy="${cy}" r="58" fill="url(#refCenter)" stroke="#60a5fa" stroke-width="2"></circle>
+          <circle cx="${cx}" cy="${cy}" r="67" fill="none" stroke="rgba(59,130,246,.36)"></circle>
+          <text class="node-label" x="${cx}" y="${cy - 8}">User prefers</text>
+          <text class="node-label" x="${cx}" y="${cy + 6}">concise, bullet-point</text>
+          <text class="node-label" x="${cx}" y="${cy + 20}">answers</text>
+        </g>
+      </svg>`;
     }
 
     function shortId(value) {
