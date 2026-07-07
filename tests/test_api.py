@@ -279,6 +279,26 @@ def test_memory_list_endpoint_and_operator_ui() -> None:
     assert "/v1/workspaces/" in ui.text
 
 
+def test_retain_endpoint_redacts_secret_before_storage() -> None:
+    container = build_in_memory_container()
+    client = TestClient(create_app(container))
+
+    response = client.post(
+        "/v1/memory/retain",
+        json={
+            "layer": "semantic",
+            "scope": "workspace",
+            "kind": "log",
+            "text": "Leaked key sk-abcdefghijklmnopqrstuvwxyz123456 in trace.",
+        },
+    )
+    rows = container.store.list_for_workspace(DEFAULT_SERVER_ID, DEFAULT_PROJECT_ID)
+
+    assert response.status_code == 201
+    assert "sk-abcdefghijklmnopqrstuvwxyz123456" not in rows[0].text
+    assert rows[0].metadata["privacy"]["finding_kinds"] == ["openai_api_key"]
+
+
 def test_vault_endpoint_exports_markdown_files() -> None:
     client = TestClient(create_app(build_in_memory_container()))
     retained = client.post(

@@ -280,7 +280,7 @@ Runtime APIs verified against `.14`:
 Next hardening step: install these adapters into the live `.14` runtimes and run
 end-to-end smoke tests against a local UAM server.
 
-## WP-16 Secrets and PII guard
+## WP-16 Secrets and PII guard — complete
 
 Add a pre-ingest policy gate.
 
@@ -303,10 +303,19 @@ Actions:
 
 Acceptance:
 
-- deterministic regex detectors for common secrets;
-- configurable policy;
-- audit trail for redaction decisions;
-- tests with representative secret fixtures.
+- deterministic regex detectors for common secrets; ✅
+- configurable policy; ✅ `UAM_PRIVACY_ENABLED`, `UAM_PRIVACY_ACTION`
+- audit trail for redaction decisions; ✅ metadata `privacy`
+- tests with representative secret fixtures. ✅
+
+Implemented actions:
+
+- `redact` — default, stores sanitized text;
+- `reject` — refuses retention/supersede;
+- `metadata_only` — stores only a placeholder plus audit metadata;
+- `allow` — stores text and records audit metadata when enabled.
+
+See also [ROADMAP_PHASE_3.md](ROADMAP_PHASE_3.md) for follow-up hardening.
 
 ## WP-17 Temporal lifecycle and decay policies
 

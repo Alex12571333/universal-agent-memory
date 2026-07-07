@@ -30,6 +30,15 @@
 | `RetentionService.retain(command)` | `RetainCommand` → `RetainResult` | Append-only; memory и outbox фиксируются одной транзакцией |
 | `RetentionService.supersede(command)` | `SupersedeMemoryCommand` → `RetainResult` | CAS append; stale revision → `MemoryRevisionConflictError` |
 
+## Privacy — `services/privacy.py`
+
+| Функция | Вход → выход | Гарантия |
+|---|---|---|
+| `PrivacyGuard.from_env()` | `UAM_PRIVACY_*` env → guard | Default action is `redact` |
+| `PrivacyGuard.scan(text)` | Text → findings | Deterministic non-overlapping detector hits |
+| `PrivacyGuard.apply(text)` | Text → sanitized decision | Redact/reject/metadata-only/allow policy |
+| `_luhn_valid(raw)` | Candidate card string → bool | Reduces payment-card false positives |
+
 ## Ingestion — `services/ingestion.py`
 
 | Функция | Вход → выход | Гарантия |

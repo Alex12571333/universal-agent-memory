@@ -81,6 +81,20 @@ curl -H 'Authorization: Bearer replace-with-a-long-random-secret' \
 OpenAPI/docs, требуют bearer key. Не публикуйте порт `8080` в интернет без TLS
 reverse proxy.
 
+## Secrets/PII guard
+
+Перед сохранением память проходит deterministic privacy guard. По умолчанию
+секреты и high-risk PII редактируются, а в `metadata.privacy` сохраняется audit
+trail без сырого секрета.
+
+```bash
+UAM_PRIVACY_ENABLED=true
+UAM_PRIVACY_ACTION=redact  # redact|reject|metadata_only|allow
+```
+
+Детекторы покрывают common API keys/tokens, private keys, password assignments,
+AWS-style access keys, SSN и payment-card-like значения с Luhn-проверкой.
+
 ## Метрики и backup
 
 `/metrics` отдаёт Prometheus text format и показывает базовые counters/lag:
@@ -209,6 +223,7 @@ UAM_EMBEDDING_API_KEY=...
 - Obsidian-compatible Markdown vault export/import;
 - deterministic conflict review inbox with persisted human decisions;
 - local operator UI at `/ui`;
+- secrets/PII guard with redaction audit metadata;
 - изоляция проектов через PostgreSQL RLS;
 - in-memory режим для unit-тестов;
 - Docker image, Compose и CI.
