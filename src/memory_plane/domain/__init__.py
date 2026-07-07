@@ -6,6 +6,7 @@ from memory_plane.domain.conflict import (
     ConflictReviewDecision,
     ConflictReviewStatus,
 )
+from memory_plane.domain.graph import MemoryEdge, MemoryEdgeType
 from memory_plane.domain.models import (
     ContextPackage,
     ContextSection,
@@ -22,6 +23,8 @@ __all__ = [
     "ConflictCase",
     "ConflictReviewDecision",
     "ConflictReviewStatus",
+    "MemoryEdge",
+    "MemoryEdgeType",
     "ContextPackage",
     "ContextSection",
     "MemoryItem",

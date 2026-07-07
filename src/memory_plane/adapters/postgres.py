@@ -12,6 +12,7 @@ from memory_plane.contracts.dto import Candidate, RecallQuery
 from memory_plane.contracts.events import ClaimedEvent, ConsumerClaim, IntegrationEvent
 from memory_plane.domain.checkpoint import Checkpoint, StaleRevisionError
 from memory_plane.domain.conflict import ConflictReviewDecision, ConflictReviewStatus
+from memory_plane.domain.graph import MemoryEdge, MemoryEdgeType
 from memory_plane.domain.models import (
     MemoryItem,
     MemoryLayer,
@@ -633,6 +634,80 @@ class PostgresMemoryLedger:
             for row in rows
         )
 
+    def save_edge(self, edge: MemoryEdge) -> MemoryEdge:
+        """Persist one graph edge under RLS."""
+        with self._connection() as connection:
+            self._set_tenant(connection, edge.tenant_id)
+            connection.execute(
+                """
+                insert into memory_edges (
+                  id, tenant_id, workspace_id, src_id, dst_id, edge_type, weight,
+                  valid_from, valid_to, provenance_item_id, created_at
+                ) values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                on conflict (id) do nothing
+                """,
+                (
+                    edge.id,
+                    edge.tenant_id,
+                    edge.workspace_id,
+                    edge.src_id,
+                    edge.dst_id,
+                    edge.edge_type.value,
+                    edge.weight,
+                    edge.valid_from,
+                    edge.valid_to,
+                    edge.provenance_item_id,
+                    edge.created_at,
+                ),
+            )
+        return edge
+
+    def list_neighbors(
+        self,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        item_id: UUID,
+        *,
+        edge_type: MemoryEdgeType | None = None,
+    ) -> tuple[MemoryEdge, ...]:
+        """List incoming/outgoing graph edges under RLS."""
+        with self._connection() as connection:
+            self._set_tenant(connection, tenant_id)
+            rows = connection.execute(
+                """
+                select id, tenant_id, workspace_id, src_id, dst_id, edge_type, weight,
+                  valid_from, valid_to, provenance_item_id, created_at
+                from memory_edges
+                where workspace_id = %s
+                  and (src_id = %s or dst_id = %s)
+                  and (%s is null or edge_type = %s)
+                order by created_at, id
+                """,
+                (
+                    workspace_id,
+                    item_id,
+                    item_id,
+                    edge_type.value if edge_type else None,
+                    edge_type.value if edge_type else None,
+                ),
+            ).fetchall()
+        return tuple(
+            MemoryEdge(
+                id=row["id"],
+                tenant_id=row["tenant_id"],
+                workspace_id=row["workspace_id"],
+                src_id=row["src_id"],
+                dst_id=row["dst_id"],
+                edge_type=MemoryEdgeType(row["edge_type"]),
+                weight=row["weight"],
+                valid_from=row["valid_from"],
+                valid_to=row["valid_to"],
+                provenance_item_id=row["provenance_item_id"],
+                created_at=row["created_at"],
+            )
+            for row in rows
+        )
+
     def list_observations(
         self, tenant_id: UUID, workspace_id: UUID
     ) -> tuple[Observation, ...]:
@@ -874,6 +949,34 @@ class PostgresConflictReviewRepository:
     ) -> tuple[ConflictReviewDecision, ...]:
         """Delegate tenant-safe review listing."""
         return self._store.list_conflict_reviews(tenant_id, workspace_id)
+
+
+class PostgresGraphRepository:
+    """Graph port view over the shared PostgreSQL ledger."""
+
+    def __init__(self, store: PostgresMemoryLedger) -> None:
+        """Retain shared connection configuration."""
+        self._store = store
+
+    def save_edge(self, edge: MemoryEdge) -> MemoryEdge:
+        """Delegate edge persistence."""
+        return self._store.save_edge(edge)
+
+    def list_neighbors(
+        self,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        item_id: UUID,
+        *,
+        edge_type: MemoryEdgeType | None = None,
+    ) -> tuple[MemoryEdge, ...]:
+        """Delegate neighbor lookup."""
+        return self._store.list_neighbors(
+            tenant_id,
+            workspace_id,
+            item_id,
+            edge_type=edge_type,
+        )
 
 
 class PostgresCheckpointStore:

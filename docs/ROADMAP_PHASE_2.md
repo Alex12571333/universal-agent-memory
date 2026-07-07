@@ -353,7 +353,7 @@ Retrieval policy:
 - `stale` and `deprecated` are strongly demoted;
 - `pinned` boosts core memory.
 
-## WP-18 Graph layer
+## WP-18 Graph layer — complete
 
 Use existing `memory_edges` as the first production graph layer before adopting
 any external graph DB.
@@ -371,10 +371,16 @@ Edges:
 
 Acceptance:
 
-- edge write/read APIs;
-- graph neighbors can feed retrieval;
-- vault export renders backlinks;
-- conflict resolver uses `contradicts` edges.
+- edge write/read APIs; ✅ `POST /v1/graph/edges`, `GET /v1/memory/{id}/neighbors`
+- graph neighbors can feed retrieval; pending retrieval expansion
+- vault export renders backlinks; pending vault graph rendering
+- conflict resolver uses `contradicts` edges. pending automatic edge emission
+
+Implemented edge types:
+
+```text
+supports|contradicts|derived_from|same_entity|caused_by|owned_by_agent|from_thread|supersedes
+```
 
 ## WP-19 Maintenance jobs
 

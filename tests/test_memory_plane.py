@@ -13,6 +13,7 @@ from memory_plane.contracts.dto import (
 )
 from memory_plane.contracts.events import IntegrationEvent
 from memory_plane.domain.conflict import ConflictReviewStatus
+from memory_plane.domain.graph import MemoryEdgeType
 from memory_plane.domain.models import (
     MemoryLayer,
     MemoryRevisionConflictError,
@@ -172,6 +173,52 @@ class MemoryPlaneTest(unittest.TestCase):
     def test_pinned_memory_must_be_core(self) -> None:
         with self.assertRaises(ValueError):
             self.retain("Pinned semantic is invalid", status=MemoryStatus.PINNED)
+
+    def test_graph_links_and_lists_neighbors(self) -> None:
+        source = self.retain("Alpha release date is disputed")
+        target = self.retain("Alpha release date is July 16")
+
+        edge = self.container.graph.link(
+            tenant_id=self.tenant,
+            workspace_id=self.workspace,
+            src_id=source.item.id,
+            dst_id=target.item.id,
+            edge_type=MemoryEdgeType.CONTRADICTS,
+            weight=0.8,
+        )
+        neighbors = self.container.graph.neighbors(
+            tenant_id=self.tenant,
+            workspace_id=self.workspace,
+            item_id=source.item.id,
+        )
+
+        self.assertEqual(MemoryEdgeType.CONTRADICTS, edge.edge_type)
+        self.assertEqual((edge.id,), tuple(row.id for row in neighbors))
+
+    def test_graph_rejects_cross_workspace_edges(self) -> None:
+        source = self.retain("Alpha source")
+        other_workspace = uuid4()
+        target = self.container.retention.retain(
+            RetainCommand(
+                tenant_id=self.tenant,
+                workspace_id=other_workspace,
+                agent_id=self.agent,
+                layer=MemoryLayer.SEMANTIC,
+                scope=MemoryScope.WORKSPACE,
+                kind="fact",
+                text="Other workspace target",
+                provenance=Provenance(source_kind="test"),
+            )
+        )
+
+        with self.assertRaises(ValueError):
+            self.container.graph.link(
+                tenant_id=self.tenant,
+                workspace_id=self.workspace,
+                src_id=source.item.id,
+                dst_id=target.item.id,
+                edge_type=MemoryEdgeType.SUPPORTS,
+            )
 
     def test_recall_hides_thread_memory_without_matching_thread(self) -> None:
         thread = uuid4()

@@ -331,6 +331,45 @@ def test_memory_status_filters_list_and_recall() -> None:
     assert "Rejected memory" not in {row["text"] for row in recalled.json()["results"]}
 
 
+def test_graph_edge_endpoints_create_and_list_neighbors() -> None:
+    client = TestClient(create_app(build_in_memory_container()))
+    source = client.post(
+        "/v1/memory/retain",
+        json={
+            "layer": "semantic",
+            "scope": "workspace",
+            "kind": "fact",
+            "text": "Graph source",
+        },
+    ).json()
+    target = client.post(
+        "/v1/memory/retain",
+        json={
+            "layer": "semantic",
+            "scope": "workspace",
+            "kind": "fact",
+            "text": "Graph target",
+        },
+    ).json()
+
+    edge = client.post(
+        "/v1/graph/edges",
+        json={
+            "src_id": source["id"],
+            "dst_id": target["id"],
+            "edge_type": "supports",
+            "weight": 0.9,
+        },
+    )
+    neighbors = client.get(f"/v1/memory/{source['id']}/neighbors")
+
+    assert edge.status_code == 201
+    assert edge.json()["edge_type"] == "supports"
+    assert neighbors.status_code == 200
+    assert neighbors.json()["count"] == 1
+    assert neighbors.json()["edges"][0]["dst_id"] == target["id"]
+
+
 def test_vault_endpoint_exports_markdown_files() -> None:
     client = TestClient(create_app(build_in_memory_container()))
     retained = client.post(
