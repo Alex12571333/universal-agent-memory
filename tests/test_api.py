@@ -275,7 +275,8 @@ def test_memory_list_endpoint_and_operator_ui() -> None:
     assert listed.json()["count"] == 1
     assert listed.json()["memories"][0]["text"] == "Always preserve append-only evidence."
     assert ui.status_code == 200
-    assert "Universal Agent Memory" in ui.text
+    assert "Универсальная память агентов" in ui.text
+    assert "Подробный граф памяти" in ui.text
     assert "/v1/workspaces/" in ui.text
 
 
