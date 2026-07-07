@@ -23,6 +23,20 @@ backup = _load_script("backup")
 restore = _load_script("restore")
 export_vault = _load_script("export_vault")
 import_vault = _load_script("import_vault")
+migrate = _load_script("migrate")
+
+
+def test_migration_runner_includes_every_versioned_sql_file() -> None:
+    expected = {
+        "001_initial.sql",
+        "002_app_role.sql",
+        "003_outbox_delivery.sql",
+        "004_conflict_reviews.sql",
+        "005_memory_status.sql",
+    }
+    configured = {path.name for path in migrate.MIGRATIONS}
+
+    assert configured == expected
 
 
 def test_backup_invokes_pg_dump(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

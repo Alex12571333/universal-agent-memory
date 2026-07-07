@@ -100,6 +100,31 @@ services:
         condition: service_started
     restart: unless-stopped
 
+  embedding-worker:
+    profiles: ["advanced"]
+    build:
+      context: .
+    command: ["python", "-m", "memory_plane.workers.embedding_main"]
+    environment:
+      UAM_DATABASE_URL: postgresql://memory_app:memory@postgres:5432/memory
+      UAM_SERVER_ID: 00000000-0000-0000-0000-000000000001
+      UAM_PROJECT_ID: 00000000-0000-0000-0000-000000000002
+      UAM_NATS_URL: nats://nats:4222
+      UAM_QDRANT_URL: ${UAM_QDRANT_URL:-http://qdrant:6333}
+      UAM_EMBEDDING_PROVIDER: ${UAM_EMBEDDING_PROVIDER:-fake}
+      UAM_EMBEDDING_MODEL: ${UAM_EMBEDDING_MODEL:-fake-embed-v1}
+      UAM_EMBEDDING_DIM: ${UAM_EMBEDDING_DIM:-1536}
+      UAM_EMBEDDING_BASE_URL: ${UAM_EMBEDDING_BASE_URL:-}
+      UAM_EMBEDDING_API_KEY: ${UAM_EMBEDDING_API_KEY:-}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      nats:
+        condition: service_started
+      qdrant:
+        condition: service_started
+    restart: unless-stopped
+
   backup:
     profiles: ["ops"]
     build:

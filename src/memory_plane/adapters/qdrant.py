@@ -322,12 +322,10 @@ class QdrantCandidateSource:
                     FieldCondition(key="labels", match=MatchValue(value=label))
                 )
 
-        rows = self._client.search(  # type: ignore[union-attr]
-            collection_name=self.collection,
-            query_vector=("dense", query_vector),
+        rows = self._query_points(
+            query_vector=query_vector,
             query_filter=Filter(must=must_conditions),
             limit=max(query.top_k * 3, query.top_k),
-            with_payload=True,
         )
         candidates: list[Candidate] = []
         query_terms = self._terms(query.text)
@@ -450,3 +448,31 @@ class QdrantCandidateSource:
         if callable(embed_query):
             return embed_query(text)
         return self._query_embedding_client.embed(text)
+
+    def _query_points(
+        self,
+        *,
+        query_vector: list[float],
+        query_filter: object,
+        limit: int,
+    ) -> Sequence[object]:
+        """Run a named-vector query across qdrant-client API versions."""
+        assert self._client is not None
+        search = getattr(self._client, "search", None)
+        if callable(search):
+            return search(
+                collection_name=self.collection,
+                query_vector=("dense", query_vector),
+                query_filter=query_filter,
+                limit=limit,
+                with_payload=True,
+            )
+        response = self._client.query_points(  # type: ignore[union-attr]
+            collection_name=self.collection,
+            query=query_vector,
+            using="dense",
+            query_filter=query_filter,
+            limit=limit,
+            with_payload=True,
+        )
+        return response.points

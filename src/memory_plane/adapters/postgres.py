@@ -34,6 +34,15 @@ _ITEM_COLUMNS = """
 _WORD = re.compile(r"\w+", re.UNICODE)
 
 
+def _is_foreign_key_violation(exc: Exception) -> bool:
+    """Return whether a psycopg exception represents a missing FK target."""
+    try:
+        from psycopg.errors import ForeignKeyViolation
+    except ImportError:
+        return False
+    return isinstance(exc, ForeignKeyViolation)
+
+
 class PostgresMemoryLedger:
     """Psycopg implementation of the retention store and canonical ledger."""
 
@@ -99,7 +108,12 @@ class PostgresMemoryLedger:
                 if existing is not None:
                     return existing, False
 
-            self._insert_item(connection, item)
+            try:
+                self._insert_item(connection, item)
+            except Exception as exc:
+                if _is_foreign_key_violation(exc):
+                    raise ValueError("tenant or workspace is not provisioned") from exc
+                raise
             if idempotency_key:
                 connection.execute(
                     """

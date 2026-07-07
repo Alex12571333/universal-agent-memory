@@ -13,15 +13,15 @@ curl http://localhost:8080/health
 
 По умолчанию запускаются только `memory-server` и PostgreSQL. Данные остаются в
 Docker volume `postgres_data`. Advanced-профиль добавляет NATS JetStream,
-transactional-outbox relay и экспериментальные Qdrant/MinIO:
+transactional-outbox relay, embedding worker, Qdrant и MinIO:
 
 ```bash
-docker compose --profile advanced up -d
+UAM_QDRANT_URL=http://qdrant:6333 docker compose --profile advanced up -d
 ```
 
 Перед API и relay автоматически запускается forward-only migration service.
 Повторный `docker compose up` сохраняет volume и применяет только новые SQL
-migrations.
+migrations. Подробный продовый smoke/E2E-план: [docs/PRODUCTION_READINESS_TESTING.md](docs/PRODUCTION_READINESS_TESTING.md).
 
 ## API за минуту
 
@@ -254,7 +254,7 @@ make agent-submit ISSUE=12
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e ".[dev,api,postgres]"
+pip install -e ".[dev,api,postgres,qdrant,nats]"
 pytest
 ruff check .
 mypy src
@@ -262,3 +262,6 @@ mypy src
 
 Начните с [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [AGENTS.md](AGENTS.md) и
 [docs/WORK_PACKAGES.md](docs/WORK_PACKAGES.md).
+
+Для проверки реального Docker-стека и внешнего embedding endpoint используйте
+[docs/PRODUCTION_READINESS_TESTING.md](docs/PRODUCTION_READINESS_TESTING.md).
