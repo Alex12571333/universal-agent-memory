@@ -9,11 +9,20 @@ from __future__ import annotations
 
 import re
 from collections.abc import Sequence
+from datetime import datetime
+from math import sqrt
 from threading import RLock
 from uuid import UUID
 
 from memory_plane.contracts.dto import Candidate, RecallQuery
-from memory_plane.domain.models import MemoryItem, MemoryScope, MemoryStatus
+from memory_plane.domain.models import (
+    MemoryItem,
+    MemoryLayer,
+    MemoryScope,
+    MemoryStatus,
+    Provenance,
+)
+from memory_plane.ports.embeddings import EmbeddingClient
 
 _WORD = re.compile(r"\w+", re.UNICODE)
 
@@ -36,12 +45,14 @@ class QdrantCandidateSource:
         *,
         dense_dim: int = 1536,
         api_key: str | None = None,
+        query_embedding_client: EmbeddingClient | None = None,
     ) -> None:
         """Capture endpoint and collection; delay client creation until ``connect``."""
         self.url = url
         self.collection = collection
         self.dense_dim = dense_dim
         self.api_key = api_key
+        self._query_embedding_client = query_embedding_client
         self._client: object | None = None  # QdrantClient when connected
         # In-memory fallback for tests (activated by ``_use_in_memory_backend``).
         self._mem_items: dict[UUID, tuple[MemoryItem, list[float]]] | None = None
@@ -175,13 +186,23 @@ class QdrantCandidateSource:
         """In-memory search with cosine similarity and metadata filtering."""
         assert self._mem_items is not None and self._mem_lock is not None
         query_terms = self._terms(query.text)
+        query_vector = (
+            self._embed_query(query.text)
+            if self._query_embedding_client is not None
+            else None
+        )
         results: list[Candidate] = []
         with self._mem_lock:
             for item, vec in self._mem_items.values():
                 if not self._matches_filter(item, query):
                     continue
-                # Cosine similarity against a synthetic query vector.
-                semantic = max(0.0, min(1.0, sum(v for v in vec) / max(1, len(vec))))
+                # Cosine similarity against the real query vector when an
+                # embedding client is wired; otherwise preserve the legacy
+                # deterministic fallback used by older unit tests.
+                if query_vector is not None:
+                    semantic = self._bounded_cosine(query_vector, vec)
+                else:
+                    semantic = max(0.0, min(1.0, sum(v for v in vec) / max(1, len(vec))))
                 # Lexical overlap as sparse-vector proxy.
                 item_terms = self._terms(item.text)
                 overlap = len(query_terms & item_terms)
@@ -268,8 +289,22 @@ class QdrantCandidateSource:
     def _search_qdrant(self, query: RecallQuery) -> tuple[Candidate, ...]:
         from qdrant_client.models import (
             FieldCondition,
+            Filter,
             MatchValue,
         )
+
+        if self._query_embedding_client is None:
+            raise NotImplementedError(
+                "Live Qdrant search requires a query embedding client. "
+                "Pass query_embedding_client when constructing QdrantCandidateSource."
+            )
+
+        query_vector = self._embed_query(query.text)
+        if len(query_vector) != self.dense_dim:
+            raise RuntimeError(
+                f"query embedding dimension mismatch: expected {self.dense_dim}, "
+                f"got {len(query_vector)}"
+            )
 
         must_conditions: list[FieldCondition] = [
             FieldCondition(key="tenant_id", match=MatchValue(value=str(query.tenant_id))),
@@ -287,13 +322,36 @@ class QdrantCandidateSource:
                     FieldCondition(key="labels", match=MatchValue(value=label))
                 )
 
-        # Note: in production, the query text would be embedded by the caller
-        # or an embedding service.  We raise if no embedding is available.
-        raise NotImplementedError(
-            "Live Qdrant search requires a query embedding vector. "
-            "Use the embedding worker (WP-04) to produce vectors, or "
-            "call search_with_vector() directly."
+        rows = self._client.search(  # type: ignore[union-attr]
+            collection_name=self.collection,
+            query_vector=("dense", query_vector),
+            query_filter=Filter(must=must_conditions),
+            limit=max(query.top_k * 3, query.top_k),
+            with_payload=True,
         )
+        candidates: list[Candidate] = []
+        query_terms = self._terms(query.text)
+        for row in rows:
+            payload = row.payload or {}
+            item = self._payload_to_item(payload)
+            if not self._matches_filter(item, query):
+                continue
+            item_terms = self._terms(item.text)
+            overlap = len(query_terms & item_terms)
+            lexical = overlap / max(1, len(query_terms))
+            candidates.append(
+                Candidate(
+                    item=item,
+                    source=self.name,
+                    semantic=max(0.0, min(1.0, float(row.score))),
+                    lexical=lexical,
+                    entity=lexical,
+                    trust=item.confidence,
+                )
+            )
+            if len(candidates) >= query.top_k:
+                break
+        return tuple(candidates)
 
     # ---- helpers --------------------------------------------------------
 
@@ -338,4 +396,57 @@ class QdrantCandidateSource:
             "salience": item.salience,
             "confidence": item.confidence,
             "created_at": item.created_at.isoformat(),
+            "revision": item.revision,
+            "supersedes_id": str(item.supersedes_id) if item.supersedes_id else None,
         }
+
+    @staticmethod
+    def _payload_to_item(payload: dict[str, object]) -> MemoryItem:
+        """Reconstruct the memory item shape needed for retrieval fusion."""
+        labels_raw = payload.get("labels") or []
+        labels = tuple(str(label) for label in labels_raw) if isinstance(labels_raw, list) else ()
+        supersedes_raw = payload.get("supersedes_id")
+        created_raw = payload.get("created_at")
+        created_at = (
+            datetime.fromisoformat(str(created_raw))
+            if created_raw
+            else datetime.now().astimezone()
+        )
+        return MemoryItem(
+            id=UUID(str(payload["memory_id"])),
+            tenant_id=UUID(str(payload["tenant_id"])),
+            workspace_id=UUID(str(payload["workspace_id"])),
+            agent_id=UUID(str(payload["agent_id"])) if payload.get("agent_id") else None,
+            thread_id=UUID(str(payload["thread_id"])) if payload.get("thread_id") else None,
+            layer=MemoryLayer(str(payload["layer"])),
+            scope=MemoryScope(str(payload["scope"])),
+            kind=str(payload.get("kind") or "fact"),
+            text=str(payload.get("text") or ""),
+            labels=labels,
+            status=MemoryStatus(str(payload.get("status") or MemoryStatus.ACTIVE)),
+            importance=float(payload.get("importance") or 0.5),
+            salience=float(payload.get("salience") or 0.5),
+            confidence=float(payload.get("confidence") or 0.7),
+            created_at=created_at,
+            revision=int(payload.get("revision") or 1),
+            supersedes_id=UUID(str(supersedes_raw)) if supersedes_raw else None,
+            provenance=Provenance(source_kind="qdrant-payload"),
+        )
+
+    @staticmethod
+    def _bounded_cosine(left: list[float], right: list[float]) -> float:
+        if len(left) != len(right):
+            return 0.0
+        dot = sum(a * b for a, b in zip(left, right, strict=True))
+        left_norm = sqrt(sum(a * a for a in left))
+        right_norm = sqrt(sum(b * b for b in right))
+        cosine = dot / max(left_norm * right_norm, 1e-12)
+        return max(0.0, min(1.0, (cosine + 1.0) / 2.0))
+
+    def _embed_query(self, text: str) -> list[float]:
+        """Use query-specific embeddings when the provider exposes them."""
+        assert self._query_embedding_client is not None
+        embed_query = getattr(self._query_embedding_client, "embed_query", None)
+        if callable(embed_query):
+            return embed_query(text)
+        return self._query_embedding_client.embed(text)

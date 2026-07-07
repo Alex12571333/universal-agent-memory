@@ -137,8 +137,40 @@ class EmbeddingServiceTest(unittest.TestCase):
 
         self.assertEqual([3.0, 4.0], vector)
         self.assertEqual("http://tei:8080/v1/embeddings", captured["url"])
-        self.assertEqual({"model": "bge", "input": "document"}, captured["payload"])
+        self.assertEqual(
+            {"model": "bge", "input": "document", "input_type": "document"},
+            captured["payload"],
+        )
         self.assertNotIn("Authorization", captured["headers"])
+
+    def test_tei_embedding_client_can_embed_queries(self) -> None:
+        """Retrieval endpoints such as Jina can receive query/document intent."""
+        captured: dict[str, Any] = {}
+
+        def fake_urlopen(request: Any, timeout: float) -> _FakeResponse:
+            captured["payload"] = json.loads(request.data.decode("utf-8"))
+            return _FakeResponse({"data": [{"embedding": [5, 6]}]})
+
+        with patch("memory_plane.adapters.embeddings.urlopen", fake_urlopen):
+            client = build_embedding_client(
+                EmbeddingProviderConfig(
+                    provider="tei",
+                    model_name="jina",
+                    dimension=2,
+                    base_url="http://tei:8080",
+                )
+            )
+            vector = client.embed_query("what should I recall?")  # type: ignore[attr-defined]
+
+        self.assertEqual([5.0, 6.0], vector)
+        self.assertEqual(
+            {
+                "model": "jina",
+                "input": "what should I recall?",
+                "input_type": "query",
+            },
+            captured["payload"],
+        )
 
     def test_process_memory_retained_creates_qdrant_point(self) -> None:
         """Retaining a memory and processing it yields a vector candidate in search."""

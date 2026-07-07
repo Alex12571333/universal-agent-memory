@@ -7,6 +7,7 @@ so that the entire test suite runs without any external infrastructure.
 from __future__ import annotations
 
 import unittest
+from types import SimpleNamespace
 from uuid import UUID, uuid4
 
 from memory_plane.adapters.qdrant import QdrantCandidateSource
@@ -16,6 +17,22 @@ from memory_plane.domain.models import MemoryItem, MemoryLayer, MemoryScope, Pro
 _T = UUID(int=1)
 _W = UUID(int=2)
 _PROV = Provenance(source_kind="test")
+
+
+class _StaticEmbeddingClient:
+    def __init__(self, vector: list[float]) -> None:
+        self._vector = vector
+
+    @property
+    def model_name(self) -> str:
+        return "static-test-embedding"
+
+    @property
+    def dimension(self) -> int:
+        return len(self._vector)
+
+    def embed(self, text: str) -> list[float]:
+        return list(self._vector)
 
 
 def _item(
@@ -158,6 +175,24 @@ class QdrantAdapterTest(unittest.TestCase):
         self.assertGreater(results[0].semantic, 0.0)
         self.assertEqual("qdrant_hybrid", results[0].source)
 
+    def test_in_memory_search_uses_query_embedding_when_available(self) -> None:
+        source = QdrantCandidateSource(
+            url="http://localhost:6333",
+            collection="test_memory",
+            dense_dim=4,
+            query_embedding_client=_StaticEmbeddingClient([1.0, 0.0, 0.0, 0.0]),
+        )
+        source._use_in_memory_backend()
+        relevant = _item("vector relevant")
+        unrelated = _item("vector unrelated")
+        source.upsert(unrelated, dense_vector=[0.0, 1.0, 0.0, 0.0])
+        source.upsert(relevant, dense_vector=[1.0, 0.0, 0.0, 0.0])
+
+        results = source.search(RecallQuery(tenant_id=_T, workspace_id=_W, text="anything"))
+
+        self.assertEqual(relevant.id, results[0].item.id)
+        self.assertGreater(results[0].semantic, results[1].semantic)
+
     def test_name_property_is_stable(self) -> None:
         self.assertEqual("qdrant_hybrid", self.source.name)
 
@@ -209,6 +244,48 @@ class QdrantAdapterTest(unittest.TestCase):
             points = called_args.kwargs.get("points")
             self.assertEqual(1, len(points))
             self.assertEqual("test-model-v2", points[0].payload.get("model_name"))
+
+    def test_live_qdrant_search_embeds_query_and_maps_payload(self) -> None:
+        """Live Qdrant recall uses a real query vector instead of raising."""
+        from unittest.mock import MagicMock, patch
+
+        mock_models = MagicMock()
+        mock_models.FieldCondition = lambda key, match: ("field", key, match)
+        mock_models.Filter = lambda must: ("filter", must)
+        mock_models.MatchValue = lambda value: ("match", value)
+
+        with patch.dict(
+            "sys.modules",
+            {
+                "qdrant_client": MagicMock(),
+                "qdrant_client.models": mock_models,
+            },
+        ):
+            source = QdrantCandidateSource(
+                url="http://localhost:6333",
+                collection="test",
+                dense_dim=4,
+                query_embedding_client=_StaticEmbeddingClient([0.9, 0.1, 0.0, 0.0]),
+            )
+            item = _item("production q8 embeddings")
+            source._client = MagicMock()
+            source._client.search.return_value = [
+                SimpleNamespace(
+                    payload=QdrantCandidateSource._item_to_payload(item),
+                    score=0.91,
+                )
+            ]
+
+            results = source.search(
+                RecallQuery(tenant_id=_T, workspace_id=_W, text="q8 embeddings")
+            )
+
+            self.assertEqual(1, len(results))
+            self.assertEqual(item.id, results[0].item.id)
+            self.assertEqual(0.91, results[0].semantic)
+            search_kwargs = source._client.search.call_args.kwargs
+            self.assertEqual(("dense", [0.9, 0.1, 0.0, 0.0]), search_kwargs["query_vector"])
+            self.assertEqual("test", search_kwargs["collection_name"])
 
 
 if __name__ == "__main__":

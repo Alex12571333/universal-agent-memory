@@ -55,9 +55,13 @@ def build_in_memory_container() -> Container:
     retention = RetentionService(store)
     from memory_plane.adapters.embeddings import FakeEmbeddingClient
 
-    qdrant = QdrantCandidateSource(url="http://localhost:6333", dense_dim=1536)
-    qdrant._use_in_memory_backend()
     client = FakeEmbeddingClient()
+    qdrant = QdrantCandidateSource(
+        url="http://localhost:6333",
+        dense_dim=1536,
+        query_embedding_client=client,
+    )
+    qdrant._use_in_memory_backend()
     embedding = EmbeddingService(store, qdrant, client)
     observations = InMemoryObservationRepository(store)
     conflict_reviews = InMemoryConflictReviewRepository(store)
@@ -99,6 +103,9 @@ def build_postgres_container(
 
     from memory_plane.adapters.embeddings import EmbeddingProviderConfig, build_embedding_client
 
+    embedding_config = replace(EmbeddingProviderConfig.from_env(), dimension=qdrant_dim)
+    client = build_embedding_client(embedding_config)
+
     # Assemble candidate sources: always include PostgreSQL lexical; optionally
     # add Qdrant for dense+sparse hybrid retrieval.
     from memory_plane.ports.repositories import CandidateSource
@@ -109,6 +116,7 @@ def build_postgres_container(
         qdrant = QdrantCandidateSource(
             url=qdrant_url_val,
             dense_dim=qdrant_dim,
+            query_embedding_client=client,
         )
         qdrant.connect()
         sources.append(qdrant)
@@ -116,11 +124,10 @@ def build_postgres_container(
         qdrant = QdrantCandidateSource(
             url="http://localhost:6333",
             dense_dim=qdrant_dim,
+            query_embedding_client=client,
         )
         qdrant._use_in_memory_backend()
 
-    embedding_config = replace(EmbeddingProviderConfig.from_env(), dimension=qdrant_dim)
-    client = build_embedding_client(embedding_config)
     embedding = EmbeddingService(store, qdrant, client)
 
     return Container(
