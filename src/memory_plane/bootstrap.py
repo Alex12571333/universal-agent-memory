@@ -8,12 +8,14 @@ from uuid import UUID
 from memory_plane.adapters.in_memory import (
     InMemoryCheckpointStore,
     InMemoryConflictReviewRepository,
+    InMemoryGraphRepository,
     InMemoryMemoryStore,
     InMemoryObservationRepository,
 )
 from memory_plane.adapters.postgres import (
     PostgresCheckpointStore,
     PostgresConflictReviewRepository,
+    PostgresGraphRepository,
     PostgresMemoryLedger,
     PostgresObservationRepository,
 )
@@ -22,6 +24,7 @@ from memory_plane.services.checkpoint import CheckpointService
 from memory_plane.services.conflicts import ConflictService
 from memory_plane.services.context import ContextCompiler
 from memory_plane.services.embedding import EmbeddingService
+from memory_plane.services.graph import GraphService
 from memory_plane.services.ingestion import IngestionService
 from memory_plane.services.reflection import ReflectionService
 from memory_plane.services.retention import RetentionService
@@ -39,6 +42,7 @@ class Container:
     context: ContextCompiler
     reflection: ReflectionService
     conflicts: ConflictService
+    graph: GraphService
     checkpoint: CheckpointService
     embedding: EmbeddingService
     vault: VaultExporter
@@ -57,6 +61,7 @@ def build_in_memory_container() -> Container:
     embedding = EmbeddingService(store, qdrant, client)
     observations = InMemoryObservationRepository(store)
     conflict_reviews = InMemoryConflictReviewRepository(store)
+    graph = InMemoryGraphRepository(store)
 
     return Container(
         retention=retention,
@@ -65,6 +70,7 @@ def build_in_memory_container() -> Container:
         context=ContextCompiler(),
         reflection=ReflectionService(store, observations),
         conflicts=ConflictService(store, conflict_reviews),
+        graph=GraphService(store, graph),
         checkpoint=CheckpointService(InMemoryCheckpointStore()),
         embedding=embedding,
         vault=VaultExporter(store, observations, retention),
@@ -87,6 +93,7 @@ def build_postgres_container(
     retention = RetentionService(store)
     observations = PostgresObservationRepository(store)
     conflict_reviews = PostgresConflictReviewRepository(store)
+    graph = PostgresGraphRepository(store)
 
     import os
 
@@ -123,6 +130,7 @@ def build_postgres_container(
         context=ContextCompiler(),
         reflection=ReflectionService(store, observations),
         conflicts=ConflictService(store, conflict_reviews),
+        graph=GraphService(store, graph),
         checkpoint=CheckpointService(PostgresCheckpointStore(store)),
         embedding=embedding,
         vault=VaultExporter(store, observations, retention),

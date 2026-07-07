@@ -225,6 +225,7 @@ UAM_EMBEDDING_API_KEY=...
 - local operator UI at `/ui`;
 - secrets/PII guard with redaction audit metadata;
 - memory lifecycle statuses with recall exclusion/demotion policy;
+- typed memory graph edges and neighbor API;
 - изоляция проектов через PostgreSQL RLS;
 - in-memory режим для unit-тестов;
 - Docker image, Compose и CI.

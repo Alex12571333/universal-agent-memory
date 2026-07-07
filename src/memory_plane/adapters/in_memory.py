@@ -10,6 +10,7 @@ from memory_plane.contracts.dto import Candidate, RecallQuery
 from memory_plane.contracts.events import IntegrationEvent
 from memory_plane.domain.checkpoint import Checkpoint, StaleRevisionError
 from memory_plane.domain.conflict import ConflictReviewDecision
+from memory_plane.domain.graph import MemoryEdge, MemoryEdgeType
 from memory_plane.domain.models import (
     MemoryItem,
     MemoryLayer,
@@ -31,6 +32,7 @@ class InMemoryMemoryStore:
         self._idempotency: dict[tuple[UUID, str], UUID] = {}
         self._observations: dict[UUID, Observation] = {}
         self._conflict_reviews: dict[tuple[UUID, UUID], ConflictReviewDecision] = {}
+        self._edges: dict[UUID, MemoryEdge] = {}
         self.events: list[IntegrationEvent] = []
         self._lock = RLock()
 
@@ -239,6 +241,31 @@ class InMemoryMemoryStore:
             if row.tenant_id == tenant_id and row.workspace_id == workspace_id
         )
 
+    def save_edge(self, edge: MemoryEdge) -> MemoryEdge:
+        """Persist one memory graph edge."""
+        with self._lock:
+            self._edges.setdefault(edge.id, edge)
+            return self._edges[edge.id]
+
+    def list_neighbors(
+        self,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        item_id: UUID,
+        *,
+        edge_type: MemoryEdgeType | None = None,
+    ) -> tuple[MemoryEdge, ...]:
+        """List incoming and outgoing graph edges."""
+        rows = [
+            edge
+            for edge in self._edges.values()
+            if edge.tenant_id == tenant_id
+            and edge.workspace_id == workspace_id
+            and (edge.src_id == item_id or edge.dst_id == item_id)
+            and (edge_type is None or edge.edge_type == edge_type)
+        ]
+        return tuple(sorted(rows, key=lambda row: (row.created_at, row.id)))
+
     @staticmethod
     def _terms(text: str) -> set[str]:
         """Tokenize text for a dependency-free lexical fallback."""
@@ -279,6 +306,34 @@ class InMemoryConflictReviewRepository:
     ) -> tuple[ConflictReviewDecision, ...]:
         """Delegate tenant-safe review listing."""
         return self._store.list_conflict_reviews(tenant_id, workspace_id)
+
+
+class InMemoryGraphRepository:
+    """Graph port view over the shared in-memory store."""
+
+    def __init__(self, store: InMemoryMemoryStore) -> None:
+        """Retain shared edge storage."""
+        self._store = store
+
+    def save_edge(self, edge: MemoryEdge) -> MemoryEdge:
+        """Delegate edge persistence."""
+        return self._store.save_edge(edge)
+
+    def list_neighbors(
+        self,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        item_id: UUID,
+        *,
+        edge_type: MemoryEdgeType | None = None,
+    ) -> tuple[MemoryEdge, ...]:
+        """Delegate neighbor lookup."""
+        return self._store.list_neighbors(
+            tenant_id,
+            workspace_id,
+            item_id,
+            edge_type=edge_type,
+        )
 
 
 class InMemoryCheckpointStore:

@@ -32,6 +32,7 @@ from memory_plane.domain.conflict import (
     ConflictReviewDecision,
     ConflictReviewStatus,
 )
+from memory_plane.domain.graph import MemoryEdge, MemoryEdgeType
 from memory_plane.domain.models import (
     MemoryLayer,
     MemoryRevisionConflictError,
@@ -197,6 +198,18 @@ class ConflictDecisionBody(BaseModel):
     reason: str = ""
 
 
+class GraphEdgeBody(BaseModel):
+    """Create one typed graph edge between two memories."""
+
+    tenant_id: UUID = DEFAULT_SERVER_ID
+    workspace_id: UUID = DEFAULT_PROJECT_ID
+    src_id: UUID
+    dst_id: UUID
+    edge_type: MemoryEdgeType
+    weight: float = Field(default=1.0, ge=0, le=1)
+    provenance_item_id: UUID | None = None
+
+
 def _conflict_case_response(case: ConflictCase) -> dict[str, Any]:
     """Render a conflict case as JSON."""
     return {
@@ -236,6 +249,23 @@ def _conflict_decision_response(
         "winner_value": decision.winner_value,
         "reason": decision.reason,
         "updated_at": decision.updated_at.isoformat(),
+    }
+
+
+def _graph_edge_response(edge: MemoryEdge) -> dict[str, Any]:
+    """Render graph edge as JSON."""
+    return {
+        "id": str(edge.id),
+        "tenant_id": str(edge.tenant_id),
+        "workspace_id": str(edge.workspace_id),
+        "src_id": str(edge.src_id),
+        "dst_id": str(edge.dst_id),
+        "edge_type": edge.edge_type.value,
+        "weight": edge.weight,
+        "provenance_item_id": (
+            str(edge.provenance_item_id) if edge.provenance_item_id else None
+        ),
+        "created_at": edge.created_at.isoformat(),
     }
 
 
@@ -544,6 +574,47 @@ def create_app(
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         return _conflict_decision_response(decision) or {}
+
+    @app.post("/v1/graph/edges", status_code=201)
+    def create_graph_edge(body: GraphEdgeBody) -> dict[str, Any]:
+        """Create one typed memory graph edge."""
+        try:
+            edge = services.graph.link(
+                tenant_id=body.tenant_id,
+                workspace_id=body.workspace_id,
+                src_id=body.src_id,
+                dst_id=body.dst_id,
+                edge_type=body.edge_type,
+                weight=body.weight,
+                provenance_item_id=body.provenance_item_id,
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return _graph_edge_response(edge)
+
+    @app.get("/v1/memory/{item_id}/neighbors")
+    def list_graph_neighbors(
+        item_id: UUID,
+        workspace_id: UUID = DEFAULT_PROJECT_ID,
+        tenant_id: UUID = DEFAULT_SERVER_ID,
+        edge_type: MemoryEdgeType | None = None,
+    ) -> dict[str, Any]:
+        """List incoming and outgoing graph edges for a memory item."""
+        edges = services.graph.neighbors(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            item_id=item_id,
+            edge_type=edge_type,
+        )
+        return {
+            "tenant_id": str(tenant_id),
+            "workspace_id": str(workspace_id),
+            "item_id": str(item_id),
+            "count": len(edges),
+            "edges": [_graph_edge_response(edge) for edge in edges],
+        }
 
     @app.post("/v1/workspaces/{workspace_id}/reindex", status_code=202)
     def reindex(workspace_id: UUID, tenant_id: UUID) -> dict[str, Any]:

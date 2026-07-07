@@ -5,6 +5,7 @@ from memory_plane.ports.repositories import (
     CandidateSource,
     ConflictReviewRepository,
     EventPublisher,
+    GraphRepository,
     MemoryLedger,
     ObservationRepository,
 )
@@ -14,6 +15,7 @@ __all__ = [
     "ConflictReviewRepository",
     "EmbeddingClient",
     "EventPublisher",
+    "GraphRepository",
     "MemoryLedger",
     "ObservationRepository",
 ]

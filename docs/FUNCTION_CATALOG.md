@@ -87,6 +87,14 @@
 | `_extract_slot(text)` | Memory text → subject/predicate/value | Conservative deterministic patterns matching reflection v2 |
 | `_candidate_confidence(rows, is_active=...)` | Evidence rows → score | Repeated evidence and active newest value get bounded boost |
 
+## Graph — `domain/graph.py`, `services/graph.py`
+
+| Функция | Вход → выход | Гарантия |
+|---|---|---|
+| `MemoryEdge.__post_init__()` | Edge fields → validated edge | Rejects self-loop, bad weight and invalid validity range |
+| `GraphService.link()` | Endpoint IDs + edge type → persisted edge | Verifies both memories exist in the same workspace |
+| `GraphService.neighbors()` | Memory ID → incoming/outgoing edges | Optional `edge_type` filter |
+
 ## In-memory adapter — `adapters/in_memory.py`
 
 | Функция | Назначение |
@@ -101,6 +109,7 @@
 | `save()` / `list_observations()` | Derived observation storage |
 | `InMemoryObservationRepository.*` | Адаптирует observation port без конфликта имён |
 | `InMemoryConflictReviewRepository.*` | Human conflict-review decisions | Replaces decision by `(tenant_id, case_id)` |
+| `InMemoryGraphRepository.*` | Memory graph edges | In/out neighbor lookup by memory ID |
 
 ## Workers — `workers/handlers.py`
 
@@ -179,6 +188,8 @@
 | `POST /v1/workspaces/{id}/reflect` | Запуск baseline sleep/reflection |
 | `GET /v1/workspaces/{id}/conflicts` | Conflict review inbox | Derived cases; `include_resolved=true` optional |
 | `PUT /v1/workspaces/{id}/conflicts/{case_id}/decision` | Persist human review decision | accepted/overridden/dismissed/unresolved |
+| `POST /v1/graph/edges` | Create typed graph edge | Validates endpoint memories and workspace |
+| `GET /v1/memory/{id}/neighbors` | List graph neighbors | Optional edge type filter |
 
 ## PostgreSQL adapter
 
@@ -195,6 +206,8 @@
 | `save(observation)` | Хранит reflection и evidence links | Evidence не меняется |
 | `save_conflict_review(decision)` | Upsert human decision | RLS tenant-bound; no mutation of raw evidence |
 | `list_conflict_reviews(...)` | Read persisted review decisions | Workspace-scoped and deterministic |
+| `save_edge(edge)` | Insert graph edge | Uses existing `memory_edges` table |
+| `list_neighbors(...)` | Read incoming/outgoing edges | RLS tenant-bound; optional type filter |
 | `collect_metrics(tenant)` | Считает counters и outbox lag | Устанавливает RLS tenant context |
 
 ## Checkpoint domain — `domain/checkpoint.py`

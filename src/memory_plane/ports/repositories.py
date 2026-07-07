@@ -8,6 +8,7 @@ from uuid import UUID
 from memory_plane.contracts.dto import Candidate, RecallQuery
 from memory_plane.contracts.events import ClaimedEvent, ConsumerClaim, IntegrationEvent
 from memory_plane.domain.conflict import ConflictReviewDecision
+from memory_plane.domain.graph import MemoryEdge, MemoryEdgeType
 from memory_plane.domain.models import MemoryItem, MemoryLayer, Observation
 
 
@@ -182,4 +183,23 @@ class ConflictReviewRepository(Protocol):
         self, tenant_id: UUID, workspace_id: UUID
     ) -> tuple[ConflictReviewDecision, ...]:
         """List persisted decisions for a workspace."""
+        ...
+
+
+class GraphRepository(Protocol):
+    """Storage boundary for typed memory graph edges."""
+
+    def save_edge(self, edge: MemoryEdge) -> MemoryEdge:
+        """Persist one graph edge idempotently by edge id."""
+        ...
+
+    def list_neighbors(
+        self,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        item_id: UUID,
+        *,
+        edge_type: MemoryEdgeType | None = None,
+    ) -> tuple[MemoryEdge, ...]:
+        """List incoming and outgoing edges for one item."""
         ...
