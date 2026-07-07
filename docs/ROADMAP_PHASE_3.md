@@ -2,6 +2,7 @@
 
 Latest hardening audit: [HARDENING_AUDIT_2026_07_07.md](HARDENING_AUDIT_2026_07_07.md).
 DGX Spark embedding notes: [DGX_SPARK_EMBEDDINGS.md](DGX_SPARK_EMBEDDINGS.md).
+Production readiness tests: [PRODUCTION_READINESS_TESTING.md](PRODUCTION_READINESS_TESTING.md).
 
 Phase 2 turned the project into a self-hosted memory server with native agent
 integrations, vault import/export, conflict review and a local operator UI.
@@ -65,10 +66,15 @@ Use graph edges and scheduled maintenance to keep memory coherent.
 
 Make deployment boring.
 
+- ✅ Docker advanced profile runs API, Postgres, NATS, outbox relay, embedding
+  worker, Qdrant and MinIO together;
+- ✅ readiness/E2E scripts cover retain, recall, CAS, conflict review, vault
+  export, reindex, `/ui` and `/metrics`;
+- ✅ migration smoke test verifies every numbered SQL migration is registered;
+- ✅ Qdrant client dependency is pinned to the Docker server line;
 - TLS/reverse-proxy example;
 - key rotation;
 - retention policies;
 - structured logs;
-- readiness checks;
 - restore drill docs;
 - migration smoke test in CI.

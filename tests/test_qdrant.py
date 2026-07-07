@@ -287,6 +287,57 @@ class QdrantAdapterTest(unittest.TestCase):
             self.assertEqual(("dense", [0.9, 0.1, 0.0, 0.0]), search_kwargs["query_vector"])
             self.assertEqual("test", search_kwargs["collection_name"])
 
+    def test_live_qdrant_search_supports_query_points_client_api(self) -> None:
+        """qdrant-client 1.18+ uses query_points instead of search."""
+        from unittest.mock import MagicMock, patch
+
+        mock_models = MagicMock()
+        mock_models.FieldCondition = lambda key, match: ("field", key, match)
+        mock_models.Filter = lambda must: ("filter", must)
+        mock_models.MatchValue = lambda value: ("match", value)
+
+        class QueryPointsOnlyClient:
+            def __init__(self) -> None:
+                self.calls: list[dict[str, object]] = []
+
+            def query_points(self, **kwargs: object) -> object:
+                self.calls.append(kwargs)
+                return SimpleNamespace(
+                    points=[
+                        SimpleNamespace(
+                            payload=QdrantCandidateSource._item_to_payload(
+                                _item("qdrant query points")
+                            ),
+                            score=0.88,
+                        )
+                    ]
+                )
+
+        with patch.dict(
+            "sys.modules",
+            {
+                "qdrant_client": MagicMock(),
+                "qdrant_client.models": mock_models,
+            },
+        ):
+            source = QdrantCandidateSource(
+                url="http://localhost:6333",
+                collection="test",
+                dense_dim=4,
+                query_embedding_client=_StaticEmbeddingClient([0.9, 0.1, 0.0, 0.0]),
+            )
+            client = QueryPointsOnlyClient()
+            source._client = client
+
+            results = source.search(
+                RecallQuery(tenant_id=_T, workspace_id=_W, text="qdrant")
+            )
+
+            self.assertEqual(1, len(results))
+            self.assertEqual(0.88, results[0].semantic)
+            self.assertEqual([0.9, 0.1, 0.0, 0.0], client.calls[0]["query"])
+            self.assertEqual("dense", client.calls[0]["using"])
+
 
 if __name__ == "__main__":
     unittest.main()
