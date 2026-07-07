@@ -2,9 +2,14 @@
 
 `GET /ui` serves the local operator dashboard for Universal Agent Memory.
 
-The dashboard is intentionally self-contained inside the FastAPI server: no
-Node build step is required for the Docker server. It is designed as a local
-control surface for a single self-hosted memory server, not as SaaS admin UI.
+The production dashboard is a React/Vite single-page app in `web/`. The Docker
+image builds it in a Node build stage and copies the generated files into
+`/app/web/dist`; FastAPI then serves that build from `/ui`.
+
+This is still a local self-hosted control surface for one memory server, not a
+hosted SaaS admin UI. If the React build is absent during development, the
+server falls back to the legacy embedded HTML dashboard so API smoke tests and
+minimal local operation remain available.
 
 ## Main areas
 
@@ -21,6 +26,27 @@ control surface for a single self-hosted memory server, not as SaaS admin UI.
   be panned/zoomed, labels can be toggled, and physics can be restarted.
 - **Модели** — inspect runtime embedding settings, save desired model config,
   probe an embedding endpoint, and copy Docker env values.
+
+## Local frontend development
+
+Run the server normally, then start Vite:
+
+```bash
+cd web
+npm install
+npm run dev
+```
+
+Vite proxies `/v1`, `/health` and `/metrics` to `http://127.0.0.1:8080`.
+
+For production-like local serving through FastAPI:
+
+```bash
+cd web
+npm run build
+cd ..
+UAM_WEB_DIST="$PWD/web/dist" uvicorn memory_plane.api.app:create_app --factory --host 0.0.0.0 --port 8080
+```
 
 ## Model settings behavior
 
@@ -54,6 +80,7 @@ API:
 The dashboard is covered by:
 
 - `tests/test_api.py::test_memory_list_endpoint_and_operator_ui`
+- `tests/test_api.py::test_operator_ui_serves_react_dist_when_built`
 - `tests/test_api.py::test_model_settings_endpoints_save_and_probe_fake_provider`
+- `npm run build` in `web/`
 - `scripts/api_e2e_eval.py`, including `PASS ui` and `PASS model_settings`
-

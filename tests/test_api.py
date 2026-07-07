@@ -254,7 +254,8 @@ def test_conflict_inbox_endpoint_lists_and_persists_review_decision() -> None:
     assert resolved.json()["cases"][0]["review_status"] == "accepted"
 
 
-def test_memory_list_endpoint_and_operator_ui() -> None:
+def test_memory_list_endpoint_and_operator_ui(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("UAM_WEB_DIST", str(tmp_path / "missing-dist"))
     client = TestClient(create_app(build_in_memory_container()))
     retained = client.post(
         "/v1/memory/retain",
@@ -291,6 +292,31 @@ def test_memory_list_endpoint_and_operator_ui() -> None:
     assert "Frontmatter, ревизии и embedding остаются под капотом" in ui.text
     assert "Сервер предлагает самую свежую активную версию" in ui.text
     assert "/v1/workspaces/" in ui.text
+
+
+def test_operator_ui_serves_react_dist_when_built(tmp_path, monkeypatch) -> None:
+    dist = tmp_path / "dist"
+    assets = dist / "assets"
+    assets.mkdir(parents=True)
+    (dist / "index.html").write_text(
+        '<div id="root"></div><script type="module" src="/ui/assets/app.js"></script>',
+        encoding="utf-8",
+    )
+    (assets / "app.js").write_text('console.log("react-dashboard")', encoding="utf-8")
+    monkeypatch.setenv("UAM_WEB_DIST", str(dist))
+
+    client = TestClient(create_app(build_in_memory_container()))
+
+    ui = client.get("/ui")
+    asset = client.get("/ui/assets/app.js")
+    nested = client.get("/ui/settings")
+
+    assert ui.status_code == 200
+    assert '<div id="root"></div>' in ui.text
+    assert asset.status_code == 200
+    assert "react-dashboard" in asset.text
+    assert nested.status_code == 200
+    assert '<div id="root"></div>' in nested.text
 
 
 def test_model_settings_endpoints_save_and_probe_fake_provider() -> None:

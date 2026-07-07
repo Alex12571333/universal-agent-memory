@@ -8,11 +8,13 @@ import binascii
 import json
 import os
 import secrets
+from pathlib import Path
 from typing import Any, Literal
 from uuid import UUID
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from memory_plane.adapters.documents import BinaryDocumentCommand, DocumentIngestor
@@ -51,6 +53,14 @@ from memory_plane.services.vault import VaultImportSource
 
 DEFAULT_SERVER_ID = UUID("00000000-0000-0000-0000-000000000001")
 DEFAULT_PROJECT_ID = UUID("00000000-0000-0000-0000-000000000002")
+
+
+def _web_dist_dir() -> Path:
+    """Return the built React dashboard directory, if present."""
+    configured = os.getenv("UAM_WEB_DIST")
+    if configured:
+        return Path(configured)
+    return Path.cwd() / "web" / "dist"
 
 
 class RetainBody(BaseModel):
@@ -394,6 +404,14 @@ def create_app(
         version="0.1.0",
         description="Self-hosted memory API for local and team AI agents.",
     )
+    web_dist = _web_dist_dir()
+    web_assets = web_dist / "assets"
+    if web_assets.exists():
+        app.mount(
+            "/ui/assets",
+            StaticFiles(directory=str(web_assets)),
+            name="operator-ui-assets",
+        )
 
     @app.middleware("http")
     async def require_api_key(request: Request, call_next: Any) -> Any:
@@ -430,9 +448,29 @@ def create_app(
         return render_prometheus(rows)
 
     @app.get("/ui", response_class=HTMLResponse)
-    def operator_ui() -> str:
+    def operator_ui() -> Any:
         """Serve the local human memory console."""
-        return _OPERATOR_UI_HTML
+        index = web_dist / "index.html"
+        if index.exists():
+            return FileResponse(index)
+        return HTMLResponse(_OPERATOR_UI_HTML)
+
+    @app.get("/ui/{asset_path:path}")
+    def operator_ui_spa(asset_path: str) -> Any:
+        """Serve React dashboard files and fall back to SPA index."""
+        if not web_dist.exists():
+            return HTMLResponse(_OPERATOR_UI_HTML)
+        requested = (web_dist / asset_path).resolve()
+        try:
+            requested.relative_to(web_dist.resolve())
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail="asset not found") from exc
+        if requested.is_file():
+            return FileResponse(requested)
+        index = web_dist / "index.html"
+        if index.exists():
+            return FileResponse(index)
+        raise HTTPException(status_code=404, detail="dashboard not built")
 
     @app.get("/v1/settings/models")
     def get_model_settings() -> dict[str, Any]:
