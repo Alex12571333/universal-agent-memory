@@ -982,9 +982,14 @@ _OPERATOR_UI_HTML = """
         Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
     * { box-sizing: border-box; }
+    html {
+      overflow-x: hidden;
+      background: #030712;
+    }
     body {
       margin: 0;
       min-height: 100vh;
+      overflow-x: hidden;
       color: var(--text);
       background:
         radial-gradient(circle at 12% 8%, rgba(96, 165, 250, .28), transparent 32rem),
@@ -1493,6 +1498,7 @@ _OPERATOR_UI_HTML = """
         linear-gradient(180deg, rgba(2, 10, 24, .96), rgba(3, 7, 18, .96)),
         radial-gradient(circle at 28% 8%, rgba(14, 165, 233, .20), transparent 8rem);
       box-shadow: 20px 0 60px rgba(0, 0, 0, .28);
+      overflow: hidden;
     }
     .side-logo {
       width: 42px;
@@ -1554,10 +1560,11 @@ _OPERATOR_UI_HTML = """
     .shell {
       position: relative;
       z-index: 1;
-      width: calc(100vw - 246px);
-      max-width: 1290px;
-      margin: 0 24px 0 222px;
-      padding: 30px 0 10px;
+      width: auto;
+      max-width: none;
+      margin: 0 clamp(14px, 1.6vw, 28px) 0 222px;
+      padding: clamp(18px, 2vw, 30px) 0 10px;
+      overflow-x: hidden;
     }
     header.hero {
       min-height: 116px;
@@ -1639,6 +1646,7 @@ _OPERATOR_UI_HTML = """
         linear-gradient(135deg, rgba(15, 30, 55, .90), rgba(3, 11, 25, .72)),
         radial-gradient(circle at 10% 20%, rgba(37, 99, 235, .22), transparent 7rem);
       box-shadow: inset 0 1px 0 rgba(255, 255, 255, .04);
+      overflow: hidden;
     }
     .kpi::before {
       content: "▣";
@@ -1659,17 +1667,45 @@ _OPERATOR_UI_HTML = """
     .kpi:nth-child(4)::before { content: "⌁"; color: #6ee7b7; background: rgba(5, 150, 105, .18); }
     .kpi .value { font-size: 25px; line-height: 1.15; }
     .kpi .label { margin-bottom: 4px; color: #b6c2d9; letter-spacing: .08em; }
+    .kpi .sub {
+      margin-top: 8px;
+      color: #69f0ae;
+      font-size: 12px;
+    }
+    .kpi .mini-chart {
+      position: absolute;
+      right: 18px;
+      bottom: 20px;
+      width: 86px;
+      height: 38px;
+      opacity: .95;
+    }
+    .kpi .mini-chart path {
+      fill: none;
+      stroke: #60a5fa;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      filter: drop-shadow(0 0 8px rgba(96, 165, 250, .45));
+    }
+    .kpi:nth-child(2) .mini-chart path { stroke: #a855f7; }
+    .kpi:nth-child(3) .mini-chart path { stroke: #22d3ee; }
+    .kpi:nth-child(4) .mini-chart path { stroke: #4ade80; }
     .cockpit {
       display: none;
     }
     .grid {
-      grid-template-columns: minmax(420px, .92fr) minmax(420px, .9fr) minmax(300px, .62fr);
+      grid-template-columns:
+        minmax(340px, .95fr)
+        minmax(360px, .92fr)
+        minmax(270px, .58fr);
       grid-template-areas:
         "memory graph ops"
         "vault conflicts ops";
       gap: 12px;
       padding: 0 12px 20px;
       align-items: stretch;
+      min-width: 0;
     }
     .grid > section.panel:first-child {
       grid-area: memory;
@@ -1685,11 +1721,20 @@ _OPERATOR_UI_HTML = """
     .dashboard-graph-panel { grid-area: graph; height: 496px; }
     .dashboard-vault-panel { grid-area: vault; height: 210px; }
     .dashboard-conflict-panel { grid-area: conflicts; height: 210px; }
+    .grid > aside.panel {
+      height: 718px;
+      overflow: hidden;
+    }
+    .grid > aside.panel .panel-body {
+      max-height: 660px;
+      overflow: auto;
+    }
     .panel {
       border-radius: 12px;
       border-color: rgba(96, 165, 250, .22);
       background: rgba(3, 12, 26, .78);
       box-shadow: none;
+      min-width: 0;
     }
     .panel-head { padding: 16px 16px 0; }
     .panel-body { padding: 14px 16px 16px; }
@@ -1728,6 +1773,7 @@ _OPERATOR_UI_HTML = """
       background: rgba(10, 22, 40, .76);
       border-color: rgba(51, 65, 85, .82);
       padding: 13px 14px;
+      min-width: 0;
     }
     .card::before { width: 0; }
     .memory-text { font-size: 13px; color: #dbeafe; }
@@ -1788,6 +1834,13 @@ _OPERATOR_UI_HTML = """
       border-radius: 8px;
       background: rgba(15, 23, 42, .40);
       margin-bottom: 7px;
+      min-width: 0;
+    }
+    .activity-item strong,
+    .activity-item .muted,
+    .ops-action strong,
+    .ops-action .muted {
+      overflow-wrap: anywhere;
     }
     .activity-dot {
       width: 24px;
@@ -1813,21 +1866,119 @@ _OPERATOR_UI_HTML = """
       font-size: 12px;
       line-height: 1.9;
     }
+    @media (max-width: 1360px) {
+      .reference-sidebar {
+        width: 178px;
+        padding-inline: 10px;
+      }
+      .reference-sidebar .nav-button {
+        font-size: 12px;
+        padding-inline: 10px;
+      }
+      .health-card {
+        padding: 12px 10px;
+        font-size: 12px;
+      }
+      body::after { left: 178px; }
+      .shell { margin-left: 190px; margin-right: 12px; }
+      .grid {
+        grid-template-columns: minmax(330px, 1fr) minmax(330px, 1fr);
+        grid-template-areas:
+          "memory graph"
+          "vault conflicts"
+          "ops ops";
+      }
+      .grid > aside.panel { height: auto; }
+      .grid > aside.panel .panel-body { max-height: none; }
+      .kpi { padding-left: 68px; }
+      .kpi::before { width: 36px; height: 36px; font-size: 20px; }
+      .kpi .mini-chart { width: 70px; }
+    }
+    @media (max-width: 1220px) {
+      .reference-sidebar {
+        width: 74px;
+        padding-inline: 8px;
+      }
+      .reference-sidebar .nav-title,
+      .reference-sidebar .nav-button span,
+      .reference-sidebar .health-card {
+        display: none;
+      }
+      .reference-sidebar .nav-button {
+        justify-content: center;
+        padding-inline: 6px;
+        font-size: 0;
+      }
+      .reference-sidebar .nav-button::first-letter {
+        font-size: 17px;
+      }
+      .side-logo {
+        margin-left: auto;
+        margin-right: auto;
+      }
+      body::after { left: 74px; }
+      .shell { margin-left: 86px; }
+      .grid {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-areas:
+          "memory"
+          "graph"
+          "vault"
+          "conflicts"
+          "ops";
+      }
+      .grid > section.panel:first-child,
+      .dashboard-graph-panel,
+      .dashboard-vault-panel,
+      .dashboard-conflict-panel,
+      .grid > aside.panel {
+        height: auto;
+        min-height: 0;
+      }
+    }
     @media (max-width: 1100px) {
       .reference-sidebar { display: none; }
-      .shell { width: min(100vw - 24px, 1500px); margin: 0 auto; }
+      body::after { left: 0; }
+      .shell { width: min(100vw - 24px, 1500px); margin: 0 auto; overflow-x: visible; }
       header.hero, .grid, .split, .cockpit-layout { grid-template-columns: 1fr; }
-      .grid { grid-template-areas: none; }
+      header.hero {
+        min-height: auto;
+        padding-top: 16px;
+      }
+      header.hero::after {
+        right: -12%;
+        width: 420px;
+        height: 110px;
+      }
+      .grid {
+        display: flex;
+        flex-direction: column;
+        grid-template-areas: none;
+      }
       .grid > section.panel, .grid > aside.panel, .dashboard-graph-panel, .dashboard-vault-panel, .dashboard-conflict-panel { grid-area: auto; }
+      .grid > section.panel:first-child, .dashboard-graph-panel, .dashboard-vault-panel, .dashboard-conflict-panel {
+        height: auto;
+        min-height: 0;
+      }
+      .grid > section.panel:first-child .panel-body { max-height: 520px; }
       .hero-actions { justify-content: flex-start; }
       .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .kpi { min-height: 100px; }
       .form-grid { grid-template-columns: 1fr 1fr; }
+      #referenceGraph { min-height: 340px; height: 340px; }
     }
     @media (max-width: 680px) {
       .shell { width: min(100vw - 20px, 1500px); padding: 10px 0; }
-      header.hero { border-radius: 20px; padding: 18px; }
+      header.hero { min-height: auto; border-radius: 20px; padding: 18px 4px; grid-template-columns: 1fr; }
+      h1 { font-size: 32px; }
       .kpis, .form-grid { grid-template-columns: 1fr; }
       .form-grid .wide { grid-column: auto; }
+      .kpi { min-height: 96px; padding-right: 116px; }
+      .tabs { overflow-x: auto; flex-wrap: nowrap; }
+      .tab { min-width: 92px; }
+      .dashboard-vault-tree { grid-template-columns: 1fr; }
+      #referenceGraph { min-height: 300px; height: 300px; }
+      .graph-tools { position: static; margin-top: 10px; transform: none; }
     }
   </style>
 </head>
@@ -1887,10 +2038,30 @@ _OPERATOR_UI_HTML = """
           </label>
         </div>
         <div class="kpis">
-          <div class="kpi"><div id="kpiMemories" class="value">—</div><div class="label">Воспоминания</div></div>
-          <div class="kpi"><div id="kpiConflicts" class="value">—</div><div class="label">Конфликты</div></div>
-          <div class="kpi"><div id="kpiVault" class="value">—</div><div class="label">Файлы хранилища</div></div>
-          <div class="kpi"><div id="kpiStatus" class="value">Активно</div><div class="label">Статус</div></div>
+          <div class="kpi">
+            <div class="label">Memories</div>
+            <div id="kpiMemories" class="value">—</div>
+            <div class="sub">+ live workspace</div>
+            <svg class="mini-chart" viewBox="0 0 90 40"><path d="M2 34 L16 28 L28 31 L42 19 L54 23 L66 12 L78 15 L88 6"></path></svg>
+          </div>
+          <div class="kpi">
+            <div class="label">Conflicts</div>
+            <div id="kpiConflicts" class="value">—</div>
+            <div class="sub" style="color:#c084fc">need review</div>
+            <svg class="mini-chart" viewBox="0 0 90 40"><path d="M2 35 L16 32 L28 27 L42 18 L54 22 L66 12 L78 16 L88 7"></path></svg>
+          </div>
+          <div class="kpi">
+            <div class="label">Vault files</div>
+            <div id="kpiVault" class="value">—</div>
+            <div class="sub" style="color:#22d3ee">human editable</div>
+            <svg class="mini-chart" viewBox="0 0 90 40"><path d="M2 36 L14 34 L26 25 L38 28 L50 17 L62 20 L74 10 L88 5"></path></svg>
+          </div>
+          <div class="kpi">
+            <div class="label">Live status</div>
+            <div id="kpiStatus" class="value">Активно</div>
+            <div class="sub">All systems operational</div>
+            <svg class="mini-chart" viewBox="0 0 90 40"><path d="M2 31 L14 29 L26 33 L38 21 L50 25 L62 17 L74 19 L88 5"></path></svg>
+          </div>
         </div>
       </div>
     </section>
