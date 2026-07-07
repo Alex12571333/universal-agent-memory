@@ -1,5 +1,7 @@
 # Phase 3 roadmap: hardened eternal memory
 
+Latest hardening audit: [HARDENING_AUDIT_2026_07_07.md](HARDENING_AUDIT_2026_07_07.md).
+
 Phase 2 turned the project into a self-hosted memory server with native agent
 integrations, vault import/export, conflict review and a local operator UI.
 Phase 3 is about making the memory layer safer, more autonomous and easier to
@@ -69,4 +71,3 @@ Make deployment boring.
 - readiness checks;
 - restore drill docs;
 - migration smoke test in CI.
-

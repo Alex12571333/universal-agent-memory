@@ -7,7 +7,7 @@ The installable plugin lives in `plugin/` and matches the OpenClaw extension
 shape verified against the `.14` runtime:
 
 - `package.json` exposes `openclaw.extensions: ["./index.js"]`;
-- `index.js` exports `definePluginEntry(...)`;
+- `index.js` exports a default plugin entry object with `register(api)`;
 - hooks are registered with OpenClaw `api.registerHook(...)`.
 
 Implemented behavior:

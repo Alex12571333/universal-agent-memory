@@ -272,7 +272,7 @@ Acceptance:
 
 Runtime APIs verified against `.14`:
 
-- OpenClaw native plugin: `openclaw.extensions`, `definePluginEntry`,
+- OpenClaw native plugin: `openclaw.extensions`, default plugin entry object,
   `api.registerHook("agent_turn_prepare" | "after_tool_call" | "agent_end")`.
 - Hermes memory provider: `$HERMES_HOME/plugins/<name>/`, `MemoryProvider`
   methods `initialize`, `prefetch`, `sync_turn`, `on_session_end`, tool schemas.
