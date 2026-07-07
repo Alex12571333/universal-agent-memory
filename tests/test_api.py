@@ -282,11 +282,64 @@ def test_memory_list_endpoint_and_operator_ui() -> None:
     assert "Живая карта памяти" in ui.text
     assert "OpenClaw" in ui.text
     assert "Hermes" in ui.text
+    assert "Настройки моделей" in ui.text
+    assert "Obsidian‑style карта" in ui.text
+    assert "mountForceGraph" in ui.text
+    assert "/v1/settings/models" in ui.text
     assert "Редактируй обычный текст памяти" in ui.text
     assert "Сохранить и пересчитать embedding" in ui.text
     assert "Frontmatter, ревизии и embedding остаются под капотом" in ui.text
     assert "Сервер предлагает самую свежую активную версию" in ui.text
     assert "/v1/workspaces/" in ui.text
+
+
+def test_model_settings_endpoints_save_and_probe_fake_provider() -> None:
+    client = TestClient(create_app(build_in_memory_container()))
+
+    current = client.get("/v1/settings/models")
+    saved = client.put(
+        "/v1/settings/models",
+        json={
+            "provider": "fake",
+            "model_name": "fake-ui-test",
+            "dimension": 32,
+            "base_url": None,
+            "api_key": "local-secret",
+            "timeout_seconds": 5,
+        },
+    )
+    probed = client.post(
+        "/v1/settings/models/test",
+        json={
+            "provider": "fake",
+            "model_name": "fake-ui-test",
+            "dimension": 32,
+            "timeout_seconds": 5,
+        },
+    )
+    resaved = client.put(
+        "/v1/settings/models",
+        json={
+            "provider": "fake",
+            "model_name": "fake-ui-test-2",
+            "dimension": 32,
+            "base_url": None,
+            "api_key": None,
+            "timeout_seconds": 5,
+        },
+    )
+
+    assert current.status_code == 200
+    assert current.json()["runtime"]["model_name"] == "fake-embed-v1"
+    assert saved.status_code == 200
+    assert saved.json()["desired"]["model_name"] == "fake-ui-test"
+    assert saved.json()["desired"]["api_key"] == "loca…cret"
+    assert saved.json()["env"]["UAM_EMBEDDING_MODEL"] == "fake-ui-test"
+    assert probed.status_code == 200
+    assert probed.json()["ok"] is True
+    assert probed.json()["dimension"] == 32
+    assert resaved.status_code == 200
+    assert resaved.json()["desired"]["api_key"] == "loca…cret"
 
 
 def test_retain_endpoint_redacts_secret_before_storage() -> None:

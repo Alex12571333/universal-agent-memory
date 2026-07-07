@@ -277,7 +277,35 @@ def main() -> int:
 
     ui = api.request("GET", "/ui")
     expect("Универсальная память агентов" in ui, "Russian operator UI missing")
+    expect("Настройки моделей" in ui, "model settings UI missing")
+    expect("mountForceGraph" in ui, "interactive graph UI missing")
     print("PASS ui")
+
+    model_settings = {
+        "provider": "fake",
+        "model_name": "fake-api-e2e",
+        "dimension": 32,
+        "base_url": None,
+        "api_key": "local-e2e-secret",
+        "timeout_seconds": 5,
+    }
+    saved_settings = api.request("PUT", "/v1/settings/models", model_settings)
+    tested_settings = api.request(
+        "POST",
+        "/v1/settings/models/test",
+        {
+            "provider": "fake",
+            "model_name": "fake-api-e2e",
+            "dimension": 32,
+            "timeout_seconds": 5,
+        },
+    )
+    expect(
+        saved_settings["desired"]["model_name"] == "fake-api-e2e",
+        "model settings save failed",
+    )
+    expect(tested_settings["ok"] is True, "model settings probe failed")
+    print("PASS model_settings")
 
     metrics = api.request("GET", f"/metrics?{urlencode({'tenant_id': str(TENANT)})}")
     expect("uam_memory_items_total" in metrics, "metrics missing memory counter")

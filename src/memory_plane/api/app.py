@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import json
 import os
 import secrets
 from typing import Any, Literal
@@ -15,6 +16,10 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 
 from memory_plane.adapters.documents import BinaryDocumentCommand, DocumentIngestor
+from memory_plane.adapters.embeddings import (
+    EmbeddingProviderConfig,
+    build_embedding_client,
+)
 from memory_plane.bootstrap import (
     Container,
     build_in_memory_container,
@@ -211,6 +216,17 @@ class GraphEdgeBody(BaseModel):
     provenance_item_id: UUID | None = None
 
 
+class ModelSettingsBody(BaseModel):
+    """Desired embedding/runtime model settings edited from the operator UI."""
+
+    provider: Literal["fake", "openai", "ollama", "tei"] = "fake"
+    model_name: str = Field(min_length=1)
+    dimension: int = Field(default=1536, ge=1, le=65536)
+    base_url: str | None = None
+    api_key: str | None = None
+    timeout_seconds: float = Field(default=30.0, ge=1, le=600)
+
+
 def _conflict_case_response(case: ConflictCase) -> dict[str, Any]:
     """Render a conflict case as JSON."""
     return {
@@ -270,6 +286,99 @@ def _graph_edge_response(edge: MemoryEdge) -> dict[str, Any]:
     }
 
 
+def _settings_path() -> str | None:
+    """Return optional JSON path for desired model settings."""
+    path = os.getenv("UAM_MODEL_SETTINGS_PATH", "").strip()
+    return path or None
+
+
+def _load_model_settings() -> dict[str, Any] | None:
+    """Load desired model settings from disk when configured."""
+    path = _settings_path()
+    if not path or not os.path.exists(path):
+        return None
+    with open(path, encoding="utf-8") as handle:
+        data = json.load(handle)
+    return data if isinstance(data, dict) else None
+
+
+def _save_model_settings(settings: dict[str, Any]) -> None:
+    """Persist desired model settings when the server is configured to do so."""
+    path = _settings_path()
+    if not path:
+        return
+    directory = os.path.dirname(path)
+    if directory:
+        os.makedirs(directory, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as handle:
+        json.dump(settings, handle, ensure_ascii=False, indent=2, sort_keys=True)
+        handle.write("\n")
+
+
+def _mask_secret(value: str | None) -> str | None:
+    """Mask API keys before returning settings to the browser."""
+    if not value:
+        return None
+    if len(value) <= 8:
+        return "••••"
+    return f"{value[:4]}…{value[-4:]}"
+
+
+def _model_settings_response(
+    services: Container,
+    desired: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Render runtime and desired model settings."""
+    client = getattr(services.embedding, "_client", None)
+    env_config = EmbeddingProviderConfig.from_env()
+    desired_config = desired or _model_body_from_config(env_config)
+    safe_desired = {**desired_config, "api_key": _mask_secret(desired_config.get("api_key"))}
+    return {
+        "runtime": {
+            "model_name": getattr(client, "model_name", env_config.model_name),
+            "dimension": getattr(client, "dimension", env_config.dimension),
+            "provider": env_config.provider,
+            "base_url": env_config.base_url,
+            "timeout_seconds": env_config.timeout_seconds,
+            "qdrant_dimension": getattr(client, "dimension", env_config.dimension),
+        },
+        "desired": safe_desired,
+        "settings_path": _settings_path(),
+        "restart_required": True,
+        "env": {
+            "UAM_EMBEDDING_PROVIDER": desired_config["provider"],
+            "UAM_EMBEDDING_MODEL": desired_config["model_name"],
+            "UAM_EMBEDDING_DIM": str(desired_config["dimension"]),
+            "UAM_EMBEDDING_BASE_URL": desired_config.get("base_url") or "",
+            "UAM_EMBEDDING_TIMEOUT_SECONDS": str(desired_config["timeout_seconds"]),
+        },
+    }
+
+
+def _model_body_from_config(config: EmbeddingProviderConfig) -> dict[str, Any]:
+    """Convert provider config to serializable settings."""
+    return {
+        "provider": config.provider,
+        "model_name": config.model_name,
+        "dimension": config.dimension,
+        "base_url": config.base_url,
+        "api_key": config.api_key,
+        "timeout_seconds": config.timeout_seconds,
+    }
+
+
+def _settings_from_body(body: ModelSettingsBody) -> dict[str, Any]:
+    """Normalize a model settings payload."""
+    return {
+        "provider": body.provider,
+        "model_name": body.model_name.strip(),
+        "dimension": body.dimension,
+        "base_url": body.base_url.strip() if body.base_url else None,
+        "api_key": body.api_key.strip() if body.api_key else None,
+        "timeout_seconds": body.timeout_seconds,
+    }
+
+
 def create_app(
     container: Container | None = None,
     *,
@@ -279,6 +388,7 @@ def create_app(
     services = container or _build_runtime_container()
     documents = DocumentIngestor(services.ingestion)
     configured_key = api_key if api_key is not None else os.getenv("UAM_API_KEY")
+    model_settings = _load_model_settings()
     app = FastAPI(
         title="Universal Agent Memory Server",
         version="0.1.0",
@@ -323,6 +433,57 @@ def create_app(
     def operator_ui() -> str:
         """Serve the local human memory console."""
         return _OPERATOR_UI_HTML
+
+    @app.get("/v1/settings/models")
+    def get_model_settings() -> dict[str, Any]:
+        """Return runtime and desired embedding model settings for the UI."""
+        return _model_settings_response(services, model_settings)
+
+    @app.put("/v1/settings/models")
+    def save_model_settings(body: ModelSettingsBody) -> dict[str, Any]:
+        """Save desired model settings without hot-swapping a live vector index."""
+        nonlocal model_settings
+        previous_settings = model_settings or {}
+        model_settings = _settings_from_body(body)
+        if model_settings["api_key"] is None:
+            existing_key = previous_settings.get("api_key")
+            if existing_key:
+                model_settings["api_key"] = existing_key
+        try:
+            _save_model_settings(model_settings)
+        except OSError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        return _model_settings_response(services, model_settings)
+
+    @app.post("/v1/settings/models/test")
+    def test_model_settings(body: ModelSettingsBody) -> dict[str, Any]:
+        """Probe an embedding provider using the proposed settings."""
+        settings = _settings_from_body(body)
+        try:
+            config = EmbeddingProviderConfig(**settings)
+            client = build_embedding_client(config)
+            embed_document = getattr(client, "embed_document", None)
+            vector = (
+                embed_document("universal agent memory embedding healthcheck")
+                if callable(embed_document)
+                else client.embed("universal agent memory embedding healthcheck")
+            )
+        except (RuntimeError, ValueError) as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        actual = len(vector)
+        expected = config.dimension
+        return {
+            "ok": actual == expected,
+            "model_name": client.model_name,
+            "provider": config.provider,
+            "dimension": actual,
+            "expected_dimension": expected,
+            "message": (
+                "endpoint returned expected vector dimension"
+                if actual == expected
+                else "endpoint dimension differs from configured Qdrant dimension"
+            ),
+        }
 
     @app.post("/v1/memory/retain", status_code=201)
     def retain(body: RetainBody) -> dict[str, Any]:
@@ -1030,6 +1191,7 @@ _OPERATOR_UI_HTML = """
       align-items: flex-start;
     }
     .stage-title { font-size: 22px; font-weight: 850; letter-spacing: -.035em; }
+    #overviewGraph { position: absolute; inset: 0; }
     .overview-svg { position: absolute; inset: 0; width: 100%; height: 100%; }
     .agent-card {
       display: grid;
@@ -1184,6 +1346,105 @@ _OPERATOR_UI_HTML = """
     .graph-edge-hot { stroke: rgba(251, 113, 133, .86); }
     .graph-edge-ok { stroke: rgba(52, 211, 153, .78); }
     .graph-edge-warn { stroke: rgba(251, 191, 36, .78); }
+    .force-graph {
+      position: relative;
+      width: 100%;
+      min-height: 520px;
+      border-radius: 22px;
+      border: 1px solid rgba(148, 163, 184, .16);
+      background:
+        radial-gradient(circle at 50% 50%, rgba(34, 211, 238, .14), transparent 18rem),
+        radial-gradient(circle at 22% 16%, rgba(167, 139, 250, .18), transparent 16rem),
+        rgba(2, 6, 23, .52);
+      overflow: hidden;
+      touch-action: none;
+    }
+    .force-graph::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background-image:
+        linear-gradient(rgba(148, 163, 184, .045) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(148, 163, 184, .045) 1px, transparent 1px);
+      background-size: 34px 34px;
+      mask-image: radial-gradient(circle at 50% 50%, #000, transparent 78%);
+    }
+    .force-graph.compact { position: absolute; inset: 0; min-height: 420px; height: 100%; border: 0; background: transparent; }
+    .force-svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      cursor: grab;
+    }
+    .force-svg.dragging { cursor: grabbing; }
+    .node-glow { filter: drop-shadow(0 16px 26px rgba(0, 0, 0, .48)); }
+    .node-ring { fill: rgba(15, 23, 42, .86); stroke: rgba(226, 232, 240, .18); stroke-width: 1.5; }
+    .node-core { stroke: rgba(255, 255, 255, .38); stroke-width: 1.2; }
+    .node-label {
+      fill: #f8fbff;
+      font: 800 12px ui-sans-serif, system-ui, sans-serif;
+      text-anchor: middle;
+      paint-order: stroke;
+      stroke: rgba(2, 6, 23, .86);
+      stroke-width: 4px;
+      stroke-linejoin: round;
+      pointer-events: none;
+    }
+    .edge-line { stroke: rgba(148, 163, 184, .45); stroke-width: 1.8; }
+    .edge-line.hot { stroke: rgba(251, 113, 133, .84); }
+    .edge-line.ok { stroke: rgba(52, 211, 153, .76); }
+    .edge-line.warn { stroke: rgba(251, 191, 36, .78); }
+    .graph-tools {
+      position: absolute;
+      z-index: 4;
+      right: 14px;
+      bottom: 14px;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+      max-width: min(620px, calc(100% - 28px));
+      padding: 10px;
+      border: 1px solid rgba(148, 163, 184, .16);
+      border-radius: 18px;
+      background: rgba(2, 6, 23, .72);
+      backdrop-filter: blur(14px);
+    }
+    .graph-tools label {
+      display: inline-flex;
+      gap: 8px;
+      align-items: center;
+      color: var(--soft);
+      font-size: 12px;
+    }
+    .graph-tools input[type="range"] { width: 110px; padding: 0; accent-color: var(--cyan); }
+    .graph-tools input[type="checkbox"] { width: auto; accent-color: var(--cyan); }
+    .dashboard-tiles {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 12px;
+    }
+    .status-tile {
+      padding: 14px;
+      border: 1px solid rgba(148, 163, 184, .14);
+      border-radius: 18px;
+      background: linear-gradient(135deg, rgba(255,255,255,.075), rgba(255,255,255,.018));
+    }
+    .settings-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .settings-grid .full { grid-column: 1 / -1; }
+    .env-block {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+      line-height: 1.6;
+      color: #dbeafe;
+    }
     .legend {
       display: flex;
       gap: 8px;
@@ -1261,6 +1522,7 @@ _OPERATOR_UI_HTML = """
           <button class="nav-button" onclick="showTab('graph')">🕸️ Карта связей</button>
           <button class="nav-button" onclick="showTab('conflicts')">⚠️ Конфликты</button>
           <button class="nav-button" onclick="showTab('vault')">🗂️ Obsidian vault</button>
+          <button class="nav-button" onclick="showTab('settings')">⚙️ Модели</button>
           <button class="nav-button" onclick="showTab('retain')">✍️ Новая память</button>
           <div class="nav-title" style="margin-top:18px">Слои</div>
           <span class="pill">ядро</span><span class="pill">рабочая</span>
@@ -1277,6 +1539,11 @@ _OPERATOR_UI_HTML = """
             <button class="secondary" onclick="refreshAll()">Синхронизировать</button>
           </div>
           <div id="overviewGraph"></div>
+          <div class="dashboard-tiles" style="position:absolute;left:18px;right:18px;bottom:18px;z-index:3">
+            <div class="status-tile"><div class="muted tiny">Индексация</div><strong id="dashIndex">готово</strong></div>
+            <div class="status-tile"><div class="muted tiny">Embedding</div><strong id="dashModel">загрузка…</strong></div>
+            <div class="status-tile"><div class="muted tiny">Граф</div><strong>drag / zoom</strong></div>
+          </div>
         </div>
 
         <aside class="inspector" aria-label="Инспектор системы памяти">
@@ -1307,6 +1574,7 @@ _OPERATOR_UI_HTML = """
           <button id="tab-conflicts" type="button" class="tab" role="tab" aria-controls="view-conflicts" onclick="showTab('conflicts')">Конфликты</button>
           <button id="tab-vault" type="button" class="tab" role="tab" aria-controls="view-vault" onclick="showTab('vault')">Хранилище</button>
           <button id="tab-graph" type="button" class="tab" role="tab" aria-controls="view-graph" onclick="showTab('graph')">Граф</button>
+          <button id="tab-settings" type="button" class="tab" role="tab" aria-controls="view-settings" onclick="showTab('settings')">Модели</button>
         </div>
 
         <div id="view-memory" class="view active">
@@ -1400,7 +1668,7 @@ _OPERATOR_UI_HTML = """
           <div class="panel-head">
             <div>
               <h2>Подробный граф памяти</h2>
-              <p class="muted tiny">Узлы, направления, веса, типы связей и статусы вокруг выбранного воспоминания.</p>
+              <p class="muted tiny">Obsidian‑style карта: узлы можно тянуть, колесом масштабировать, фон перетаскивать.</p>
             </div>
           </div>
           <div class="panel-body">
@@ -1416,6 +1684,65 @@ _OPERATOR_UI_HTML = """
             </div>
             <div id="graphCanvas" class="card"></div>
             <div id="graph" class="list"></div>
+          </div>
+        </div>
+
+        <div id="view-settings" class="view">
+          <div class="panel-head">
+            <div>
+              <h2>Настройки моделей</h2>
+              <p class="muted tiny">Настраивай embedding provider прямо из web. Применение к Qdrant — через restart + reindex, чтобы не смешивать размерности.</p>
+            </div>
+            <button class="secondary" onclick="loadModelSettings()">Обновить</button>
+          </div>
+          <div class="panel-body">
+            <div class="settings-grid">
+              <label>
+                <span class="muted tiny">Provider</span>
+                <select id="modelProvider" aria-label="Embedding provider">
+                  <option value="fake">fake / тестовый</option>
+                  <option value="tei">TEI / llama.cpp OpenAI-compatible</option>
+                  <option value="ollama">Ollama</option>
+                  <option value="openai">OpenAI</option>
+                </select>
+              </label>
+              <label>
+                <span class="muted tiny">Model</span>
+                <input id="modelName" aria-label="Embedding model" placeholder="jina-embeddings-v4">
+              </label>
+              <label>
+                <span class="muted tiny">Dimension</span>
+                <input id="modelDim" aria-label="Embedding dimension" type="number" min="1" max="65536" value="1536">
+              </label>
+              <label>
+                <span class="muted tiny">Timeout seconds</span>
+                <input id="modelTimeout" aria-label="Embedding timeout" type="number" min="1" max="600" value="30">
+              </label>
+              <label class="full">
+                <span class="muted tiny">Base URL</span>
+                <input id="modelBaseUrl" aria-label="Embedding base URL" placeholder="http://192.168.0.10:8081">
+              </label>
+              <label class="full">
+                <span class="muted tiny">API key, если нужен</span>
+                <input id="modelApiKey" aria-label="Embedding API key" placeholder="оставь пустым, если endpoint локальный">
+              </label>
+            </div>
+            <div class="toolbar" style="margin-top:12px">
+              <button onclick="saveModelSettings()">Сохранить desired config</button>
+              <button class="secondary" onclick="testModelSettings()">Проверить endpoint</button>
+              <button class="secondary" onclick="reindex()">Reindex после применения</button>
+            </div>
+            <div class="split" style="margin-top:12px">
+              <div class="card">
+                <h3>Runtime сейчас</h3>
+                <div id="runtimeSettings" class="muted tiny">Загрузка…</div>
+              </div>
+              <div class="card">
+                <h3>Docker env для применения</h3>
+                <pre id="modelEnv" class="env-block">Загрузка…</pre>
+              </div>
+            </div>
+            <div id="modelSettingsResult" style="margin-top:12px"></div>
           </div>
         </div>
       </section>
@@ -1445,6 +1772,7 @@ _OPERATOR_UI_HTML = """
     const tenant = () => $("tenant").value.trim();
     const workspace = () => $("workspace").value.trim();
     let lastMemories = [];
+    const graphInstances = {};
 
     async function api(path, options = {}) {
       log(`→ ${options.method || "GET"} ${path}`);
@@ -1479,10 +1807,11 @@ _OPERATOR_UI_HTML = """
       if (name === "conflicts") loadConflicts();
       if (name === "vault") loadVault();
       if (name === "graph") loadGraph();
+      if (name === "settings") loadModelSettings();
     }
 
     async function refreshAll() {
-      await Promise.allSettled([listMemories(), loadConflicts(), loadVault()]);
+      await Promise.allSettled([listMemories(), loadConflicts(), loadVault(), loadModelSettings()]);
     }
 
     function updateKpis({ memories, conflicts, vault } = {}) {
@@ -1566,6 +1895,75 @@ _OPERATOR_UI_HTML = """
         <span class="muted tiny">${escapeHtml(data.id)} · ревизия ${data.revision}</span>
       </div>`;
       await listMemories();
+    }
+
+    function readModelSettingsForm() {
+      return {
+        provider: $("modelProvider").value,
+        model_name: $("modelName").value.trim() || "fake-embed-v1",
+        dimension: Number($("modelDim").value || 1536),
+        base_url: $("modelBaseUrl").value.trim() || null,
+        api_key: $("modelApiKey").value.trim() || null,
+        timeout_seconds: Number($("modelTimeout").value || 30),
+      };
+    }
+
+    function applyModelSettings(data) {
+      const desired = data.desired || {};
+      $("modelProvider").value = desired.provider || "fake";
+      $("modelName").value = desired.model_name || "fake-embed-v1";
+      $("modelDim").value = desired.dimension || 1536;
+      $("modelBaseUrl").value = desired.base_url || "";
+      $("modelTimeout").value = desired.timeout_seconds || 30;
+      $("modelApiKey").value = "";
+      const runtime = data.runtime || {};
+      $("dashModel").textContent = `${runtime.provider || "?"} · ${runtime.model_name || "?"}`;
+      $("runtimeSettings").innerHTML = `
+        <div><span class="pill ok">${escapeHtml(runtime.provider || "unknown")}</span>
+        <span class="pill">${escapeHtml(runtime.model_name || "unknown")}</span>
+        <span class="pill">${escapeHtml(runtime.dimension || "—")} dim</span></div>
+        <div>base: ${escapeHtml(runtime.base_url || "local/default")}</div>
+        <div>timeout: ${escapeHtml(runtime.timeout_seconds || "—")}s</div>
+        <div class="muted tiny">restart_required: ${data.restart_required ? "да" : "нет"} · settings_path: ${escapeHtml(data.settings_path || "in-memory only")}</div>
+      `;
+      const env = data.env || {};
+      $("modelEnv").textContent = Object.entries(env)
+        .map(([key, value]) => `${key}=${value}`)
+        .join("\\n") || "env пока не сформирован";
+    }
+
+    async function loadModelSettings() {
+      const data = await api("/v1/settings/models");
+      applyModelSettings(data);
+      $("modelSettingsResult").innerHTML = "";
+    }
+
+    async function saveModelSettings() {
+      const data = await api("/v1/settings/models", {
+        method: "PUT",
+        body: JSON.stringify(readModelSettingsForm()),
+      });
+      applyModelSettings(data);
+      $("modelSettingsResult").innerHTML = `<div class="card">
+        <span class="pill ok">desired config сохранён</span>
+        <div class="muted tiny">Чтобы реально применить модель к Qdrant: обнови env Docker, перезапусти сервер/worker и запусти reindex.</div>
+      </div>`;
+    }
+
+    async function testModelSettings() {
+      try {
+        const data = await api("/v1/settings/models/test", {
+          method: "POST",
+          body: JSON.stringify(readModelSettingsForm()),
+        });
+        $("modelSettingsResult").innerHTML = `<div class="card">
+          <span class="pill ${data.ok ? "ok" : "warn"}">${data.ok ? "endpoint работает" : "dimension mismatch"}</span>
+          <div class="muted tiny">${escapeHtml(data.provider)} · ${escapeHtml(data.model_name)} · ${escapeHtml(data.dimension)} / ${escapeHtml(data.expected_dimension)} dim</div>
+          <div>${escapeHtml(data.message)}</div>
+        </div>`;
+      } catch (err) {
+        $("modelSettingsResult").innerHTML = `<div class="empty">Проверка endpoint не прошла: ${escapeHtml(err.message)}</div>`;
+      }
     }
 
     async function loadConflicts() {
@@ -1695,7 +2093,8 @@ _OPERATOR_UI_HTML = """
     async function loadGraph() {
       const item = $("graphItem").value.trim();
       if (!item) {
-        $("graphCanvas").innerHTML = renderGraphMap([]);
+        $("graphCanvas").innerHTML = renderGraphHost("detail", "Выбери воспоминание, чтобы увидеть карту связей");
+        mountForceGraph("detailGraphHost", [{ id: "workspace", label: "workspace", role: "center" }], [], { compact: false });
         $("graph").innerHTML = `<div class="empty">Сначала вставь или выбери id воспоминания.</div>`;
         return;
       }
@@ -1703,14 +2102,16 @@ _OPERATOR_UI_HTML = """
       if ($("edgeType").value) params.set("edge_type", $("edgeType").value);
       try {
         const data = await api(`/v1/memory/${item}/neighbors?${params}`);
-        $("graphCanvas").innerHTML = renderGraphMap(data.edges || [], item);
+        $("graphCanvas").innerHTML = renderGraphHost("detail", "Граф связей воспоминания");
+        mountForceGraph("detailGraphHost", graphNodesFromEdges(data.edges || [], item), data.edges || [], { compact: false });
         $("graph").innerHTML = data.count ? data.edges.map(edge => `<div class="card">
           <span class="pill">${escapeHtml(edgeName(edge.edge_type))}</span>
           <span class="pill">вес ${Number(edge.weight).toFixed(2)}</span>
           <pre>${escapeHtml(edge.src_id)}\\n→ ${escapeHtml(edge.dst_id)}</pre>
         </div>`).join("") : `<div class="empty">У этого воспоминания пока нет связей графа.</div>`;
       } catch (err) {
-        $("graphCanvas").innerHTML = renderGraphMap([], item);
+        $("graphCanvas").innerHTML = renderGraphHost("detail", "Не удалось загрузить граф");
+        mountForceGraph("detailGraphHost", [{ id: item, label: shortId(item), role: "center" }], [], { compact: false });
         $("graph").innerHTML = `<div class="empty">Не удалось загрузить граф: ${escapeHtml(err.message)}</div>`;
       }
     }
@@ -1804,109 +2205,280 @@ _OPERATOR_UI_HTML = """
       $("log").prepend(line);
     }
 
-    function renderGraphMap(edges, center = "") {
-      const nodes = new Map();
-      if (center) nodes.set(center, { id: center, role: "center" });
-      edges.forEach(edge => {
-        nodes.set(edge.src_id, { id: edge.src_id, role: edge.src_id === center ? "center" : "source" });
-        nodes.set(edge.dst_id, { id: edge.dst_id, role: edge.dst_id === center ? "center" : "target" });
-      });
-      const list = Array.from(nodes.values()).slice(0, 13);
-      if (!list.length) {
-        return `<div class="graph-map"><svg viewBox="0 0 900 360">
-          <text x="450" y="180" class="graph-label">Выбери воспоминание, чтобы увидеть карту связей</text>
-        </svg></div>`;
-      }
-      const centerNode = list.find(n => n.id === center) || list[0];
-      const others = list.filter(n => n !== centerNode);
-      centerNode.x = 450; centerNode.y = 178;
-      others.forEach((node, i) => {
-        const angle = (Math.PI * 2 * i / Math.max(others.length, 1)) - Math.PI / 2;
-        const radius = 115 + (i % 3) * 32;
-        node.x = 450 + Math.cos(angle) * radius;
-        node.y = 178 + Math.sin(angle) * radius;
-      });
-      const byId = new Map(list.map(n => [n.id, n]));
-      const lines = edges.filter(e => byId.has(e.src_id) && byId.has(e.dst_id)).map(edge => {
-        const a = byId.get(edge.src_id);
-        const b = byId.get(edge.dst_id);
-        const cls = edge.edge_type === "contradicts" || edge.edge_type === "blocks" ? "graph-edge-hot"
-          : edge.edge_type === "supports" || edge.edge_type === "resolves" ? "graph-edge-ok"
-          : "graph-edge-warn";
-        const midX = (a.x + b.x) / 2;
-        const midY = (a.y + b.y) / 2;
-        return `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" class="graph-edge ${cls}"></line>
-          <text x="${midX}" y="${midY - 8}" class="graph-label">${escapeHtml(edgeName(edge.edge_type))}</text>`;
-      }).join("");
-      const circles = list.map(node => {
-        const fill = node.role === "center" ? "url(#centerGrad)"
-          : node.role === "source" ? "rgba(34, 211, 238, .9)" : "rgba(167, 139, 250, .9)";
-        const r = node.role === "center" ? 34 : 24;
-        return `<circle cx="${node.x}" cy="${node.y}" r="${r}" fill="${fill}" class="graph-node"></circle>
-          <text x="${node.x}" y="${node.y + r + 18}" class="graph-label">${shortId(node.id)}</text>`;
-      }).join("");
-      return `<div class="graph-map"><svg viewBox="0 0 900 360">
-        <defs>
-          <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
-            <path d="M0,0 L0,6 L9,3 z" fill="rgba(203,213,225,.8)"></path>
-          </marker>
-          <linearGradient id="centerGrad" x1="0" x2="1">
-            <stop offset="0%" stop-color="#22d3ee"></stop>
-            <stop offset="100%" stop-color="#a78bfa"></stop>
-          </linearGradient>
-        </defs>
-        ${lines}${circles}
-      </svg></div>
-      <div class="legend">
-        <span class="pill ok">подтверждает / решает</span>
-        <span class="pill warn">заменяет / связано</span>
-        <span class="pill hot">противоречит / блокирует</span>
-        <span class="pill">узлов: ${list.length}</span>
+    function renderGraphHost(prefix, title) {
+      return `<div id="${prefix}GraphHost" class="force-graph ${prefix === "overview" ? "compact" : ""}" aria-label="${escapeHtml(title)}">
+        <svg class="force-svg" role="img"></svg>
+        <div class="graph-tools">
+          <button class="secondary" onclick="restartGraph('${prefix}GraphHost')">Перемешать</button>
+          <button class="secondary" onclick="fitGraph('${prefix}GraphHost')">В центр</button>
+          <label>сила <input id="${prefix}Gravity" type="range" min="0.2" max="2.2" step="0.1" value="1"></label>
+          <label><input id="${prefix}Labels" type="checkbox" checked onchange="toggleGraphLabels('${prefix}GraphHost', this.checked)"> подписи</label>
+        </div>
       </div>`;
+    }
+
+    function graphNodesFromEdges(edges, center = "") {
+      const nodes = new Map();
+      const byMemory = new Map((lastMemories || []).map(row => [row.id, row]));
+      if (center) {
+        const memory = byMemory.get(center);
+        nodes.set(center, {
+          id: center,
+          label: memory ? layerName(memory.layer) : shortId(center),
+          text: memory?.text || "",
+          role: "center",
+          status: memory?.status || "active",
+        });
+      }
+      edges.forEach(edge => {
+        [edge.src_id, edge.dst_id].forEach(id => {
+          if (nodes.has(id)) return;
+          const memory = byMemory.get(id);
+          nodes.set(id, {
+            id,
+            label: memory ? layerName(memory.layer) : shortId(id),
+            text: memory?.text || "",
+            role: id === center ? "center" : "memory",
+            status: memory?.status || "active",
+          });
+        });
+      });
+      return Array.from(nodes.values()).slice(0, 40);
+    }
+
+    function mountForceGraph(hostId, rawNodes, rawEdges, options = {}) {
+      const host = $(hostId);
+      if (!host) return;
+      const svg = host.querySelector("svg");
+      const width = host.clientWidth || 900;
+      const height = host.clientHeight || (options.compact ? 420 : 520);
+      const centerX = width / 2;
+      const centerY = height / 2;
+      const nodes = rawNodes.map((node, index) => {
+        const angle = (Math.PI * 2 * index / Math.max(rawNodes.length, 1)) - Math.PI / 2;
+        const radius = node.role === "center" ? 0 : 110 + (index % 4) * 36;
+        return {
+          ...node,
+          x: centerX + Math.cos(angle) * radius,
+          y: centerY + Math.sin(angle) * radius,
+          vx: 0,
+          vy: 0,
+          r: node.role === "center" ? 34 : 22,
+        };
+      });
+      const byId = new Map(nodes.map(node => [node.id, node]));
+      const edges = rawEdges
+        .filter(edge => byId.has(edge.src_id) && byId.has(edge.dst_id))
+        .map(edge => ({ ...edge, source: byId.get(edge.src_id), target: byId.get(edge.dst_id) }));
+      const state = {
+        hostId, host, svg, nodes, edges,
+        zoom: 1, panX: 0, panY: 0,
+        running: true, labels: true,
+        strength: 1,
+        raf: null,
+      };
+      graphInstances[hostId]?.stop?.();
+      graphInstances[hostId] = state;
+      state.stop = () => {
+        state.running = false;
+        if (state.raf) cancelAnimationFrame(state.raf);
+      };
+      svg.innerHTML = `<defs>
+        <linearGradient id="${hostId}-center" x1="0" x2="1">
+          <stop offset="0%" stop-color="#22d3ee"></stop>
+          <stop offset="100%" stop-color="#a78bfa"></stop>
+        </linearGradient>
+        <linearGradient id="${hostId}-memory" x1="0" x2="1">
+          <stop offset="0%" stop-color="#60a5fa"></stop>
+          <stop offset="100%" stop-color="#a78bfa"></stop>
+        </linearGradient>
+      </defs>
+      <g class="viewport">
+        <g class="edges"></g>
+        <g class="nodes"></g>
+      </g>`;
+      bindGraphPointers(state);
+      const slider = $(`${hostId.replace("GraphHost", "")}Gravity`);
+      if (slider) slider.oninput = () => { state.strength = Number(slider.value || 1); };
+      drawGraph(state);
+      tickGraph(state, 0);
+    }
+
+    function bindGraphPointers(state) {
+      const svg = state.svg;
+      let draggingNode = null;
+      let panning = false;
+      let last = null;
+      svg.onpointerdown = event => {
+        const nodeId = event.target.closest?.("[data-node-id]")?.getAttribute("data-node-id");
+        last = { x: event.clientX, y: event.clientY };
+        svg.setPointerCapture(event.pointerId);
+        svg.classList.add("dragging");
+        if (nodeId) {
+          draggingNode = state.nodes.find(node => node.id === nodeId);
+          if (draggingNode) draggingNode.fixed = true;
+        } else {
+          panning = true;
+        }
+      };
+      svg.onpointermove = event => {
+        if (!last) return;
+        const dx = event.clientX - last.x;
+        const dy = event.clientY - last.y;
+        last = { x: event.clientX, y: event.clientY };
+        if (draggingNode) {
+          draggingNode.x += dx / state.zoom;
+          draggingNode.y += dy / state.zoom;
+          draggingNode.vx = 0;
+          draggingNode.vy = 0;
+          drawGraph(state);
+        } else if (panning) {
+          state.panX += dx;
+          state.panY += dy;
+          drawGraph(state);
+        }
+      };
+      svg.onpointerup = event => {
+        try { svg.releasePointerCapture(event.pointerId); } catch {}
+        svg.classList.remove("dragging");
+        draggingNode = null;
+        panning = false;
+        last = null;
+      };
+      svg.onwheel = event => {
+        event.preventDefault();
+        const next = Math.min(2.8, Math.max(.35, state.zoom * (event.deltaY > 0 ? .9 : 1.1)));
+        state.zoom = next;
+        drawGraph(state);
+      };
+    }
+
+    function tickGraph(state, frame) {
+      if (!state.running) return;
+      const gravity = .004 * state.strength;
+      const repulsion = 1100 * state.strength;
+      for (let i = 0; i < state.nodes.length; i++) {
+        const a = state.nodes[i];
+        if (!a.fixed) {
+          a.vx += ((state.host.clientWidth || 900) / 2 - a.x) * gravity;
+          a.vy += ((state.host.clientHeight || 520) / 2 - a.y) * gravity;
+        }
+        for (let j = i + 1; j < state.nodes.length; j++) {
+          const b = state.nodes[j];
+          const dx = a.x - b.x || .01;
+          const dy = a.y - b.y || .01;
+          const dist2 = Math.max(80, dx * dx + dy * dy);
+          const force = repulsion / dist2;
+          if (!a.fixed) { a.vx += dx * force; a.vy += dy * force; }
+          if (!b.fixed) { b.vx -= dx * force; b.vy -= dy * force; }
+        }
+      }
+      state.edges.forEach(edge => {
+        const a = edge.source;
+        const b = edge.target;
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+        const desired = 150 - Number(edge.weight || 0.7) * 45;
+        const force = (dist - desired) * .012 * state.strength;
+        const fx = dx / dist * force;
+        const fy = dy / dist * force;
+        if (!a.fixed) { a.vx += fx; a.vy += fy; }
+        if (!b.fixed) { b.vx -= fx; b.vy -= fy; }
+      });
+      state.nodes.forEach(node => {
+        if (node.fixed) return;
+        node.vx *= .86;
+        node.vy *= .86;
+        node.x += node.vx;
+        node.y += node.vy;
+      });
+      if (frame % 2 === 0) drawGraph(state);
+      state.raf = requestAnimationFrame(() => tickGraph(state, frame + 1));
+    }
+
+    function drawGraph(state) {
+      const viewport = state.svg.querySelector(".viewport");
+      viewport.setAttribute("transform", `translate(${state.panX} ${state.panY}) scale(${state.zoom})`);
+      const edgesNode = state.svg.querySelector(".edges");
+      const nodesNode = state.svg.querySelector(".nodes");
+      edgesNode.innerHTML = state.edges.map(edge => {
+        const cls = edge.edge_type === "contradicts" || edge.edge_type === "blocks" ? "hot"
+          : edge.edge_type === "supports" || edge.edge_type === "resolves" ? "ok" : "warn";
+        return `<line class="edge-line ${cls}" x1="${edge.source.x}" y1="${edge.source.y}" x2="${edge.target.x}" y2="${edge.target.y}"></line>`;
+      }).join("");
+      nodesNode.innerHTML = state.nodes.map(node => {
+        const fill = node.role === "center" ? `url(#${state.hostId}-center)`
+          : node.status === "disputed" ? "#fb7185"
+          : node.status === "stale" ? "#fbbf24"
+          : `url(#${state.hostId}-memory)`;
+        const label = escapeHtml(node.label || shortId(node.id));
+        const labelY = node.y + node.r + 18;
+        return `<g class="node-glow" data-node-id="${escapeHtml(node.id)}" role="button">
+          <circle class="node-ring" cx="${node.x}" cy="${node.y}" r="${node.r + 7}"></circle>
+          <circle class="node-core" cx="${node.x}" cy="${node.y}" r="${node.r}" fill="${fill}"></circle>
+          ${state.labels ? `<text class="node-label" x="${node.x}" y="${labelY}">${label}</text>` : ""}
+        </g>`;
+      }).join("");
+    }
+
+    function restartGraph(hostId) {
+      const state = graphInstances[hostId];
+      if (!state) return;
+      state.nodes.forEach((node, index) => {
+        const angle = (Math.PI * 2 * index / Math.max(state.nodes.length, 1)) + Math.random() * .6;
+        const radius = node.role === "center" ? 0 : 120 + Math.random() * 150;
+        node.x = (state.host.clientWidth || 900) / 2 + Math.cos(angle) * radius;
+        node.y = (state.host.clientHeight || 520) / 2 + Math.sin(angle) * radius;
+        node.vx = 0;
+        node.vy = 0;
+        node.fixed = false;
+      });
+      drawGraph(state);
+    }
+
+    function fitGraph(hostId) {
+      const state = graphInstances[hostId];
+      if (!state) return;
+      state.zoom = 1;
+      state.panX = 0;
+      state.panY = 0;
+      drawGraph(state);
+    }
+
+    function toggleGraphLabels(hostId, show) {
+      const state = graphInstances[hostId];
+      if (!state) return;
+      state.labels = show;
+      drawGraph(state);
     }
 
     function renderOverview() {
       const memories = (lastMemories || []).slice(0, 9);
-      const width = 900;
-      const height = 420;
-      const cx = 450;
-      const cy = 228;
-      const nodes = memories.map((memory, index) => {
-        const angle = (Math.PI * 2 * index / Math.max(memories.length, 1)) - Math.PI / 2;
-        const radius = 122 + (index % 3) * 34;
-        return {
-          ...memory,
-          x: cx + Math.cos(angle) * radius,
-          y: cy + Math.sin(angle) * radius,
-        };
+      const nodes = [
+        { id: "workspace", label: "workspace", role: "center", status: "active" },
+        ...memories.map(memory => ({
+          id: memory.id,
+          label: layerName(memory.layer),
+          role: "memory",
+          status: memory.status,
+          text: memory.text,
+        })),
+      ];
+      const edges = memories.map(memory => ({
+        src_id: "workspace",
+        dst_id: memory.id,
+        edge_type: memory.status === "disputed" ? "contradicts" : "related_to",
+        weight: memory.confidence || .7,
+      }));
+      $("overviewGraph").innerHTML = renderGraphHost("overview", "Обзорная карта памяти");
+      mountForceGraph("overviewGraphHost", nodes, edges, { compact: true });
+      const state = graphInstances.overviewGraphHost;
+      if (!state) return;
+      state.svg.querySelector(".nodes").addEventListener("click", event => {
+        const nodeId = event.target.closest?.("[data-node-id]")?.getAttribute("data-node-id");
+        if (nodeId && nodeId !== "workspace") selectOverviewNode(nodeId);
       });
-      const links = nodes.map(node => `<line x1="${cx}" y1="${cy}" x2="${node.x}" y2="${node.y}"
-        class="graph-edge ${node.status === "disputed" ? "graph-edge-hot" : "graph-edge-ok"}"></line>`).join("");
-      const circles = nodes.map(node => {
-        const statusClass = node.status === "active" || node.status === "pinned" ? "ok"
-          : node.status === "disputed" || node.status === "stale" ? "warn" : "hot";
-        const fill = statusClass === "ok" ? "rgba(34,211,238,.88)"
-          : statusClass === "warn" ? "rgba(251,191,36,.86)" : "rgba(251,113,133,.88)";
-        return `<g role="button" tabindex="0" onclick="selectOverviewNode('${node.id}')">
-          <circle cx="${node.x}" cy="${node.y}" r="25" fill="${fill}" class="graph-node"></circle>
-          <text x="${node.x}" y="${node.y + 45}" class="graph-label">${escapeHtml(layerName(node.layer))}</text>
-        </g>`;
-      }).join("");
-      $("overviewGraph").innerHTML = `<svg class="overview-svg" viewBox="0 0 ${width} ${height}" aria-label="Обзорный граф памяти">
-        <defs>
-          <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
-            <path d="M0,0 L0,6 L9,3 z" fill="rgba(203,213,225,.72)"></path>
-          </marker>
-          <linearGradient id="centerGrad" x1="0" x2="1">
-            <stop offset="0%" stop-color="#22d3ee"></stop>
-            <stop offset="100%" stop-color="#a78bfa"></stop>
-          </linearGradient>
-        </defs>
-        ${links}
-        <circle cx="${cx}" cy="${cy}" r="48" fill="url(#centerGrad)" class="graph-node"></circle>
-        <text x="${cx}" y="${cy + 5}" class="graph-label">workspace</text>
-        ${circles}
-      </svg>`;
     }
 
     function selectOverviewNode(id) {
