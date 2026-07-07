@@ -7,7 +7,13 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from memory_plane.domain.models import MemoryItem, MemoryLayer, MemoryScope, Provenance
+from memory_plane.domain.models import (
+    MemoryItem,
+    MemoryLayer,
+    MemoryScope,
+    MemoryStatus,
+    Provenance,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,6 +69,7 @@ class RetainCommand:
     importance: float = 0.5
     confidence: float = 0.7
     metadata: dict[str, Any] = field(default_factory=dict)
+    status: MemoryStatus = MemoryStatus.ACTIVE
     idempotency_key: str | None = None
 
 

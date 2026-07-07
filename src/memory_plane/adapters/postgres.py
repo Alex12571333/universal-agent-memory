@@ -17,13 +17,14 @@ from memory_plane.domain.models import (
     MemoryLayer,
     MemoryRevisionConflictError,
     MemoryScope,
+    MemoryStatus,
     Observation,
     Provenance,
 )
 
 _ITEM_COLUMNS = """
     m.id, m.tenant_id, m.workspace_id, m.agent_id, m.thread_id,
-    m.layer, m.scope, m.kind, m.text, m.labels, m.metadata,
+    m.layer, m.scope, m.kind, m.text, m.labels, m.metadata, m.status,
     m.importance, m.salience, m.confidence, m.observed_at,
     m.valid_from, m.valid_to, m.created_at, m.revision, m.supersedes_id,
     p.source_kind, p.origin_uri, p.object_key, p.checksum_sha256,
@@ -719,11 +720,11 @@ class PostgresMemoryLedger:
             """
             insert into memory_items (
               id, tenant_id, workspace_id, agent_id, thread_id, layer, scope,
-              kind, text, labels, metadata, importance, salience, confidence,
+              kind, text, labels, metadata, status, importance, salience, confidence,
               observed_at, valid_from, valid_to, revision, supersedes_id, created_at
             ) values (
               %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-              %s, %s, %s, %s, %s, %s, %s, %s, %s
+              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
             )
             """,
             (
@@ -738,6 +739,7 @@ class PostgresMemoryLedger:
                 item.text,
                 list(item.labels),
                 Jsonb(item.metadata),
+                item.status.value,
                 item.importance,
                 item.salience,
                 item.confidence,
@@ -816,6 +818,7 @@ class PostgresMemoryLedger:
             text=row["text"],
             labels=tuple(row["labels"]),
             metadata=row["metadata"],
+            status=MemoryStatus(row["status"]),
             importance=row["importance"],
             salience=row["salience"],
             confidence=row["confidence"],

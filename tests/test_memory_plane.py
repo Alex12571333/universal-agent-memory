@@ -17,6 +17,7 @@ from memory_plane.domain.models import (
     MemoryLayer,
     MemoryRevisionConflictError,
     MemoryScope,
+    MemoryStatus,
     Provenance,
 )
 from memory_plane.workers.handlers import RetainedEventRouter
@@ -36,6 +37,7 @@ class MemoryPlaneTest(unittest.TestCase):
         layer: MemoryLayer = MemoryLayer.SEMANTIC,
         key: str | None = None,
         tenant=None,
+        status: MemoryStatus = MemoryStatus.ACTIVE,
     ):
         return self.container.retention.retain(
             RetainCommand(
@@ -47,6 +49,7 @@ class MemoryPlaneTest(unittest.TestCase):
                 kind="fact",
                 text=text,
                 provenance=Provenance(source_kind="test"),
+                status=status,
                 idempotency_key=key,
             )
         )
@@ -134,6 +137,41 @@ class MemoryPlaneTest(unittest.TestCase):
 
         self.assertEqual(expected.item.id, result.candidates[0].item.id)
         self.assertTrue(all(row.item.tenant_id == self.tenant for row in result.candidates))
+
+    def test_recall_excludes_rejected_and_archived_memory(self) -> None:
+        self.retain("Alpha secret rejected", status=MemoryStatus.REJECTED)
+        self.retain("Alpha old archived", status=MemoryStatus.ARCHIVED)
+        active = self.retain("Alpha active visible", status=MemoryStatus.ACTIVE)
+
+        result = self.container.retrieval.recall(
+            RecallQuery(
+                tenant_id=self.tenant,
+                workspace_id=self.workspace,
+                text="Alpha",
+            )
+        )
+
+        self.assertEqual((active.item.id,), tuple(row.item.id for row in result.candidates))
+
+    def test_recall_demotes_disputed_memory_below_active_memory(self) -> None:
+        disputed = self.retain("Alpha deployment uses blue host", status=MemoryStatus.DISPUTED)
+        active = self.retain("Alpha deployment uses green host", status=MemoryStatus.ACTIVE)
+
+        result = self.container.retrieval.recall(
+            RecallQuery(
+                tenant_id=self.tenant,
+                workspace_id=self.workspace,
+                text="Alpha deployment host",
+            )
+        )
+
+        self.assertEqual(active.item.id, result.candidates[0].item.id)
+        by_id = {row.item.id: row for row in result.candidates}
+        self.assertLess(by_id[disputed.item.id].final_score, by_id[active.item.id].final_score)
+
+    def test_pinned_memory_must_be_core(self) -> None:
+        with self.assertRaises(ValueError):
+            self.retain("Pinned semantic is invalid", status=MemoryStatus.PINNED)
 
     def test_recall_hides_thread_memory_without_matching_thread(self) -> None:
         thread = uuid4()

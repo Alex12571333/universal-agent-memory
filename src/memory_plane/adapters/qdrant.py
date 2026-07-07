@@ -13,7 +13,7 @@ from threading import RLock
 from uuid import UUID
 
 from memory_plane.contracts.dto import Candidate, RecallQuery
-from memory_plane.domain.models import MemoryItem, MemoryScope
+from memory_plane.domain.models import MemoryItem, MemoryScope, MemoryStatus
 
 _WORD = re.compile(r"\w+", re.UNICODE)
 
@@ -310,6 +310,8 @@ class QdrantCandidateSource:
             return False
         if item.scope == MemoryScope.THREAD and item.thread_id != query.thread_id:
             return False
+        if item.status in (MemoryStatus.REJECTED, MemoryStatus.ARCHIVED):
+            return False
         return True
 
     @staticmethod
@@ -331,6 +333,7 @@ class QdrantCandidateSource:
             "kind": item.kind,
             "text": item.text,
             "labels": list(item.labels),
+            "status": item.status.value,
             "importance": item.importance,
             "salience": item.salience,
             "confidence": item.confidence,

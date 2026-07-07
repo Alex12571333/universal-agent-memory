@@ -224,12 +224,13 @@ UAM_EMBEDDING_API_KEY=...
 - deterministic conflict review inbox with persisted human decisions;
 - local operator UI at `/ui`;
 - secrets/PII guard with redaction audit metadata;
+- memory lifecycle statuses with recall exclusion/demotion policy;
 - изоляция проектов через PostgreSQL RLS;
 - in-memory режим для unit-тестов;
 - Docker image, Compose и CI.
 
-Дальше по roadmap: live install smoke tests for OpenClaw/Hermes, retrieval
-demotion policy for unresolved conflicts, secrets/PII guard и UI edit workflows.
+Дальше по roadmap: live install smoke tests for OpenClaw/Hermes, scheduled
+working-memory expiration, graph edges и UI edit workflows.
 
 ## Совместная работа агентов
 

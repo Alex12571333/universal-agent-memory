@@ -36,6 +36,7 @@ from memory_plane.domain.models import (
     MemoryLayer,
     MemoryRevisionConflictError,
     MemoryScope,
+    MemoryStatus,
     Provenance,
 )
 from memory_plane.services.metrics import render_prometheus
@@ -60,6 +61,7 @@ class RetainBody(BaseModel):
     labels: list[str] = Field(default_factory=list)
     importance: float = Field(default=0.5, ge=0, le=1)
     confidence: float = Field(default=0.7, ge=0, le=1)
+    status: MemoryStatus = MemoryStatus.ACTIVE
     idempotency_key: str | None = None
 
 
@@ -309,6 +311,7 @@ def create_app(
                     labels=tuple(body.labels),
                     importance=body.importance,
                     confidence=body.confidence,
+                    status=body.status,
                     idempotency_key=body.idempotency_key,
                 )
             )
@@ -380,6 +383,7 @@ def create_app(
                     "id": str(row.item.id),
                     "text": row.item.text,
                     "layer": row.item.layer.value,
+                    "status": row.item.status.value,
                     "score": row.final_score,
                     "source": row.source,
                 }
@@ -400,6 +404,7 @@ def create_app(
         workspace_id: UUID,
         tenant_id: UUID = DEFAULT_SERVER_ID,
         layer: MemoryLayer | None = None,
+        status: MemoryStatus | None = None,
         label: str | None = None,
     ) -> dict[str, Any]:
         """List memory rows for local operator review."""
@@ -408,6 +413,8 @@ def create_app(
         if lister is None:
             raise HTTPException(status_code=503, detail="memory listing unavailable")
         rows = lister(tenant_id, workspace_id, layers=layers)
+        if status:
+            rows = tuple(row for row in rows if row.status == status)
         if label:
             rows = tuple(row for row in rows if label in row.labels)
         return {
@@ -419,6 +426,7 @@ def create_app(
                     "id": str(row.id),
                     "layer": row.layer.value,
                     "scope": row.scope.value,
+                    "status": row.status.value,
                     "kind": row.kind,
                     "text": row.text,
                     "labels": list(row.labels),

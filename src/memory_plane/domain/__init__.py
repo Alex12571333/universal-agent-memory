@@ -12,6 +12,7 @@ from memory_plane.domain.models import (
     MemoryItem,
     MemoryLayer,
     MemoryScope,
+    MemoryStatus,
     Observation,
     Provenance,
 )
@@ -26,6 +27,7 @@ __all__ = [
     "MemoryItem",
     "MemoryLayer",
     "MemoryScope",
+    "MemoryStatus",
     "Observation",
     "Provenance",
 ]

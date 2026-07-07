@@ -299,6 +299,38 @@ def test_retain_endpoint_redacts_secret_before_storage() -> None:
     assert rows[0].metadata["privacy"]["finding_kinds"] == ["openai_api_key"]
 
 
+def test_memory_status_filters_list_and_recall() -> None:
+    container = build_in_memory_container()
+    client = TestClient(create_app(container))
+    client.post(
+        "/v1/memory/retain",
+        json={
+            "layer": "semantic",
+            "scope": "workspace",
+            "kind": "fact",
+            "text": "Rejected memory should stay hidden",
+            "status": "rejected",
+        },
+    )
+    client.post(
+        "/v1/memory/retain",
+        json={
+            "layer": "semantic",
+            "scope": "workspace",
+            "kind": "fact",
+            "text": "Active memory should be visible",
+        },
+    )
+
+    listed = client.get(f"/v1/workspaces/{DEFAULT_PROJECT_ID}/memories?status=rejected")
+    recalled = client.post("/v1/memory/recall", json={"query": "memory visible hidden"})
+
+    assert listed.status_code == 200
+    assert listed.json()["count"] == 1
+    assert listed.json()["memories"][0]["status"] == "rejected"
+    assert "Rejected memory" not in {row["text"] for row in recalled.json()["results"]}
+
+
 def test_vault_endpoint_exports_markdown_files() -> None:
     client = TestClient(create_app(build_in_memory_container()))
     retained = client.post(
