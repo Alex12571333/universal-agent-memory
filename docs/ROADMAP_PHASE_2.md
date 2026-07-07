@@ -317,7 +317,7 @@ Implemented actions:
 
 See also [ROADMAP_PHASE_3.md](ROADMAP_PHASE_3.md) for follow-up hardening.
 
-## WP-17 Temporal lifecycle and decay policies
+## WP-17 Temporal lifecycle and decay policies — partial complete
 
 Add explicit memory lifecycle fields and retrieval behavior:
 
@@ -334,11 +334,24 @@ decay_policy
 
 Acceptance:
 
-- status is first-class in API and retrieval;
-- default recall excludes rejected/archived;
-- working memory can expire;
-- core memory can be pinned;
-- stale history remains auditable.
+- status is first-class in API and retrieval; ✅
+- default recall excludes rejected/archived; ✅
+- working memory can expire; pending scheduled maintenance
+- core memory can be pinned; ✅ domain invariant
+- stale history remains auditable. ✅ stored rows remain listable by status
+
+Implemented statuses:
+
+```text
+active|stale|deprecated|disputed|hypothesis|rejected|archived|pinned
+```
+
+Retrieval policy:
+
+- `rejected` and `archived` are excluded from recall;
+- `disputed` and `hypothesis` are demoted;
+- `stale` and `deprecated` are strongly demoted;
+- `pinned` boosts core memory.
 
 ## WP-18 Graph layer
 

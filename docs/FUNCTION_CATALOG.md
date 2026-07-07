@@ -10,6 +10,7 @@
 | `MemoryItem.__post_init__()` | Проверяет текст, score ranges, validity и thread scope | `ValueError` при нарушении инварианта |
 | `MemoryItem.is_valid_at(moment)` | Point-in-time проверка temporal validity | Нет |
 | `MemoryItem.supersede(text, confidence=...)` | Создаёт новый immutable revision с `supersedes_id` | Генерирует UUID/time; старый item не меняет |
+| `MemoryStatus` | Lifecycle state for recall/review | rejected/archived hidden, disputed/stale demoted |
 | `MemoryRevisionConflictError` | Ошибка stale CAS для MemoryItem | Содержит `expected`, `actual` |
 | `Observation.__post_init__()` | Запрещает belief без summary/evidence | `ValueError` |
 | `ContextPackage.render_markdown()` | Детерминированно рендерит sections для LLM | Нет |
@@ -58,6 +59,7 @@
 |---|---|---|
 | `RetrievalService.__init__(sources, weights)` | Sources/weights → service | Требует source; веса = 1.0 |
 | `RetrievalService.recall(query)` | `RecallQuery` → ranked `RecallResult` | Tenant/workspace/validity filters применяются после каждого adapter |
+| `RetrievalService._status_multiplier(status)` | status → score multiplier | Demotes uncertain states, boosts pinned core memory |
 
 ## Context — `services/context.py`
 
@@ -167,7 +169,7 @@
 | API-key middleware | Защищает все non-health routes при `UAM_API_KEY` |
 | `GET /metrics` | Prometheus counters/lag; защищён API key |
 | `GET /ui` | Local operator console | Same API-key middleware as API routes |
-| `GET /v1/workspaces/{id}/memories` | Operator memory list | Optional layer/label filters |
+| `GET /v1/workspaces/{id}/memories` | Operator memory list | Optional layer/status/label filters |
 | `POST /v1/memory/retain` | REST boundary для retain |
 | `PUT /v1/memory/{id}/supersede` | CAS replacement; stale revision → `409 revision_conflict` |
 | `POST /v1/workspaces/{id}/vault/import` | Dry-run/apply edited vault notes | Applies through `supersede`; conflicts on stale revisions |

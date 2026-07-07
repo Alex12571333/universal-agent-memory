@@ -36,6 +36,19 @@ class MemoryScope(StrEnum):
     ORGANIZATION = "organization"
 
 
+class MemoryStatus(StrEnum):
+    """Lifecycle state used by retrieval and review policies."""
+
+    ACTIVE = "active"
+    STALE = "stale"
+    DEPRECATED = "deprecated"
+    DISPUTED = "disputed"
+    HYPOTHESIS = "hypothesis"
+    REJECTED = "rejected"
+    ARCHIVED = "archived"
+    PINNED = "pinned"
+
+
 class MemoryRevisionConflictError(Exception):
     """CAS conflict for append-only MemoryItem supersede operations."""
 
@@ -80,6 +93,7 @@ class MemoryItem:
     thread_id: UUID | None = None
     labels: tuple[str, ...] = ()
     metadata: dict[str, Any] = field(default_factory=dict)
+    status: MemoryStatus = MemoryStatus.ACTIVE
     importance: float = 0.5
     salience: float = 0.5
     confidence: float = 0.7
@@ -102,6 +116,8 @@ class MemoryItem:
             raise ValueError("valid_to must be after valid_from")
         if self.scope == MemoryScope.THREAD and self.thread_id is None:
             raise ValueError("thread-scoped memory requires thread_id")
+        if self.status == MemoryStatus.PINNED and self.layer != MemoryLayer.CORE:
+            raise ValueError("pinned memory must live in the core layer")
 
     def is_valid_at(self, moment: datetime) -> bool:
         """Return whether this item was valid at a requested point in time."""

@@ -15,6 +15,7 @@ from memory_plane.domain.models import (
     MemoryLayer,
     MemoryRevisionConflictError,
     MemoryScope,
+    MemoryStatus,
     Observation,
 )
 
@@ -147,6 +148,8 @@ class InMemoryMemoryStore:
             query.tenant_id, query.workspace_id, layers=query.layers
         ):
             if item.scope == MemoryScope.THREAD and item.thread_id != query.thread_id:
+                continue
+            if item.status in (MemoryStatus.REJECTED, MemoryStatus.ARCHIVED):
                 continue
             if query.labels and not set(query.labels).issubset(item.labels):
                 continue

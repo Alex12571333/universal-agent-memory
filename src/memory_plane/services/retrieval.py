@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from memory_plane.contracts.dto import Candidate, RecallQuery, RecallResult
+from memory_plane.domain.models import MemoryStatus
 from memory_plane.ports.repositories import CandidateSource
 
 DEFAULT_WEIGHTS = {
@@ -50,6 +51,8 @@ class RetrievalService:
                     continue
                 if query.valid_at and not candidate.item.is_valid_at(query.valid_at):
                     continue
+                if candidate.item.status in (MemoryStatus.REJECTED, MemoryStatus.ARCHIVED):
+                    continue
                 grouped[candidate.item.id].append(candidate)
 
         ranked = [self._fuse(rows) for rows in grouped.values()]
@@ -75,6 +78,7 @@ class RetrievalService:
             + self._weights["importance"] * item.importance
             + self._weights["trust"] * signals["trust"]
         )
+        score *= self._status_multiplier(item.status)
         sources = "+".join(sorted({row.source for row in candidates}))
         return replace(
             candidates[0],
@@ -86,6 +90,17 @@ class RetrievalService:
             trust=signals["trust"],
             final_score=min(1.0, score),
         )
+
+    @staticmethod
+    def _status_multiplier(status: MemoryStatus) -> float:
+        """Demote uncertain states while boosting pinned core memory."""
+        if status == MemoryStatus.PINNED:
+            return 1.15
+        if status in (MemoryStatus.DISPUTED, MemoryStatus.HYPOTHESIS):
+            return 0.55
+        if status in (MemoryStatus.STALE, MemoryStatus.DEPRECATED):
+            return 0.35
+        return 1.0
 
     @staticmethod
     def _recency(created_at: datetime) -> float:

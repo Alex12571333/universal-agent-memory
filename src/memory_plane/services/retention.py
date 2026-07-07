@@ -41,6 +41,7 @@ class RetentionService:
             text=decision.text,
             labels=command.labels,
             metadata={**command.metadata, **decision.metadata},
+            status=command.status,
             provenance=command.provenance,
             importance=command.importance,
             confidence=command.confidence,
