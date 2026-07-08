@@ -335,6 +335,14 @@ textarea {
     "conflicts activity ops";
 }
 
+.content-grid.vault-editing {
+  grid-template-columns: minmax(560px, 1.45fr) minmax(320px, 0.95fr) minmax(280px, 0.7fr);
+  grid-template-areas:
+    "memory memory ops"
+    "graph vault activity"
+    "conflicts conflicts activity";
+}
+
 .panel {
   min-width: 0;
   overflow: hidden;
@@ -366,6 +374,21 @@ textarea {
   font-size: 17px;
 }
 
+.header-actions,
+.editor-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.editor-toolbar {
+  justify-content: space-between;
+}
+
+.editor-toolbar .hint {
+  margin: 0;
+}
+
 .panel-header button,
 .actions button,
 .composer button,
@@ -381,6 +404,22 @@ textarea {
 .composer button {
   background: linear-gradient(135deg, rgba(45, 150, 255, 0.65), rgba(148, 86, 255, 0.58)) !important;
   border-color: rgba(125, 190, 255, 0.56) !important;
+}
+
+.icon-danger {
+  border-color: rgba(255, 102, 148, 0.36) !important;
+  background: rgba(94, 22, 46, 0.48) !important;
+  color: #ffd8e4 !important;
+}
+
+.icon-danger:hover:not(:disabled) {
+  border-color: rgba(255, 118, 160, 0.68) !important;
+  background: rgba(137, 30, 67, 0.68) !important;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .memory-list,
@@ -1172,6 +1211,14 @@ textarea {
     "conflicts activity ops";
 }
 
+.content-grid.vault-editing {
+  grid-template-columns: minmax(560px, 1.45fr) minmax(320px, 0.95fr) minmax(280px, 0.7fr);
+  grid-template-areas:
+    "memory memory ops"
+    "graph vault activity"
+    "conflicts conflicts activity";
+}
+
 .panel {
   border-radius: 16px;
 }
@@ -1644,6 +1691,16 @@ pre,
       "ops activity"
       "vault vault"
       "conflicts conflicts";
+  }
+  .content-grid.vault-editing {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "memory"
+      "vault"
+      "graph"
+      "ops"
+      "activity"
+      "conflicts";
   }
   .kpi-row { grid-template-columns: repeat(2, minmax(220px, 1fr)); }
 }

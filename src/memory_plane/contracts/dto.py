@@ -91,6 +91,7 @@ class SupersedeMemoryCommand:
     replacement_text: str
     expected_revision: int
     confidence: float | None = None
+    status: MemoryStatus | None = None
     idempotency_key: str | None = None
 
     def __post_init__(self) -> None:

@@ -540,3 +540,42 @@ def test_vault_import_endpoint_plans_and_applies_supersede() -> None:
     assert applied.json()["changes"][0]["new_item_id"] is not None
     rows = container.store.list_for_workspace(DEFAULT_SERVER_ID, DEFAULT_PROJECT_ID)
     assert any(row.text == "Vault import can apply through supersede." for row in rows)
+
+
+def test_vault_archive_endpoint_hides_memory_from_recall() -> None:
+    container = build_in_memory_container()
+    client = TestClient(create_app(container))
+    retained = client.post(
+        "/v1/memory/retain",
+        json={
+            "layer": "semantic",
+            "scope": "workspace",
+            "kind": "fact",
+            "text": "Temporary UI delete test memory.",
+        },
+    )
+    export = client.get(f"/v1/workspaces/{DEFAULT_PROJECT_ID}/vault")
+    memory_file = next(
+        row for row in export.json()["files"] if row["path"].startswith("semantic/")
+    )
+
+    archived = client.post(
+        f"/v1/workspaces/{DEFAULT_PROJECT_ID}/vault/archive",
+        json={"file": memory_file},
+    )
+    recall = client.post(
+        "/v1/memory/recall",
+        json={
+            "query": "Temporary UI delete test memory",
+            "workspace_id": str(DEFAULT_PROJECT_ID),
+        },
+    )
+
+    assert retained.status_code == 201
+    assert archived.status_code == 200
+    assert archived.json()["changes"][0]["action"] == "archive"
+    assert archived.json()["changes"][0]["new_item_id"] is not None
+    assert recall.status_code == 200
+    assert recall.json()["results"] == []
+    rows = container.store.list_for_workspace(DEFAULT_SERVER_ID, DEFAULT_PROJECT_ID)
+    assert any(row.status.value == "archived" for row in rows)

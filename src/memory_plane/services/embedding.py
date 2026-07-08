@@ -30,6 +30,11 @@ class EmbeddingService:
         item = self._ledger.get(tenant_id, memory_id)
         if item is None:
             raise ValueError(f"Memory item {memory_id} not found for tenant {tenant_id}")
+        if item.status.value in {"archived", "rejected"}:
+            self._qdrant.delete(item.id)
+            if item.supersedes_id is not None:
+                self._qdrant.delete(item.supersedes_id)
+            return
 
         vector = self._embed_document(item.text)
         self._validate_dimension(vector)
@@ -42,8 +47,11 @@ class EmbeddingService:
         if not items:
             return 0
 
+        superseded_ids = {item.supersedes_id for item in items if item.supersedes_id is not None}
         pairs = []
         for item in items:
+            if item.id in superseded_ids or item.status.value in {"archived", "rejected"}:
+                continue
             vector = self._embed_document(item.text)
             self._validate_dimension(vector)
             pairs.append((item, vector))

@@ -9,7 +9,12 @@ from typing import Any
 from uuid import UUID
 
 from memory_plane.contracts.dto import SupersedeMemoryCommand
-from memory_plane.domain.models import MemoryItem, MemoryRevisionConflictError, Observation
+from memory_plane.domain.models import (
+    MemoryItem,
+    MemoryRevisionConflictError,
+    MemoryStatus,
+    Observation,
+)
 from memory_plane.ports.repositories import MemoryLedger, ObservationRepository
 from memory_plane.services.retention import RetentionService
 
@@ -214,6 +219,60 @@ class VaultExporter:
             changes=tuple(applied),
         )
 
+    def archive_file(
+        self,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        file: VaultImportSource,
+    ) -> VaultImportResult:
+        """Archive a memory note through the same CAS path as human edits."""
+        if self._retention is None:
+            raise RuntimeError("vault delete requires a retention service")
+        change = self._plan_file_archive(tenant_id, workspace_id, file)
+        if change.action != "archive" or change.item_id is None or change.expected_revision is None:
+            return VaultImportResult(
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
+                dry_run=False,
+                changes=(change,),
+            )
+        note = _parse_markdown_note(file.content)
+        try:
+            result = self._retention.supersede(
+                SupersedeMemoryCommand(
+                    tenant_id=tenant_id,
+                    item_id=change.item_id,
+                    replacement_text=note.body,
+                    expected_revision=change.expected_revision,
+                    confidence=_optional_float(note.frontmatter.get("confidence")),
+                    status=MemoryStatus.ARCHIVED,
+                    idempotency_key=f"vault-archive:{file.path}:{change.expected_revision}",
+                )
+            )
+        except MemoryRevisionConflictError as exc:
+            change = VaultImportChange(
+                path=file.path,
+                action="conflict",
+                item_id=change.item_id,
+                expected_revision=change.expected_revision,
+                message=str(exc),
+            )
+        else:
+            change = VaultImportChange(
+                path=file.path,
+                action="archive",
+                item_id=change.item_id,
+                expected_revision=change.expected_revision,
+                new_item_id=result.item.id,
+                message="created archived memory revision",
+            )
+        return VaultImportResult(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            dry_run=False,
+            changes=(change,),
+        )
+
     _MEMORY_PREFIXES = (
         "working/",
         "core/",
@@ -231,7 +290,7 @@ class VaultExporter:
     ) -> VaultFile:
         """Render a canonical MemoryItem as one Markdown note."""
         path = f"{item.layer.value}/{cls._memory_name(item.id)}.md"
-        status = "superseded" if superseded_by is not None else "active"
+        status = "superseded" if superseded_by is not None else item.status.value
         links: list[str] = []
         if item.supersedes_id is not None:
             links.append(f"- supersedes: [[{cls._memory_name(item.supersedes_id)}]]")
@@ -463,6 +522,73 @@ class VaultExporter:
             item_id=item_id,
             expected_revision=expected_revision,
             message="memory text changed",
+        )
+
+    def _plan_file_archive(
+        self,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        file: VaultImportSource,
+    ) -> VaultImportChange:
+        try:
+            note = _parse_markdown_note(file.content)
+        except ValueError as exc:
+            return VaultImportChange(file.path, "error", message=str(exc))
+        frontmatter = note.frontmatter
+        if frontmatter.get("type") != "memory":
+            return VaultImportChange(
+                file.path,
+                "skip",
+                message="only memory notes can be archived",
+            )
+        if frontmatter.get("status") in {"archived", "superseded"}:
+            return VaultImportChange(
+                file.path,
+                "unchanged",
+                message="note is already archived or superseded",
+            )
+        try:
+            item_id = _parse_note_id(frontmatter.get("id"))
+            expected_revision = int(str(frontmatter["revision"]))
+            note_tenant_id = UUID(str(frontmatter["tenant_id"]))
+            note_workspace_id = UUID(str(frontmatter["workspace_id"]))
+        except (KeyError, TypeError, ValueError) as exc:
+            return VaultImportChange(
+                file.path,
+                "error",
+                message=f"invalid memory frontmatter: {exc}",
+            )
+        if note_tenant_id != tenant_id or note_workspace_id != workspace_id:
+            return VaultImportChange(
+                file.path,
+                "error",
+                item_id=item_id,
+                expected_revision=expected_revision,
+                message="tenant/workspace mismatch",
+            )
+        current = self._ledger.get(tenant_id, item_id)
+        if current is None:
+            return VaultImportChange(
+                file.path,
+                "error",
+                item_id=item_id,
+                expected_revision=expected_revision,
+                message="memory item not found",
+            )
+        if current.revision != expected_revision:
+            return VaultImportChange(
+                file.path,
+                "conflict",
+                item_id=item_id,
+                expected_revision=expected_revision,
+                message=f"expected revision {expected_revision}, actual {current.revision}",
+            )
+        return VaultImportChange(
+            file.path,
+            "archive",
+            item_id=item_id,
+            expected_revision=expected_revision,
+            message="memory will be archived",
         )
 
 

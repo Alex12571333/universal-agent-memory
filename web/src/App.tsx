@@ -107,8 +107,9 @@ function Dashboard() {
 
   const activeMemories = memories.filter((item) => item.status === "active");
   const openConflicts = conflicts.filter(isOpenConflict);
+  const visibleVault = vault.filter(isVaultUiVisible);
   const selected = memories.find((item) => item.id === selectedMemory) ?? memories[0];
-  const selectedVault = vault.find((item) => item.path === selectedFile) ?? preferredVaultFile(vault) ?? vault[0];
+  const selectedVault = visibleVault.find((item) => item.path === selectedFile) ?? preferredVaultFile(visibleVault) ?? visibleVault[0];
 
   const kpis = [
     ["Память", memories.length.toLocaleString(), `активных: ${activeMemories.length}`, "db"],
@@ -137,6 +138,26 @@ function Dashboard() {
     const result = name === "reflect" ? await api.reflect(workspace, tenant) : await api.reindex(workspace, tenant);
     setStatus(JSON.stringify(result));
     await refresh();
+  }
+
+  function openVaultEditor() {
+    setView("vault");
+    window.requestAnimationFrame(() => {
+      document.querySelector(".memory-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
+
+  async function archiveVaultFile(file?: VaultFile) {
+    if (!file || !isVaultEditable(file)) return;
+    const confirmed = window.confirm(`Удалить из актуальной памяти?\n\n${vaultFileTitle(file)}\n\nЗапись будет архивирована, а не физически стерта из истории.`);
+    if (!confirmed) return;
+    setStatus("Архивирую память...");
+    const result = await api.archiveVaultFile(workspace, tenant, file);
+    const change = result.changes[0];
+    setSelectedFile(null);
+    await api.reindex(workspace, tenant);
+    await refresh();
+    setStatus(`Архивировано: ${change?.message ?? "память скрыта из актуального vault"}`);
   }
 
   async function decideConflict(
@@ -170,7 +191,7 @@ function Dashboard() {
           ))}
         </section>
 
-        <section className={view === "graph" ? "content-grid graph-expanded" : "content-grid"}>
+        <section className={view === "graph" ? "content-grid graph-expanded" : view === "vault" ? "content-grid vault-editing" : "content-grid"}>
           <div className="panel memory-panel">
             <PanelHeader
               title={view === "settings" ? "Настройки моделей" : "Последние воспоминания"}
@@ -181,13 +202,14 @@ function Dashboard() {
               <SettingsPanel settings={settings} setStatus={setStatus} refresh={refresh} />
             ) : view === "vault" ? (
               <VaultEditor
-                files={vault}
+                files={visibleVault}
                 selectedPath={selectedVault?.path}
                 tenant={tenant}
                 workspace={workspace}
                 setSelectedFile={setSelectedFile}
                 setStatus={setStatus}
                 refresh={refresh}
+                onArchive={archiveVaultFile}
               />
             ) : view === "inbox" ? (
               <ConflictList conflicts={conflicts} onDecide={decideConflict} />
@@ -243,8 +265,23 @@ function Dashboard() {
           </aside>
 
           <div className="panel vault-preview">
-            <PanelHeader title="Предпросмотр vault" action={<button onClick={() => setView("vault")}>Редактировать</button>} />
-            <VaultPreview files={vault} selectedPath={selectedVault?.path} setSelectedFile={setSelectedFile} />
+            <PanelHeader
+              title="Предпросмотр vault"
+              action={
+                <div className="header-actions">
+                  <button onClick={openVaultEditor}>Редактировать</button>
+                  <button
+                    className="icon-danger"
+                    disabled={!selectedVault || !isVaultEditable(selectedVault)}
+                    title="Удалить из актуальной памяти"
+                    onClick={() => void archiveVaultFile(selectedVault)}
+                  >
+                    🗑
+                  </button>
+                </div>
+              }
+            />
+            <VaultPreview files={visibleVault} selectedPath={selectedVault?.path} setSelectedFile={setSelectedFile} />
           </div>
 
           <div className="panel conflict-panel">
@@ -742,11 +779,12 @@ function VaultEditor(props: {
   setSelectedFile: (path: string) => void;
   setStatus: (status: string) => void;
   refresh: () => Promise<void>;
+  onArchive: (file?: VaultFile) => Promise<void>;
 }) {
   const file = props.files.find((item) => item.path === props.selectedPath) ?? props.files[0];
   const [text, setText] = useState(vaultReadableBody(file?.content ?? ""));
   useEffect(() => setText(vaultReadableBody(file?.content ?? "")), [file?.path, file?.content]);
-  const canEdit = file && !file.path.includes("embedding") && !file.path.endsWith("index.md");
+  const canEdit = !!file && isVaultEditable(file);
 
   async function save(dryRun: boolean) {
     if (!file || !canEdit) return;
@@ -770,7 +808,10 @@ function VaultEditor(props: {
         ))}
       </div>
       <div className="editor-pane">
-        <p className="hint">Редактируй обычный текст памяти. Служебные поля, ревизии и векторы остаются под капотом.</p>
+        <div className="editor-toolbar">
+          <p className="hint">Редактируй обычный текст памяти. Служебные поля, ревизии и векторы остаются под капотом.</p>
+          <button className="icon-danger" disabled={!canEdit} onClick={() => void props.onArchive(file)}>🗑 Удалить</button>
+        </div>
         <textarea value={text} disabled={!canEdit} onChange={(event) => setText(event.target.value)} />
         <div className="actions">
           <button onClick={() => void save(true)}>Dry-run</button>
@@ -1046,6 +1087,26 @@ function vaultFileTitle(file: VaultFile) {
     .map((line) => line.replace(/^#{1,6}\s*/, "").replace(/^[-*]\s*/, "").trim())
     .find(Boolean);
   return readable ? truncateText(readable, 46) : fileDisplayName(file.path);
+}
+
+function isVaultEditable(file: VaultFile) {
+  return vaultFrontmatterValue(file.content, "type") === "memory"
+    && !["archived", "superseded"].includes(vaultFrontmatterValue(file.content, "status"))
+    && !file.path.includes("embedding")
+    && !file.path.endsWith("index.md");
+}
+
+function isVaultUiVisible(file: VaultFile) {
+  const status = vaultFrontmatterValue(file.content, "status");
+  const type = vaultFrontmatterValue(file.content, "type");
+  return file.path.endsWith("README.md")
+    || (type === "memory" && !["archived", "superseded"].includes(status));
+}
+
+function vaultFrontmatterValue(content: string, key: string) {
+  const frontmatter = content.match(/^---\n([\s\S]*?)\n---/)?.[1] ?? "";
+  const line = frontmatter.split("\n").find((row) => row.startsWith(`${key}:`));
+  return line?.slice(key.length + 1).trim().replace(/^"|"$/g, "") ?? "";
 }
 
 function preferredVaultFile(files: VaultFile[]) {

@@ -126,13 +126,20 @@ class MemoryItem:
             or (self.valid_to is not None and moment >= self.valid_to)
         )
 
-    def supersede(self, replacement_text: str, *, confidence: float | None = None) -> MemoryItem:
+    def supersede(
+        self,
+        replacement_text: str,
+        *,
+        confidence: float | None = None,
+        status: MemoryStatus | None = None,
+    ) -> MemoryItem:
         """Create a new revision; never mutate or erase the old item."""
         return replace(
             self,
             id=uuid4(),
             text=replacement_text,
             confidence=self.confidence if confidence is None else confidence,
+            status=self.status if status is None else status,
             created_at=datetime.now(UTC),
             revision=self.revision + 1,
             supersedes_id=self.id,

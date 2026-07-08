@@ -72,6 +72,7 @@ class RetentionService:
         replacement = current.supersede(
             decision.text,
             confidence=command.confidence,
+            status=command.status,
         )
         replacement = replace(
             replacement,

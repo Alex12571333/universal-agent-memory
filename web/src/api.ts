@@ -116,6 +116,15 @@ export const api = {
       })
     });
   },
+  archiveVaultFile(workspace: string, tenant: string, file: VaultFile) {
+    return request<ImportVaultResponse>(`/v1/workspaces/${workspace}/vault/archive`, {
+      method: "POST",
+      body: JSON.stringify({
+        tenant_id: tenant,
+        file
+      })
+    });
+  },
   reindex(workspace: string, tenant: string) {
     return request<Record<string, unknown>>(
       `/v1/workspaces/${workspace}/reindex?tenant_id=${tenant}`,

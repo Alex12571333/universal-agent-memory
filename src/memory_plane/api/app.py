@@ -235,6 +235,13 @@ class VaultImportBody(BaseModel):
     files: list[VaultImportFileBody]
 
 
+class VaultDeleteBody(BaseModel):
+    """Archive one human-editable memory note from the vault UI."""
+
+    tenant_id: UUID = DEFAULT_SERVER_ID
+    file: VaultImportFileBody
+
+
 class ConflictDecisionBody(BaseModel):
     """Persist a human decision for one conflict case."""
 
@@ -925,6 +932,36 @@ def create_app(
             "workspace_id": str(result.workspace_id),
             "dry_run": result.dry_run,
             "supersede_count": result.supersede_count,
+            "changes": [
+                {
+                    "path": change.path,
+                    "action": change.action,
+                    "item_id": str(change.item_id) if change.item_id else None,
+                    "expected_revision": change.expected_revision,
+                    "new_item_id": str(change.new_item_id) if change.new_item_id else None,
+                    "message": change.message,
+                }
+                for change in result.changes
+            ],
+        }
+
+    @app.post("/v1/workspaces/{workspace_id}/vault/archive")
+    def archive_vault_file(workspace_id: UUID, body: VaultDeleteBody) -> dict[str, Any]:
+        """Archive one memory note without physically deleting audit history."""
+        try:
+            result = services.vault.archive_file(
+                body.tenant_id,
+                workspace_id,
+                VaultImportSource(path=body.file.path, content=body.file.content),
+            )
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return {
+            "tenant_id": str(result.tenant_id),
+            "workspace_id": str(result.workspace_id),
+            "dry_run": result.dry_run,
             "changes": [
                 {
                     "path": change.path,

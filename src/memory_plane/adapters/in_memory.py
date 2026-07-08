@@ -146,9 +146,15 @@ class InMemoryMemoryStore:
         """Provide portable lexical candidates and strict metadata filtering."""
         query_terms = self._terms(query.text)
         rows: list[Candidate] = []
-        for item in self.list_for_workspace(
+        all_items = self.list_for_workspace(
             query.tenant_id, query.workspace_id, layers=query.layers
-        ):
+        )
+        superseded_ids = {
+            item.supersedes_id for item in all_items if item.supersedes_id is not None
+        }
+        for item in all_items:
+            if item.id in superseded_ids:
+                continue
             if item.scope == MemoryScope.THREAD and item.thread_id != query.thread_id:
                 continue
             if item.status in (MemoryStatus.REJECTED, MemoryStatus.ARCHIVED):
