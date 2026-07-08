@@ -357,10 +357,12 @@ def test_model_settings_endpoints_save_and_probe_fake_provider() -> None:
 
     assert current.status_code == 200
     assert current.json()["runtime"]["model_name"] == "fake-embed-v1"
+    assert current.json()["restart_required"] is False
     assert saved.status_code == 200
     assert saved.json()["desired"]["model_name"] == "fake-ui-test"
     assert saved.json()["desired"]["api_key"] == "loca…cret"
     assert saved.json()["env"]["UAM_EMBEDDING_MODEL"] == "fake-ui-test"
+    assert saved.json()["restart_required"] is True
     assert probed.status_code == 200
     assert probed.json()["ok"] is True
     assert probed.json()["dimension"] == 32

@@ -25,7 +25,8 @@ minimal local operation remain available.
 - **Граф** — Obsidian-style force graph. Nodes can be dragged, the canvas can
   be panned/zoomed, labels can be toggled, and physics can be restarted.
 - **Модели** — inspect runtime embedding settings, save desired model config,
-  probe an embedding endpoint, and copy Docker env values.
+  use the DGX Spark Jina v4 Q8 preset, probe an embedding endpoint, and copy
+  Docker env values.
 
 ## Local frontend development
 
@@ -74,6 +75,18 @@ API:
 - `GET /v1/settings/models`
 - `PUT /v1/settings/models`
 - `POST /v1/settings/models/test`
+
+Recommended real local preset:
+
+```text
+UAM_EMBEDDING_PROVIDER=tei
+UAM_EMBEDDING_BASE_URL=http://192.168.0.10:8002
+UAM_EMBEDDING_MODEL=jina-embeddings-v4
+UAM_EMBEDDING_DIM=2048
+```
+
+The UI's **Use DGX preset** button fills these values and **Test endpoint**
+verifies that the endpoint returns `2048` floats before you restart/reindex.
 
 ## Verification
 

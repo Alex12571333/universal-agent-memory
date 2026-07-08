@@ -147,6 +147,7 @@ function Dashboard() {
               title={view === "settings" ? "Model Settings" : "Recent Memories"}
               action={<button onClick={() => void refresh()}>Refresh</button>}
             />
+            <TabStrip view={view} setView={setView} />
             {view === "settings" ? (
               <SettingsPanel settings={settings} setStatus={setStatus} refresh={refresh} />
             ) : view === "vault" ? (
@@ -229,19 +230,25 @@ function Dashboard() {
 }
 
 function Sidebar({ view, setView, conflicts }: { view: View; setView: (view: View) => void; conflicts: number }) {
-  const items: Array<[View, string, string]> = [
+  const overviewItems: Array<[View, string, string]> = [
     ["dashboard", "Dashboard", "◈"],
     ["memory", "Memory", "✦"],
-    ["inbox", "Inbox", "□"],
-    ["vault", "Vault", "▤"],
-    ["graph", "Graph", "◎"],
+    ["inbox", "Inbox", "□"]
+  ];
+  const systemItems: Array<[View, string, string]> = [
+    ["graph", "Memory Graph", "◎"],
+    ["vault", "Vaults", "▤"],
     ["settings", "Settings", "⚙"]
   ];
   return (
     <aside className="sidebar" role="navigation">
-      <div className="brand"><span className="brand-mark">◌</span><b>UAM</b></div>
+      <div className="brand">
+        <span className="brand-mark">◌</span>
+        <span><b>UAM</b><small>memory plane</small></span>
+      </div>
+      <span className="nav-label">Overview</span>
       <nav>
-        {items.map(([key, label, icon]) => (
+        {overviewItems.map(([key, label, icon]) => (
           <button key={key} className={view === key ? "active" : ""} onClick={() => setView(key)}>
             <span>{icon}</span>
             {label}
@@ -249,12 +256,24 @@ function Sidebar({ view, setView, conflicts }: { view: View; setView: (view: Vie
           </button>
         ))}
       </nav>
+      <span className="nav-label">System</span>
+      <nav>
+        {systemItems.map(([key, label, icon]) => (
+          <button key={key} className={view === key ? "active" : ""} onClick={() => setView(key)}>
+            <span>{icon}</span>
+            {label}
+          </button>
+        ))}
+      </nav>
       <div className="health-card">
-        <b>System Health</b>
-        <span className="pill green">Healthy</span>
-        <small>Version 0.2.1</small>
-        <div className="meter"><i style={{ width: "72%" }} /></div>
-        <small>CPU 18% · RAM 32%</small>
+        <div className="health-head"><b>System Health</b><span className="pill green">Healthy</span></div>
+        <small>Version 0.2.1 · uptime 7d 14h</small>
+        <label>Storage <em>2.4 TB / 8 TB</em></label>
+        <div className="meter"><i style={{ width: "30%" }} /></div>
+        <label>CPU <em>18%</em></label>
+        <svg className="health-wave" viewBox="0 0 180 34" aria-hidden="true"><path d="M2 22 C18 24 24 18 38 21 S61 27 74 17 93 18 106 13 130 20 144 13 163 16 178 9" /></svg>
+        <label>RAM <em>32%</em></label>
+        <svg className="health-wave purple" viewBox="0 0 180 34" aria-hidden="true"><path d="M2 20 C17 14 25 22 39 17 S61 11 74 16 93 25 107 18 128 15 143 19 160 10 178 14" /></svg>
       </div>
     </aside>
   );
@@ -269,12 +288,14 @@ function Hero(props: {
 }) {
   return (
     <header className="hero">
+      <div className="hero-orbits" aria-hidden="true"><i /><i /><i /></div>
       <div>
         <p className="eyebrow">Self-hosted · Agent memory plane</p>
         <h1>Universal Agent Memory</h1>
         <p>Единый слой долговременной памяти для OpenClaw, Hermes и других агентов.</p>
       </div>
       <div className="identity-card">
+        <span className="self-hosted"><i /> Self-hosted</span>
         <label>Tenant</label>
         <input value={props.tenant} onChange={(event) => props.setTenant(event.target.value)} />
         <label>Workspace</label>
@@ -282,6 +303,32 @@ function Hero(props: {
         <span className={props.loading ? "sync loading" : "sync"}>{props.loading ? "Syncing" : "Live"}</span>
       </div>
     </header>
+  );
+}
+
+function TabStrip({ view, setView }: { view: View; setView: (view: View) => void }) {
+  const tabs: Array<[View, string]> = [
+    ["dashboard", "Memory"],
+    ["memory", "Recall"],
+    ["inbox", "Conflicts"],
+    ["vault", "Vault"],
+    ["graph", "Graph"],
+    ["settings", "Models"]
+  ];
+  return (
+    <div className="tab-strip" role="tablist">
+      {tabs.map(([key, label]) => (
+        <button
+          key={key}
+          role="tab"
+          aria-selected={view === key}
+          className={view === key ? "active" : ""}
+          onClick={() => setView(key)}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -383,6 +430,7 @@ function MemoryGraph({ memories, selectedId, onSelect }: { memories: MemoryItem[
   const center = resolved[0];
 
   return (
+    <div className="graph-wrap">
     <svg
       className="graph"
       viewBox="0 0 700 500"
@@ -427,6 +475,13 @@ function MemoryGraph({ memories, selectedId, onSelect }: { memories: MemoryItem[
         </g>
       ))}
     </svg>
+    <div className="graph-legend">
+      <span><i className="blue-dot" /> Core Memory</span>
+      <span><i className="purple-dot" /> Semantic Memory</span>
+      <span><i className="cyan-dot" /> Contextual Memory</span>
+      <span><i className="dim-dot" /> Weak Connection</span>
+    </div>
+    </div>
   );
 }
 
@@ -497,8 +552,16 @@ function SettingsPanel({ settings, setStatus, refresh }: {
   setStatus: (status: string) => void;
   refresh: () => Promise<void>;
 }) {
+  const dgxSparkPreset = {
+    provider: "tei",
+    model_name: "jina-embeddings-v4",
+    dimension: 2048,
+    base_url: "http://192.168.0.10:8002",
+    api_key: "",
+    timeout_seconds: 30
+  };
   const [form, setForm] = useState({
-    provider: settings?.desired.provider ?? "openai_compatible",
+    provider: settings?.desired.provider ?? "tei",
     model_name: settings?.desired.model_name ?? "jina-embeddings-v2-base-code",
     dimension: settings?.desired.dimension ?? 768,
     base_url: settings?.desired.base_url ?? "http://127.0.0.1:8081/v1",
@@ -517,6 +580,11 @@ function SettingsPanel({ settings, setStatus, refresh }: {
     }));
   }, [settings]);
 
+  function applyDgxSparkPreset() {
+    setForm(dgxSparkPreset);
+    setStatus("DGX Spark Q8 preset selected. Нажми Test endpoint, затем Save model config.");
+  }
+
   async function save(testOnly: boolean) {
     const body = {
       ...form,
@@ -532,6 +600,14 @@ function SettingsPanel({ settings, setStatus, refresh }: {
 
   return (
     <div className="settings-grid">
+      <div className="preset-card">
+        <div>
+          <span className="eyebrow">Recommended real embedding</span>
+          <b>DGX Spark · Jina v4 Q8 · 2048 dims</b>
+          <p>OpenAI-compatible endpoint: <code>http://192.168.0.10:8002/v1/embeddings</code></p>
+        </div>
+        <button onClick={applyDgxSparkPreset}>Use DGX preset</button>
+      </div>
       {(["provider", "model_name", "base_url", "api_key"] as const).map((key) => (
         <label key={key}>
           {key}
@@ -551,9 +627,13 @@ function SettingsPanel({ settings, setStatus, refresh }: {
         <input type="number" value={form.timeout_seconds} onChange={(event) => setForm((current) => ({ ...current, timeout_seconds: Number(event.target.value) }))} />
       </label>
       <div className="settings-summary">
-        <b>Runtime</b>
+        <b>Runtime embedding</b>
         <p>{settings?.runtime.provider} · {settings?.runtime.model_name} · {settings?.runtime.dimension} dims</p>
-        <small>restart_required: {settings?.restart_required ? "да" : "нет"}</small>
+        <small>
+          Desired: {settings?.desired.provider} · {settings?.desired.model_name} · {settings?.desired.dimension} dims
+          {" · "}
+          restart_required: {settings?.restart_required ? "да, нужен restart + reindex" : "нет"}
+        </small>
       </div>
       <div className="actions">
         <button onClick={() => void save(true)}>Test endpoint</button>

@@ -343,6 +343,13 @@ def _model_settings_response(
     env_config = EmbeddingProviderConfig.from_env()
     desired_config = desired or _model_body_from_config(env_config)
     safe_desired = {**desired_config, "api_key": _mask_secret(desired_config.get("api_key"))}
+    restart_required = (
+        desired_config["provider"] != env_config.provider
+        or desired_config["model_name"] != env_config.model_name
+        or int(desired_config["dimension"]) != env_config.dimension
+        or (desired_config.get("base_url") or None) != env_config.base_url
+        or float(desired_config["timeout_seconds"]) != env_config.timeout_seconds
+    )
     return {
         "runtime": {
             "model_name": getattr(client, "model_name", env_config.model_name),
@@ -354,7 +361,7 @@ def _model_settings_response(
         },
         "desired": safe_desired,
         "settings_path": _settings_path(),
-        "restart_required": True,
+        "restart_required": restart_required,
         "env": {
             "UAM_EMBEDDING_PROVIDER": desired_config["provider"],
             "UAM_EMBEDDING_MODEL": desired_config["model_name"],
