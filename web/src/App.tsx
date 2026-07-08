@@ -92,7 +92,7 @@ function Dashboard() {
       setSettings(modelData);
       setSystemStatus(statusData);
       setSelectedMemory((current) => current ?? memoryData.memories[0]?.id ?? null);
-      setSelectedFile((current) => current ?? vaultData.files[0]?.path ?? null);
+      setSelectedFile((current) => current ?? preferredVaultFile(vaultData.files)?.path ?? null);
       setStatus("Данные обновлены");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Неизвестная ошибка");
@@ -108,7 +108,7 @@ function Dashboard() {
   const activeMemories = memories.filter((item) => item.status === "active");
   const openConflicts = conflicts.filter(isOpenConflict);
   const selected = memories.find((item) => item.id === selectedMemory) ?? memories[0];
-  const selectedVault = vault.find((item) => item.path === selectedFile) ?? vault[0];
+  const selectedVault = vault.find((item) => item.path === selectedFile) ?? preferredVaultFile(vault) ?? vault[0];
 
   const kpis = [
     ["Память", memories.length.toLocaleString(), `активных: ${activeMemories.length}`, "db"],
@@ -646,17 +646,23 @@ function MemoryGraph({
 
 function VaultPreview({ files, selectedPath, setSelectedFile }: { files: VaultFile[]; selectedPath?: string; setSelectedFile: (path: string) => void }) {
   const file = files.find((item) => item.path === selectedPath) ?? files[0];
+  const readable = vaultReadableBody(file?.content ?? "");
   return (
     <div className="vault-preview-grid">
       <div className="file-tree">
         {files.slice(0, 10).map((item) => (
           <button key={item.path} title={item.path} className={item.path === file?.path ? "active" : ""} onClick={() => setSelectedFile(item.path)}>
-            <span>{fileDisplayName(item.path)}</span>
+            <span>{vaultFileTitle(item)}</span>
             <small>{fileFolderName(item.path)}</small>
           </button>
         ))}
       </div>
-      <pre>{stripFrontmatter(file?.content ?? "Файлов пока нет. Сохрани первую память.")}</pre>
+      <article className="vault-readable">
+        <div>
+          <small>{file ? `${fileDisplayName(file.path)} · ${fileFolderName(file.path)}` : "vault"}</small>
+          <p>{readable || "Файлов пока нет. Сохрани первую память."}</p>
+        </div>
+      </article>
     </div>
   );
 }
@@ -738,8 +744,8 @@ function VaultEditor(props: {
   refresh: () => Promise<void>;
 }) {
   const file = props.files.find((item) => item.path === props.selectedPath) ?? props.files[0];
-  const [text, setText] = useState(stripFrontmatter(file?.content ?? ""));
-  useEffect(() => setText(stripFrontmatter(file?.content ?? "")), [file?.path, file?.content]);
+  const [text, setText] = useState(vaultReadableBody(file?.content ?? ""));
+  useEffect(() => setText(vaultReadableBody(file?.content ?? "")), [file?.path, file?.content]);
   const canEdit = file && !file.path.includes("embedding") && !file.path.endsWith("index.md");
 
   async function save(dryRun: boolean) {
@@ -758,7 +764,7 @@ function VaultEditor(props: {
       <div className="file-rail">
         {props.files.map((item) => (
           <button key={item.path} title={item.path} className={item.path === file?.path ? "active" : ""} onClick={() => props.setSelectedFile(item.path)}>
-            <span>{fileDisplayName(item.path)}</span>
+            <span>{vaultFileTitle(item)}</span>
             <small>{fileFolderName(item.path)}</small>
           </button>
         ))}
@@ -1029,13 +1035,31 @@ function modelFieldLabel(value: "provider" | "model_name" | "base_url" | "api_ke
 function fileDisplayName(path: string) {
   const last = path.split("/").pop() ?? path;
   if (last === "README.md") return "README";
-  return last.replace(/^mem-/, "").replace(/\.md$/, "");
+  const stem = last.replace(/^mem-/, "").replace(/\.md$/, "");
+  return shortUuid(stem);
+}
+
+function vaultFileTitle(file: VaultFile) {
+  if (file.path.endsWith("README.md")) return "README";
+  const readable = vaultReadableBody(file.content)
+    .split(/\n+/)
+    .map((line) => line.replace(/^#{1,6}\s*/, "").replace(/^[-*]\s*/, "").trim())
+    .find(Boolean);
+  return readable ? truncateText(readable, 46) : fileDisplayName(file.path);
+}
+
+function preferredVaultFile(files: VaultFile[]) {
+  return files.find((file) => !file.path.endsWith("README.md") && !file.path.endsWith("index.md")) ?? files[0];
 }
 
 function fileFolderName(path: string) {
   const parts = path.split("/");
   if (parts.length <= 1) return "vault root";
   return parts.slice(0, -1).join("/");
+}
+
+function truncateText(value: string, max: number) {
+  return value.length <= max ? value : `${value.slice(0, max - 1).trimEnd()}…`;
 }
 
 function shortUuid(value: string) {
@@ -1089,11 +1113,27 @@ function conflictRationale(item: ConflictCase) {
   return item.rationale ?? item.suggested_reason ?? "Сервер предлагает самую свежую активную версию, исходные memories остаются append-only.";
 }
 
-function stripFrontmatter(content: string) {
-  return content.replace(/^---[\s\S]*?---\s*/, "").trim();
+function vaultReadableBody(content: string) {
+  return splitVaultMarkdown(content).body;
 }
 
 function replaceBody(original: string, body: string) {
-  const match = original.match(/^---[\s\S]*?---\s*/);
-  return `${match?.[0] ?? ""}${body.trim()}\n`;
+  const parts = splitVaultMarkdown(original);
+  const suffix = parts.systemSections ? `\n\n${parts.systemSections.trim()}\n` : "\n";
+  return `${parts.frontmatter}${body.trim()}${suffix}`;
+}
+
+function splitVaultMarkdown(content: string) {
+  const frontmatterMatch = content.match(/^---[\s\S]*?---\s*/);
+  const frontmatter = frontmatterMatch?.[0] ?? "";
+  const withoutFrontmatter = content.slice(frontmatter.length).trim();
+  const sectionMatch = withoutFrontmatter.match(/\n## (?:Provenance|Quote|Links|Evidence)\b/);
+  if (!sectionMatch || sectionMatch.index === undefined) {
+    return { frontmatter, body: withoutFrontmatter.trim(), systemSections: "" };
+  }
+  return {
+    frontmatter,
+    body: withoutFrontmatter.slice(0, sectionMatch.index).trim(),
+    systemSections: withoutFrontmatter.slice(sectionMatch.index + 1).trim()
+  };
 }

@@ -330,7 +330,8 @@ textarea {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   grid-template-areas:
     "graph graph graph"
-    "memory vault ops"
+    "memory memory ops"
+    "vault vault ops"
     "conflicts activity ops";
 }
 
@@ -584,7 +585,7 @@ textarea {
 
 .vault-preview-grid {
   display: grid;
-  grid-template-columns: minmax(140px, 0.62fr) minmax(0, 1fr);
+  grid-template-columns: minmax(210px, 0.46fr) minmax(0, 1fr);
   gap: 12px;
   padding: 14px;
   min-height: 0;
@@ -630,6 +631,7 @@ textarea {
   color: #d7e5ff;
   font-size: 12px;
   font-weight: 750;
+  line-height: 1.25;
 }
 
 .file-tree button small,
@@ -656,6 +658,38 @@ pre {
   color: #b9d7ff;
   font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace;
   white-space: pre-wrap;
+}
+
+.vault-readable {
+  min-width: 0;
+  min-height: 180px;
+  max-height: 340px;
+  margin: 0;
+  overflow: auto;
+  border: 1px solid rgba(108, 159, 255, 0.16);
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 15% 0%, rgba(38, 140, 255, 0.13), transparent 15rem),
+    rgba(2, 8, 18, 0.64);
+  padding: 16px;
+  color: #dce9ff;
+}
+
+.vault-readable small {
+  display: block;
+  margin-bottom: 12px;
+  color: #7f92b8;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
+
+.vault-readable p {
+  margin: 0;
+  color: #dce9ff;
+  font-size: 15px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .vault-editor {
@@ -1133,7 +1167,8 @@ textarea {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   grid-template-areas:
     "graph graph graph"
-    "memory vault ops"
+    "memory memory ops"
+    "vault vault ops"
     "conflicts activity ops";
 }
 
@@ -1607,7 +1642,8 @@ pre,
     grid-template-areas:
       "memory graph"
       "ops activity"
-      "vault conflicts";
+      "vault vault"
+      "conflicts conflicts";
   }
   .kpi-row { grid-template-columns: repeat(2, minmax(220px, 1fr)); }
 }
