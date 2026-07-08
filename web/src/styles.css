@@ -326,6 +326,14 @@ textarea {
   align-items: stretch;
 }
 
+.content-grid.graph-expanded {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-areas:
+    "graph graph graph"
+    "memory vault ops"
+    "conflicts activity ops";
+}
+
 .panel {
   min-width: 0;
   overflow: hidden;
@@ -333,6 +341,7 @@ textarea {
 
 .memory-panel { grid-area: memory; min-height: 510px; }
 .graph-panel { grid-area: graph; min-height: 510px; }
+.graph-expanded .graph-panel { min-height: 880px; }
 .operations-panel { grid-area: ops; }
 .vault-preview { grid-area: vault; min-height: 250px; }
 .conflict-panel { grid-area: conflicts; min-height: 250px; }
@@ -578,6 +587,7 @@ textarea {
   grid-template-columns: minmax(140px, 0.62fr) minmax(0, 1fr);
   gap: 12px;
   padding: 14px;
+  min-height: 0;
 }
 
 .file-tree,
@@ -586,19 +596,46 @@ textarea {
   align-content: start;
   gap: 5px;
   max-height: 340px;
+  min-width: 0;
   overflow: auto;
 }
 
 .file-tree button,
 .file-rail button {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  min-width: 0;
   overflow: hidden;
   border-radius: 10px;
   background: transparent;
   padding: 8px 10px;
   color: #aec0e4;
   text-align: left;
+}
+
+.file-tree button span,
+.file-rail button span,
+.file-tree button small,
+.file-rail button small {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.file-tree button span,
+.file-rail button span {
+  color: #d7e5ff;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.file-tree button small,
+.file-rail button small {
+  color: #7183a6;
+  font-size: 10px;
 }
 
 .file-tree button.active,
@@ -623,8 +660,9 @@ pre {
 
 .vault-editor {
   display: grid;
-  grid-template-columns: minmax(150px, 0.35fr) minmax(0, 1fr);
+  grid-template-columns: minmax(180px, 0.36fr) minmax(0, 1fr);
   gap: 14px;
+  min-height: 0;
 }
 
 .editor-pane {
@@ -1091,6 +1129,14 @@ textarea {
   gap: 14px;
 }
 
+.content-grid.graph-expanded {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-areas:
+    "graph graph graph"
+    "memory vault ops"
+    "conflicts activity ops";
+}
+
 .panel {
   border-radius: 16px;
 }
@@ -1188,29 +1234,151 @@ textarea {
 
 .graph-panel {
   background:
-    radial-gradient(circle at 50% 46%, rgba(32, 110, 255, 0.18), transparent 15rem),
+    radial-gradient(circle at 50% 46%, rgba(32, 110, 255, 0.22), transparent 18rem),
+    radial-gradient(circle at 78% 20%, rgba(138, 77, 255, 0.18), transparent 17rem),
     linear-gradient(180deg, rgba(8, 21, 44, 0.82), rgba(3, 11, 25, 0.78));
+}
+
+.graph-expanded .graph-panel {
+  min-height: 880px;
 }
 
 .graph-wrap {
   position: relative;
   display: grid;
   min-height: 456px;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+}
+
+.graph-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+  margin: 14px 14px 0;
+  color: #89a5d4;
+  font-size: 12px;
+}
+
+.graph-toolbar span:first-child {
+  margin-right: auto;
+}
+
+.graph-toolbar span,
+.graph-toolbar button {
+  border: 1px solid rgba(105, 151, 226, 0.14);
+  border-radius: 999px;
+  background: rgba(3, 10, 22, 0.45);
+  padding: 6px 10px;
+  color: #dbe8ff;
+}
+
+.graph-toolbar button {
+  min-width: 34px;
+  cursor: pointer;
+}
+
+.graph-toolbar button:hover {
+  border-color: rgba(73, 151, 255, 0.48);
+  background: rgba(35, 92, 190, 0.26);
 }
 
 .graph {
   height: 420px;
   background:
-    radial-gradient(circle at center, rgba(18, 95, 190, 0.22), transparent 17rem),
-    radial-gradient(circle at 50% 50%, rgba(114, 74, 255, 0.12), transparent 13rem);
+    radial-gradient(circle at 50% 50%, rgba(24, 115, 255, 0.2), transparent 18rem),
+    radial-gradient(circle at 30% 30%, rgba(133, 82, 255, 0.13), transparent 14rem),
+    radial-gradient(circle at 74% 64%, rgba(40, 226, 255, 0.12), transparent 13rem);
+}
+
+.graph-expanded .graph-wrap {
+  min-height: 820px;
+}
+
+.graph-expanded .graph {
+  height: 710px;
+}
+
+.graph-stars circle {
+  fill: rgba(119, 170, 255, 0.72);
+  filter: drop-shadow(0 0 6px rgba(79, 154, 255, 0.8));
+}
+
+.graph-edge {
+  fill: none;
+  stroke-linecap: round;
+}
+
+.graph-edge.strong {
+  stroke: rgba(28, 139, 255, 0.82);
+  stroke-width: 4.2;
+  filter: drop-shadow(0 0 9px rgba(41, 148, 255, 0.72));
+}
+
+.graph-edge.weak {
+  stroke: rgba(99, 106, 255, 0.44);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 8;
 }
 
 .graph-node circle {
+  fill: url(#nodeGlow);
   stroke-width: 1.8;
+}
+
+.graph-node.agent circle {
+  fill: url(#agentGlow);
+  stroke: rgba(167, 112, 255, 0.92);
+}
+
+.graph-node.context circle {
+  fill: url(#contextGlow);
+  stroke: rgba(67, 232, 255, 0.88);
+}
+
+.graph-node.semantic circle {
+  fill: rgba(11, 65, 136, 0.96);
+  stroke: rgba(62, 145, 255, 0.9);
+}
+
+.graph-node.error circle {
+  fill: rgba(54, 25, 124, 0.96);
+  stroke: rgba(151, 92, 255, 0.9);
+}
+
+.graph-node.weak circle {
+  fill: rgba(66, 92, 171, 0.86);
+  stroke: rgba(116, 143, 255, 0.76);
 }
 
 .graph-node text {
   letter-spacing: -0.02em;
+  fill: #f5f9ff;
+  font-weight: 800;
+  text-anchor: middle;
+  dominant-baseline: middle;
+  pointer-events: none;
+}
+
+.node-svg-icon {
+  color: rgba(229, 241, 255, 0.94);
+  filter: drop-shadow(0 0 9px rgba(120, 190, 255, 0.35));
+  pointer-events: none;
+}
+
+.graph-node .node-title {
+  font-size: 13px;
+}
+
+.graph-node.core .node-title {
+  font-size: 19px;
+}
+
+.graph-node.weak .node-title {
+  font-size: 10px;
+  fill: #bfcae8;
 }
 
 .graph-legend {
@@ -1226,21 +1394,122 @@ textarea {
 }
 
 .graph-legend span {
-  display: inline-flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  gap: 8px;
-  flex: 1 1 150px;
+  gap: 3px 10px;
+  flex: 1 1 190px;
   min-width: 0;
   color: #b4c0d7;
   font-size: 12px;
-  white-space: nowrap;
 }
 
 .graph-legend i {
+  grid-row: 1 / 3;
   width: 11px;
   height: 11px;
   flex: 0 0 auto;
   border-radius: 50%;
+}
+
+.graph-legend b {
+  color: #eef5ff;
+  font-size: 13px;
+}
+
+.graph-legend small {
+  color: #8d9dbd;
+  font-size: 11px;
+}
+
+.graph-minimap {
+  position: absolute;
+  right: 18px;
+  bottom: 106px;
+  width: min(220px, 32%);
+  height: 118px;
+  border: 1px solid rgba(105, 151, 226, 0.18);
+  border-radius: 16px;
+  background: rgba(3, 10, 22, 0.58);
+  padding: 9px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045);
+  user-select: none;
+}
+
+.graph-minimap svg {
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+  touch-action: none;
+}
+
+.graph-minimap svg:active {
+  cursor: grabbing;
+}
+
+.graph-minimap line {
+  stroke: rgba(49, 128, 255, 0.4);
+  stroke-width: 5;
+}
+
+.graph-minimap circle {
+  fill: rgba(53, 178, 255, 0.74);
+}
+
+.graph-minimap .mini-viewport {
+  fill: transparent;
+  stroke: rgba(108, 202, 255, 0.9);
+  stroke-width: 5;
+  filter: drop-shadow(0 0 8px rgba(45, 167, 255, 0.45));
+}
+
+.graph-wrap.compact .graph-minimap {
+  display: none;
+}
+
+.graph-wrap.compact .graph-toolbar button {
+  display: none;
+}
+
+.graph-wrap.compact .graph-legend small {
+  display: none;
+}
+
+.file-tree,
+.file-rail {
+  min-width: 0;
+}
+
+.file-tree button,
+.file-rail button {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  min-width: 0;
+}
+
+.file-tree button span,
+.file-rail button span,
+.file-tree button small,
+.file-rail button small {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-tree button span,
+.file-rail button span {
+  color: #d7e5ff;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.file-tree button small,
+.file-rail button small {
+  color: #7183a6;
+  font-size: 10px;
 }
 
 .blue-dot { background: #2f8dff; box-shadow: 0 0 12px #2f8dff; }
