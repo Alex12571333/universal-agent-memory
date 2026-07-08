@@ -428,6 +428,65 @@ textarea {
 .tag.active { color: #76f8b8; }
 .tag.superseded, .tag.retired { color: #f4bf65; }
 
+.conflicts article.resolved {
+  opacity: 0.72;
+}
+
+.conflict-topline,
+.candidate,
+.conflict-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.conflict-topline b,
+.candidate b {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.candidate-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.candidate {
+  padding: 10px;
+  border: 1px solid rgba(104, 150, 223, 0.13);
+  border-radius: 12px;
+  background: rgba(3, 10, 24, 0.42);
+}
+
+.candidate.recommended {
+  border-color: rgba(77, 245, 168, 0.28);
+  background: rgba(32, 128, 92, 0.12);
+}
+
+.candidate small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+}
+
+.candidate button,
+.conflict-actions button {
+  flex: 0 0 auto;
+  border: 1px solid rgba(112, 163, 255, 0.28);
+  border-radius: 10px;
+  background: rgba(24, 48, 93, 0.58);
+  padding: 7px 10px;
+  color: #dfeaff;
+}
+
+.conflict-actions {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  margin-top: 12px;
+}
+
 .graph {
   display: block;
   width: 100%;
@@ -1156,8 +1215,8 @@ textarea {
 
 .graph-legend {
   align-self: end;
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   margin: 0 14px 14px;
   padding: 13px;
@@ -1170,6 +1229,7 @@ textarea {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  flex: 1 1 150px;
   min-width: 0;
   color: #b4c0d7;
   font-size: 12px;

@@ -35,6 +35,24 @@ export const api = {
       `/v1/workspaces/${workspace}/conflicts?tenant_id=${tenant}&include_resolved=true`
     );
   },
+  decideConflict(
+    workspace: string,
+    tenant: string,
+    caseId: string,
+    body: { status: "accepted" | "overridden" | "dismissed"; winner_value?: string | null; reason: string }
+  ) {
+    return request<Record<string, unknown>>(
+      `/v1/workspaces/${workspace}/conflicts/${caseId}/decision`,
+      {
+        method: "PUT",
+        body: JSON.stringify({
+          tenant_id: tenant,
+          winner_value: null,
+          ...body
+        })
+      }
+    );
+  },
   vault(workspace: string, tenant: string) {
     return request<VaultResponse>(
       `/v1/workspaces/${workspace}/vault?tenant_id=${tenant}`

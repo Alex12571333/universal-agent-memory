@@ -128,6 +128,22 @@ function Dashboard() {
     await refresh();
   }
 
+  async function decideConflict(
+    item: ConflictCase,
+    status: "accepted" | "overridden" | "dismissed",
+    winnerValue: string | null,
+    reason: string
+  ) {
+    setStatus("Сохраняю решение по конфликту...");
+    await api.decideConflict(workspace, tenant, item.id, {
+      status,
+      winner_value: winnerValue,
+      reason
+    });
+    setStatus(status === "dismissed" ? "Конфликт скрыт как неактуальный" : `Конфликт решён: ${winnerValue ?? "без победителя"}`);
+    await refresh();
+  }
+
   return (
     <div className="app-shell">
       <Sidebar view={view} setView={setView} conflicts={openConflicts.length} systemStatus={systemStatus} />
@@ -163,7 +179,7 @@ function Dashboard() {
                 refresh={refresh}
               />
             ) : view === "inbox" ? (
-              <ConflictList conflicts={conflicts} />
+              <ConflictList conflicts={conflicts} onDecide={decideConflict} />
             ) : (
               <MemoryList memories={memories} selectedId={selected?.id} onSelect={setSelectedMemory} />
             )}
@@ -218,7 +234,7 @@ function Dashboard() {
 
           <div className="panel conflict-panel">
             <PanelHeader title="Разбор конфликтов" badge={openConflicts.length} />
-            <ConflictList conflicts={conflicts.slice(0, 4)} compact />
+            <ConflictList conflicts={conflicts.slice(0, 4)} compact onDecide={decideConflict} />
           </div>
 
           <aside className="panel activity-panel">
@@ -654,16 +670,68 @@ function SettingsPanel({ settings, setStatus, refresh }: {
   );
 }
 
-function ConflictList({ conflicts, compact = false }: { conflicts: ConflictCase[]; compact?: boolean }) {
+function ConflictList({
+  conflicts,
+  compact = false,
+  onDecide
+}: {
+  conflicts: ConflictCase[];
+  compact?: boolean;
+  onDecide?: (
+    item: ConflictCase,
+    status: "accepted" | "overridden" | "dismissed",
+    winnerValue: string | null,
+    reason: string
+  ) => Promise<void>;
+}) {
   return (
     <div className={compact ? "conflicts compact" : "conflicts"}>
       {conflicts.length === 0 ? <Empty text="Конфликтов нет." /> : null}
       {conflicts.map((item) => (
-        <article key={item.id}>
-          <b>{conflictTitle(item)}</b>
-          <p>{conflictValues(item).join(" vs ")}</p>
-          {!compact ? <small>{conflictRationale(item)}</small> : null}
-          <span className="pill amber">{item.review_status}</span>
+        <article key={item.id} className={isOpenConflict(item) ? "" : "resolved"}>
+          <div className="conflict-topline">
+            <b>{conflictTitle(item)}</b>
+            <span className={isOpenConflict(item) ? "pill amber" : "pill green"}>{reviewStatusLabel(item.review_status)}</span>
+          </div>
+          <p>{conflictValues(item).join(" ↔ ")}</p>
+          {!compact ? (
+            <>
+              <small>{conflictRationale(item)}</small>
+              <div className="candidate-list">
+                {(item.candidates ?? []).map((candidate) => (
+                  <div key={`${item.id}-${candidate.value}`} className={candidate.value === item.suggested_winner_value ? "candidate recommended" : "candidate"}>
+                    <div>
+                      <b>{candidate.value}</b>
+                      <small>
+                        {translateStatus(candidate.status)} · уверенность {Math.round(candidate.confidence * 100)}%
+                      </small>
+                    </div>
+                    {onDecide && isOpenConflict(item) ? (
+                      <button onClick={() => void onDecide(item, "overridden", candidate.value, "operator selected this candidate")}>
+                        Выбрать
+                      </button>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+              {onDecide && isOpenConflict(item) ? (
+                <div className="conflict-actions">
+                  <button
+                    className="primary"
+                    disabled={!item.suggested_winner_value}
+                    onClick={() => void onDecide(item, "accepted", item.suggested_winner_value, "accepted server recommendation")}
+                  >
+                    Принять рекомендацию
+                  </button>
+                  <button onClick={() => void onDecide(item, "dismissed", null, "dismissed as not actionable")}>
+                    Скрыть как неактуальный
+                  </button>
+                </div>
+              ) : null}
+            </>
+          ) : (
+            <small>{item.suggested_winner_value ? `рекомендация: ${item.suggested_winner_value}` : conflictRationale(item)}</small>
+          )}
         </article>
       ))}
     </div>
@@ -726,6 +794,17 @@ function translateStatus(value: string) {
     stale: "устарела",
     disputed: "спорная",
     archived: "архив"
+  };
+  return map[value] ?? value;
+}
+
+function reviewStatusLabel(value: string) {
+  const map: Record<string, string> = {
+    unresolved: "нужно решить",
+    pending: "нужно решить",
+    accepted: "принято",
+    overridden: "переопределено",
+    dismissed: "скрыто"
   };
   return map[value] ?? value;
 }
