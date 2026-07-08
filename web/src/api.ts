@@ -4,6 +4,7 @@ import type {
   MemoriesResponse,
   ModelSettings,
   RecallResponse,
+  SystemStatus,
   VaultFile,
   VaultResponse
 } from "./types";
@@ -41,6 +42,9 @@ export const api = {
   },
   modelSettings() {
     return request<ModelSettings>("/v1/settings/models");
+  },
+  systemStatus() {
+    return request<SystemStatus>("/v1/system/status");
   },
   saveModelSettings(body: Record<string, unknown>) {
     return request<ModelSettings>("/v1/settings/models", {

@@ -8,6 +8,9 @@ import binascii
 import json
 import os
 import secrets
+import shutil
+import sys
+import time
 from pathlib import Path
 from typing import Any, Literal
 from uuid import UUID
@@ -53,6 +56,7 @@ from memory_plane.services.vault import VaultImportSource
 
 DEFAULT_SERVER_ID = UUID("00000000-0000-0000-0000-000000000001")
 DEFAULT_PROJECT_ID = UUID("00000000-0000-0000-0000-000000000002")
+PROCESS_STARTED_AT = time.time()
 
 
 def _web_dist_dir() -> Path:
@@ -61,6 +65,32 @@ def _web_dist_dir() -> Path:
     if configured:
         return Path(configured)
     return Path.cwd() / "web" / "dist"
+
+
+def _process_rss_mb() -> float | None:
+    """Return real process max RSS in MiB when the platform exposes it."""
+    try:
+        import resource
+
+        rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    except (ImportError, OSError):
+        return None
+    if sys.platform == "darwin":
+        return round(rss / 1024 / 1024, 1)
+    return round(rss / 1024, 1)
+
+
+def _disk_usage_response(path: str = "/app") -> dict[str, Any]:
+    """Return real disk usage for the server container/workdir."""
+    target = path if os.path.exists(path) else os.getcwd()
+    usage = shutil.disk_usage(target)
+    return {
+        "path": target,
+        "total_bytes": usage.total,
+        "used_bytes": usage.used,
+        "free_bytes": usage.free,
+        "used_percent": round((usage.used / usage.total) * 100, 1) if usage.total else None,
+    }
 
 
 class RetainBody(BaseModel):
@@ -441,6 +471,31 @@ def create_app(
     def health() -> dict[str, str]:
         """Report process liveness; adapters should extend readiness separately."""
         return {"status": "ok"}
+
+    @app.get("/v1/system/status")
+    def system_status() -> dict[str, Any]:
+        """Return real local process/storage status for the operator UI."""
+        load_average: tuple[float, float, float] | None = None
+        if hasattr(os, "getloadavg"):
+            try:
+                load_average = tuple(round(value, 2) for value in os.getloadavg())
+            except OSError:
+                load_average = None
+        return {
+            "status": "ok",
+            "version": app.version,
+            "uptime_seconds": round(time.time() - PROCESS_STARTED_AT),
+            "storage": _disk_usage_response(),
+            "process": {
+                "rss_mb": _process_rss_mb(),
+                "pid": os.getpid(),
+            },
+            "load_average": {
+                "one_minute": load_average[0] if load_average else None,
+                "five_minutes": load_average[1] if load_average else None,
+                "fifteen_minutes": load_average[2] if load_average else None,
+            },
+        }
 
     @app.get("/metrics", response_class=PlainTextResponse)
     def metrics(tenant_id: UUID = DEFAULT_SERVER_ID) -> str:
@@ -2030,26 +2085,26 @@ _OPERATOR_UI_HTML = """
 <body>
   <aside class="reference-sidebar" aria-label="Главная навигация">
     <div class="side-logo" aria-hidden="true"></div>
-    <div class="nav-title">Overview</div>
-    <button class="nav-button primary" onclick="showTab('memory')">▦ Dashboard</button>
-    <button class="nav-button" onclick="showTab('conflicts')">✉ Inbox <span class="pill warn" style="margin-left:auto">3</span></button>
-    <button class="nav-button" onclick="refreshAll()">⌁ Activity</button>
-    <button class="nav-button" onclick="showTab('settings')">⚙ Settings</button>
-    <div class="nav-title">System</div>
-    <button class="nav-button" onclick="showTab('memory')">♙ Agents</button>
-    <button class="nav-button" onclick="showTab('memory')">▤ Memory Sources</button>
-    <button class="nav-button" onclick="showTab('settings')">⌬ Integrations</button>
-    <button class="nav-button" onclick="showTab('vault')">▣ Vaults</button>
-    <button class="nav-button" onclick="showTab('settings')">♧ Users</button>
+    <div class="nav-title">Обзор</div>
+    <button class="nav-button primary" onclick="showTab('memory')">▦ Панель</button>
+    <button class="nav-button" onclick="showTab('conflicts')">✉ Входящие <span class="pill warn" style="margin-left:auto">3</span></button>
+    <button class="nav-button" onclick="refreshAll()">⌁ Активность</button>
+    <button class="nav-button" onclick="showTab('settings')">⚙ Настройки</button>
+    <div class="nav-title">Система</div>
+    <button class="nav-button" onclick="showTab('memory')">♙ Агенты</button>
+    <button class="nav-button" onclick="showTab('memory')">▤ Источники памяти</button>
+    <button class="nav-button" onclick="showTab('settings')">⌬ Интеграции</button>
+    <button class="nav-button" onclick="showTab('vault')">▣ Файлы</button>
+    <button class="nav-button" onclick="showTab('settings')">♧ Пользователи</button>
     <div class="health-card">
-      <div class="agent-row"><strong>System Health</strong><span class="pill ok">Healthy</span></div>
-      <div class="muted tiny" style="margin-top:10px">Version <span style="float:right">0.2.1</span></div>
-      <div class="muted tiny">Uptime <span style="float:right">7d 14h</span></div>
-      <div class="muted tiny">Storage <span style="float:right">2.4 TB / 8 TB</span></div>
+      <div class="agent-row"><strong>Состояние</strong><span class="pill ok">Live</span></div>
+      <div class="muted tiny" style="margin-top:10px">Версия <span id="fallbackVersion" style="float:right">загрузка…</span></div>
+      <div class="muted tiny">Uptime <span id="fallbackUptime" style="float:right">загрузка…</span></div>
+      <div class="muted tiny">Диск сервера <span id="fallbackStorage" style="float:right">загрузка…</span></div>
       <div class="mini-meter"><span></span></div>
-      <div class="muted tiny">CPU <span style="float:right">18%</span></div>
+      <div class="muted tiny">Load 1m <span id="fallbackLoad" style="float:right">загрузка…</span></div>
       <div class="sparkline" style="width:88%;height:3px;margin:8px 0 12px"></div>
-      <div class="muted tiny">RAM <span style="float:right">32%</span></div>
+      <div class="muted tiny">RSS процесса <span id="fallbackRss" style="float:right">загрузка…</span></div>
       <div class="sparkline" style="width:72%;height:3px;margin-top:8px"></div>
     </div>
   </aside>
@@ -2059,12 +2114,12 @@ _OPERATOR_UI_HTML = """
         <div class="brand"><span class="orb"></span> Self-hosted</div>
         <h1>Universal Agent Memory</h1>
         <p class="lede">
-          A universal memory layer for all AI agents. Self-hosted. Yours.
+          Единый слой долговременной памяти для OpenClaw, Hermes и других агентов.
         </p>
       </div>
       <div class="hero-actions">
         <button onclick="refreshAll()">Обновить пульт</button>
-        <button class="secondary" onclick="showTab('settings')">SELF-HOSTED</button>
+        <button class="secondary" onclick="showTab('settings')">ЛОКАЛЬНО</button>
       </div>
     </header>
 
@@ -2295,7 +2350,7 @@ _OPERATOR_UI_HTML = """
           <div class="panel-body">
             <div class="settings-grid">
               <label>
-                <span class="muted tiny">Provider</span>
+                <span class="muted tiny">Провайдер</span>
                 <select id="modelProvider" aria-label="Embedding provider">
                   <option value="fake">fake / тестовый</option>
                   <option value="tei">TEI / llama.cpp OpenAI-compatible</option>
@@ -2304,15 +2359,15 @@ _OPERATOR_UI_HTML = """
                 </select>
               </label>
               <label>
-                <span class="muted tiny">Model</span>
+                <span class="muted tiny">Модель</span>
                 <input id="modelName" aria-label="Embedding model" placeholder="jina-embeddings-v4">
               </label>
               <label>
-                <span class="muted tiny">Dimension</span>
+                <span class="muted tiny">Размерность</span>
                 <input id="modelDim" aria-label="Embedding dimension" type="number" min="1" max="65536" value="1536">
               </label>
               <label>
-                <span class="muted tiny">Timeout seconds</span>
+                <span class="muted tiny">Таймаут, сек</span>
                 <input id="modelTimeout" aria-label="Embedding timeout" type="number" min="1" max="600" value="30">
               </label>
               <label class="full">
@@ -2325,9 +2380,9 @@ _OPERATOR_UI_HTML = """
               </label>
             </div>
             <div class="toolbar" style="margin-top:12px">
-              <button onclick="saveModelSettings()">Сохранить desired config</button>
+              <button onclick="saveModelSettings()">Сохранить конфиг модели</button>
               <button class="secondary" onclick="testModelSettings()">Проверить endpoint</button>
-              <button class="secondary" onclick="reindex()">Reindex после применения</button>
+              <button class="secondary" onclick="reindex()">Переиндексация после применения</button>
             </div>
             <div class="split" style="margin-top:12px">
               <div class="card">
@@ -2347,26 +2402,26 @@ _OPERATOR_UI_HTML = """
       <section class="panel dashboard-graph-panel">
         <div class="panel-head">
           <div>
-            <h2>Memory Graph <span class="muted tiny">ⓘ</span></h2>
+            <h2>Граф памяти <span class="muted tiny">ⓘ</span></h2>
           </div>
-          <button class="secondary" onclick="showTab('graph')">↗ Expand</button>
+          <button class="secondary" onclick="showTab('graph')">↗ Развернуть</button>
         </div>
         <div class="panel-body">
           <div id="referenceGraph" class="force-graph" aria-label="Reference memory graph">
             <svg class="force-svg" role="img"></svg>
           </div>
           <div class="legend">
-            <span class="pill ok">Core Memory</span>
-            <span class="pill warn">Semantic Memory</span>
-            <span class="pill">Contextual Memory</span>
-            <span class="pill">Weak Connection</span>
+            <span class="pill ok">Ядро памяти</span>
+            <span class="pill warn">Семантическая память</span>
+            <span class="pill">Контекстная память</span>
+            <span class="pill">Слабая связь</span>
           </div>
         </div>
       </section>
 
       <section class="panel dashboard-vault-panel">
         <div class="panel-head">
-          <div><h2>Vault Preview</h2></div>
+          <div><h2>Предпросмотр файлов</h2></div>
           <button class="secondary" onclick="showTab('vault')">↗</button>
         </div>
         <div class="panel-body dashboard-vault-tree">
@@ -2413,11 +2468,11 @@ Build a universal memory layer for AI agents that is:
         </div>
         <div class="panel-body">
           <div>
-            <button class="ops-action" onclick="reflect()"><span class="ops-icon">✣</span><span><strong>Reflect</strong><br><span class="muted tiny">Synthesize & reflect</span></span></button>
-            <button class="ops-action" onclick="reindex()"><span class="ops-icon">⟳</span><span><strong>Reindex</strong><br><span class="muted tiny">Update embeddings</span></span></button>
-            <button class="ops-action" onclick="loadConflicts()"><span class="ops-icon">✉</span><span><strong>Inbox</strong><br><span class="muted tiny">Review conflicts</span></span><span class="pill warn">3</span></button>
+            <button class="ops-action" onclick="reflect()"><span class="ops-icon">✣</span><span><strong>Рефлексия</strong><br><span class="muted tiny">Синтезировать наблюдения</span></span></button>
+            <button class="ops-action" onclick="reindex()"><span class="ops-icon">⟳</span><span><strong>Переиндексация</strong><br><span class="muted tiny">Обновить векторы</span></span></button>
+            <button class="ops-action" onclick="loadConflicts()"><span class="ops-icon">✉</span><span><strong>Входящие</strong><br><span class="muted tiny">Разобрать конфликты</span></span><span class="pill warn">3</span></button>
           </div>
-          <h3 style="margin-top:18px">Activity Log <button class="ghost" style="float:right;min-height:20px;padding:0">View all</button></h3>
+          <h3 style="margin-top:18px">Журнал активности <button class="ghost" style="float:right;min-height:20px;padding:0">Все</button></h3>
           <div class="activity-item"><span class="activity-dot">✧</span><div><strong>New memory ingested</strong><div class="muted tiny">User prefers concise answers</div></div><span class="muted tiny">2m</span></div>
           <div class="activity-item"><span class="activity-dot" style="color:#fb7185">!</span><div><strong style="color:#fb7185">Conflict detected</strong><div class="muted tiny">Timezone preference mismatch</div></div><span class="muted tiny">18m</span></div>
           <div class="activity-item"><span class="activity-dot">↻</span><div><strong>Memory reindexed</strong><div class="muted tiny">AI Memory System Project</div></div><span class="muted tiny">42m</span></div>
@@ -2471,8 +2526,41 @@ Build a universal memory layer for AI agents that is:
       if (name === "settings") loadModelSettings();
     }
 
+    function formatBytes(value) {
+      if (value == null) return "н/д";
+      const units = ["B", "KiB", "MiB", "GiB", "TiB"];
+      let size = Number(value);
+      let unit = 0;
+      while (size >= 1024 && unit < units.length - 1) {
+        size /= 1024;
+        unit += 1;
+      }
+      return `${size >= 10 ? size.toFixed(1) : size.toFixed(2)} ${units[unit]}`;
+    }
+
+    function formatDuration(seconds) {
+      if (seconds == null) return "н/д";
+      const days = Math.floor(seconds / 86400);
+      const hours = Math.floor((seconds % 86400) / 3600);
+      const minutes = Math.floor((seconds % 3600) / 60);
+      if (days > 0) return `${days}д ${hours}ч`;
+      if (hours > 0) return `${hours}ч ${minutes}м`;
+      return `${minutes}м`;
+    }
+
+    async function loadSystemStatus() {
+      const data = await api("/v1/system/status");
+      if ($("fallbackVersion")) $("fallbackVersion").textContent = data.version || "н/д";
+      if ($("fallbackUptime")) $("fallbackUptime").textContent = formatDuration(data.uptime_seconds);
+      if ($("fallbackStorage")) {
+        $("fallbackStorage").textContent = `${formatBytes(data.storage?.used_bytes)} / ${formatBytes(data.storage?.total_bytes)}`;
+      }
+      if ($("fallbackLoad")) $("fallbackLoad").textContent = data.load_average?.one_minute ?? "н/д";
+      if ($("fallbackRss")) $("fallbackRss").textContent = data.process?.rss_mb != null ? `${data.process.rss_mb} MiB` : "н/д";
+    }
+
     async function refreshAll() {
-      await Promise.allSettled([listMemories(), loadConflicts(), loadVault(), loadModelSettings()]);
+      await Promise.allSettled([listMemories(), loadConflicts(), loadVault(), loadModelSettings(), loadSystemStatus()]);
     }
 
     function updateKpis({ memories, conflicts, vault } = {}) {

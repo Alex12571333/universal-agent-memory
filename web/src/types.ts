@@ -125,3 +125,25 @@ export interface ImportVaultResponse {
     message: string;
   }>;
 }
+
+export interface SystemStatus {
+  status: "ok" | string;
+  version: string;
+  uptime_seconds: number;
+  storage: {
+    path: string;
+    total_bytes: number;
+    used_bytes: number;
+    free_bytes: number;
+    used_percent: number | null;
+  };
+  process: {
+    rss_mb: number | null;
+    pid: number;
+  };
+  load_average: {
+    one_minute: number | null;
+    five_minutes: number | null;
+    fifteen_minutes: number | null;
+  };
+}

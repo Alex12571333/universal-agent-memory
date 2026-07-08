@@ -370,6 +370,21 @@ def test_model_settings_endpoints_save_and_probe_fake_provider() -> None:
     assert resaved.json()["desired"]["api_key"] == "loca…cret"
 
 
+def test_system_status_endpoint_reports_real_process_fields() -> None:
+    client = TestClient(create_app(build_in_memory_container()))
+
+    response = client.get("/v1/system/status")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "ok"
+    assert data["uptime_seconds"] >= 0
+    assert data["storage"]["total_bytes"] > 0
+    assert data["storage"]["used_bytes"] > 0
+    assert data["process"]["pid"] > 0
+    assert "one_minute" in data["load_average"]
+
+
 def test_retain_endpoint_redacts_secret_before_storage() -> None:
     container = build_in_memory_container()
     client = TestClient(create_app(container))

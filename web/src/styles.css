@@ -664,6 +664,22 @@ pre {
   overflow: auto;
 }
 
+.recall-panel textarea {
+  height: 142px;
+  min-height: 142px;
+  max-height: 142px;
+}
+
+.composer textarea {
+  height: 118px;
+  min-height: 118px;
+  max-height: 118px;
+}
+
+.editor-pane textarea {
+  resize: none;
+}
+
 .empty {
   border: 1px dashed rgba(108, 159, 255, 0.28);
   border-radius: 14px;
@@ -914,6 +930,34 @@ body::after {
   border-color: rgba(108, 159, 255, 0.2);
   background: rgba(3, 10, 23, 0.58);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  gap: 10px;
+}
+
+.identity-row {
+  display: grid;
+  grid-template-columns: 82px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-height: 38px;
+  border: 1px solid rgba(108, 159, 255, 0.16);
+  border-radius: 12px;
+  background: rgba(3, 10, 24, 0.62);
+  padding: 0 11px;
+}
+
+.identity-row span {
+  color: #9dadca;
+  font-size: 12px;
+}
+
+.identity-row code {
+  min-width: 0;
+  overflow: hidden;
+  color: #eef5ff;
+  font: 700 13px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.02em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .self-hosted {
@@ -943,6 +987,10 @@ textarea {
   border-color: rgba(111, 159, 239, 0.18);
   background: rgba(3, 10, 24, 0.72);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+}
+
+textarea {
+  resize: none;
 }
 
 .kpi-row {
@@ -1009,18 +1057,24 @@ textarea {
 }
 
 .tab-strip {
-  display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  display: flex;
+  overflow-x: auto;
+  overflow-y: hidden;
   border-bottom: 1px solid rgba(108, 159, 255, 0.16);
   background: rgba(3, 10, 22, 0.22);
+  scrollbar-width: thin;
 }
 
 .tab-strip button {
   position: relative;
+  flex: 0 0 auto;
+  min-width: 86px;
   min-height: 42px;
+  padding: 0 14px;
   background: transparent;
   color: #a8b4ce;
   font-size: 13px;
+  white-space: nowrap;
 }
 
 .tab-strip button.active {

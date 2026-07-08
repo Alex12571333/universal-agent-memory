@@ -8,6 +8,7 @@ import {
   type MemoryItem,
   type ModelSettings,
   type RecallResult,
+  type SystemStatus,
   type VaultFile
 } from "./types";
 
@@ -35,10 +36,10 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
       return (
         <div className="fatal-screen">
           <div>
-            <b>UI runtime error</b>
-            <h1>Dashboard не должен быть пустым</h1>
+            <b>Ошибка интерфейса</b>
+            <h1>Панель не должна быть пустой</h1>
             <p>{this.state.error.message}</p>
-            <button onClick={() => location.reload()}>Reload</button>
+            <button onClick={() => location.reload()}>Перезагрузить</button>
           </div>
         </div>
       );
@@ -55,6 +56,7 @@ function Dashboard() {
   const [conflicts, setConflicts] = useState<ConflictCase[]>([]);
   const [vault, setVault] = useState<VaultFile[]>([]);
   const [settings, setSettings] = useState<ModelSettings | null>(null);
+  const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
   const [selectedMemory, setSelectedMemory] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [query, setQuery] = useState("Что важно знать текущему агенту?");
@@ -66,16 +68,18 @@ function Dashboard() {
   async function refresh() {
     setLoading(true);
     try {
-      const [memoryData, conflictData, vaultData, modelData] = await Promise.all([
+      const [memoryData, conflictData, vaultData, modelData, statusData] = await Promise.all([
         api.memories(workspace, tenant),
         api.conflicts(workspace, tenant),
         api.vault(workspace, tenant),
-        api.modelSettings()
+        api.modelSettings(),
+        api.systemStatus()
       ]);
       setMemories(memoryData.memories);
       setConflicts(conflictData.cases);
       setVault(vaultData.files);
       setSettings(modelData);
+      setSystemStatus(statusData);
       setSelectedMemory((current) => current ?? memoryData.memories[0]?.id ?? null);
       setSelectedFile((current) => current ?? vaultData.files[0]?.path ?? null);
       setStatus("Данные обновлены");
@@ -96,14 +100,14 @@ function Dashboard() {
   const selectedVault = vault.find((item) => item.path === selectedFile) ?? vault[0];
 
   const kpis = [
-    ["Memories", memories.length.toLocaleString(), `+${activeMemories.length} active`, "db"],
-    ["Conflicts", openConflicts.length.toLocaleString(), "need review", "scale"],
-    ["Vault files", vault.length.toLocaleString(), "plain text editable", "folder"],
-    ["Live status", "Online", settings?.runtime.model_name ?? "runtime", "pulse"]
+    ["Память", memories.length.toLocaleString(), `активных: ${activeMemories.length}`, "db"],
+    ["Конфликты", openConflicts.length.toLocaleString(), "на проверку", "scale"],
+    ["Файлы", vault.length.toLocaleString(), "редактируемый текст", "folder"],
+    ["Статус", systemStatus?.status === "ok" ? "Онлайн" : "н/д", settings?.runtime.model_name ?? "runtime", "pulse"]
   ];
 
   async function runRecall() {
-    setStatus("Recall...");
+    setStatus("Ищу в памяти...");
     const response = await api.recall(workspace, tenant, query);
     setRecall(response.results);
     setStatus(`Найдено ${response.results.length} воспоминаний`);
@@ -118,7 +122,7 @@ function Dashboard() {
   }
 
   async function runOperation(name: "reflect" | "reindex") {
-    setStatus(name === "reflect" ? "Reflection запущен..." : "Пересчитываю embeddings...");
+    setStatus(name === "reflect" ? "Рефлексия запущена..." : "Пересчитываю векторы...");
     const result = name === "reflect" ? await api.reflect(workspace, tenant) : await api.reindex(workspace, tenant);
     setStatus(JSON.stringify(result));
     await refresh();
@@ -126,13 +130,11 @@ function Dashboard() {
 
   return (
     <div className="app-shell">
-      <Sidebar view={view} setView={setView} conflicts={openConflicts.length} />
+      <Sidebar view={view} setView={setView} conflicts={openConflicts.length} systemStatus={systemStatus} />
       <main className="main">
         <Hero
           tenant={tenant}
           workspace={workspace}
-          setTenant={setTenant}
-          setWorkspace={setWorkspace}
           loading={loading}
         />
         <section className="kpi-row">
@@ -144,8 +146,8 @@ function Dashboard() {
         <section className="content-grid">
           <div className="panel memory-panel">
             <PanelHeader
-              title={view === "settings" ? "Model Settings" : "Recent Memories"}
-              action={<button onClick={() => void refresh()}>Refresh</button>}
+              title={view === "settings" ? "Настройки моделей" : "Последние воспоминания"}
+              action={<button onClick={() => void refresh()}>Обновить</button>}
             />
             <TabStrip view={view} setView={setView} />
             {view === "settings" ? (
@@ -169,8 +171,8 @@ function Dashboard() {
 
           <div className="panel graph-panel">
             <PanelHeader
-              title={view === "memory" ? "Recall" : "Memory Graph"}
-              action={<button onClick={() => setView("graph")}>Expand</button>}
+              title={view === "memory" ? "Поиск по памяти" : "Граф памяти"}
+              action={<button onClick={() => setView("graph")}>Развернуть</button>}
             />
             {view === "memory" ? (
               <RecallPanel query={query} setQuery={setQuery} runRecall={runRecall} results={recall} />
@@ -180,21 +182,21 @@ function Dashboard() {
           </div>
 
           <aside className="panel operations-panel">
-            <PanelHeader title="Operations" />
+            <PanelHeader title="Операции" />
             <div className="operation-list">
               <button className="operation purple" onClick={() => void runOperation("reflect")}>
                 <span>✳</span>
-                <b>Reflect</b>
+                <b>Рефлексия</b>
                 <small>Синтезировать наблюдения</small>
               </button>
               <button className="operation blue" onClick={() => void runOperation("reindex")}>
                 <span>⌬</span>
-                <b>Reindex</b>
-                <small>Пересчитать embeddings</small>
+                <b>Переиндексация</b>
+                <small>Пересчитать векторы</small>
               </button>
               <button className="operation pink" onClick={() => setView("inbox")}>
                 <span>▣</span>
-                <b>Inbox</b>
+                <b>Входящие</b>
                 <small>{openConflicts.length} конфликтов</small>
               </button>
             </div>
@@ -210,17 +212,17 @@ function Dashboard() {
           </aside>
 
           <div className="panel vault-preview">
-            <PanelHeader title="Vault Preview" action={<button onClick={() => setView("vault")}>Edit</button>} />
+            <PanelHeader title="Предпросмотр vault" action={<button onClick={() => setView("vault")}>Редактировать</button>} />
             <VaultPreview files={vault} selectedPath={selectedVault?.path} setSelectedFile={setSelectedFile} />
           </div>
 
           <div className="panel conflict-panel">
-            <PanelHeader title="Conflict Review Inbox" badge={openConflicts.length} />
+            <PanelHeader title="Разбор конфликтов" badge={openConflicts.length} />
             <ConflictList conflicts={conflicts.slice(0, 4)} compact />
           </div>
 
           <aside className="panel activity-panel">
-            <PanelHeader title="Activity Log" />
+            <PanelHeader title="Журнал активности" />
             <ActivityLog memories={memories} conflicts={conflicts} status={status} />
           </aside>
         </section>
@@ -229,24 +231,24 @@ function Dashboard() {
   );
 }
 
-function Sidebar({ view, setView, conflicts }: { view: View; setView: (view: View) => void; conflicts: number }) {
+function Sidebar({ view, setView, conflicts, systemStatus }: { view: View; setView: (view: View) => void; conflicts: number; systemStatus: SystemStatus | null }) {
   const overviewItems: Array<[View, string, string]> = [
-    ["dashboard", "Dashboard", "◈"],
-    ["memory", "Memory", "✦"],
-    ["inbox", "Inbox", "□"]
+    ["dashboard", "Панель", "◈"],
+    ["memory", "Память", "✦"],
+    ["inbox", "Входящие", "□"]
   ];
   const systemItems: Array<[View, string, string]> = [
-    ["graph", "Memory Graph", "◎"],
-    ["vault", "Vaults", "▤"],
-    ["settings", "Settings", "⚙"]
+    ["graph", "Граф памяти", "◎"],
+    ["vault", "Хранилище", "▤"],
+    ["settings", "Настройки", "⚙"]
   ];
   return (
     <aside className="sidebar" role="navigation">
       <div className="brand">
         <span className="brand-mark">◌</span>
-        <span><b>UAM</b><small>memory plane</small></span>
+        <span><b>UAM</b><small>слой памяти</small></span>
       </div>
-      <span className="nav-label">Overview</span>
+      <span className="nav-label">Обзор</span>
       <nav>
         {overviewItems.map(([key, label, icon]) => (
           <button key={key} className={view === key ? "active" : ""} onClick={() => setView(key)}>
@@ -256,7 +258,7 @@ function Sidebar({ view, setView, conflicts }: { view: View; setView: (view: Vie
           </button>
         ))}
       </nav>
-      <span className="nav-label">System</span>
+      <span className="nav-label">Система</span>
       <nav>
         {systemItems.map(([key, label, icon]) => (
           <button key={key} className={view === key ? "active" : ""} onClick={() => setView(key)}>
@@ -265,42 +267,51 @@ function Sidebar({ view, setView, conflicts }: { view: View; setView: (view: Vie
           </button>
         ))}
       </nav>
-      <div className="health-card">
-        <div className="health-head"><b>System Health</b><span className="pill green">Healthy</span></div>
-        <small>Version 0.2.1 · uptime 7d 14h</small>
-        <label>Storage <em>2.4 TB / 8 TB</em></label>
-        <div className="meter"><i style={{ width: "30%" }} /></div>
-        <label>CPU <em>18%</em></label>
-        <svg className="health-wave" viewBox="0 0 180 34" aria-hidden="true"><path d="M2 22 C18 24 24 18 38 21 S61 27 74 17 93 18 106 13 130 20 144 13 163 16 178 9" /></svg>
-        <label>RAM <em>32%</em></label>
-        <svg className="health-wave purple" viewBox="0 0 180 34" aria-hidden="true"><path d="M2 20 C17 14 25 22 39 17 S61 11 74 16 93 25 107 18 128 15 143 19 160 10 178 14" /></svg>
-      </div>
+      <HealthCard systemStatus={systemStatus} />
     </aside>
+  );
+}
+
+function HealthCard({ systemStatus }: { systemStatus: SystemStatus | null }) {
+  const storagePercent = systemStatus?.storage.used_percent ?? 0;
+  return (
+    <div className="health-card">
+      <div className="health-head">
+        <b>Состояние</b>
+        <span className={systemStatus?.status === "ok" ? "pill green" : "pill amber"}>
+          {systemStatus?.status === "ok" ? "Работает" : "н/д"}
+        </span>
+      </div>
+      <small>
+        Версия {systemStatus?.version ?? "н/д"} · uptime {formatDuration(systemStatus?.uptime_seconds)}
+      </small>
+      <label>Диск сервера <em>{formatBytes(systemStatus?.storage.used_bytes)} / {formatBytes(systemStatus?.storage.total_bytes)}</em></label>
+      <div className="meter"><i style={{ width: `${Math.min(100, storagePercent)}%` }} /></div>
+      <label>Load 1m <em>{formatNumber(systemStatus?.load_average.one_minute)}</em></label>
+      <label>RSS процесса <em>{systemStatus?.process.rss_mb != null ? `${systemStatus.process.rss_mb} MiB` : "н/д"}</em></label>
+      <small>PID {systemStatus?.process.pid ?? "н/д"} · {systemStatus?.storage.path ?? "путь н/д"}</small>
+    </div>
   );
 }
 
 function Hero(props: {
   tenant: string;
   workspace: string;
-  setTenant: (value: string) => void;
-  setWorkspace: (value: string) => void;
   loading: boolean;
 }) {
   return (
     <header className="hero">
       <div className="hero-orbits" aria-hidden="true"><i /><i /><i /></div>
       <div>
-        <p className="eyebrow">Self-hosted · Agent memory plane</p>
+        <p className="eyebrow">Локальный сервер · слой памяти агентов</p>
         <h1>Universal Agent Memory</h1>
         <p>Единый слой долговременной памяти для OpenClaw, Hermes и других агентов.</p>
       </div>
       <div className="identity-card">
-        <span className="self-hosted"><i /> Self-hosted</span>
-        <label>Tenant</label>
-        <input value={props.tenant} onChange={(event) => props.setTenant(event.target.value)} />
-        <label>Workspace</label>
-        <input value={props.workspace} onChange={(event) => props.setWorkspace(event.target.value)} />
-        <span className={props.loading ? "sync loading" : "sync"}>{props.loading ? "Syncing" : "Live"}</span>
+        <span className="self-hosted"><i /> Локально</span>
+        <div className="identity-row"><span>Сервер</span><code title={props.tenant}>{shortUuid(props.tenant)}</code></div>
+        <div className="identity-row"><span>Проект</span><code title={props.workspace}>{shortUuid(props.workspace)}</code></div>
+        <span className={props.loading ? "sync loading" : "sync"}>{props.loading ? "Синхронизация" : "Живой статус"}</span>
       </div>
     </header>
   );
@@ -308,12 +319,12 @@ function Hero(props: {
 
 function TabStrip({ view, setView }: { view: View; setView: (view: View) => void }) {
   const tabs: Array<[View, string]> = [
-    ["dashboard", "Memory"],
-    ["memory", "Recall"],
-    ["inbox", "Conflicts"],
-    ["vault", "Vault"],
-    ["graph", "Graph"],
-    ["settings", "Models"]
+    ["dashboard", "Память"],
+    ["memory", "Поиск"],
+    ["inbox", "Конфликты"],
+    ["vault", "Файлы"],
+    ["graph", "Граф"],
+    ["settings", "Модели"]
   ];
   return (
     <div className="tab-strip" role="tablist">
@@ -365,10 +376,10 @@ function MemoryList({ memories, selectedId, onSelect }: { memories: MemoryItem[]
         <button key={item.id} className={item.id === selectedId ? "memory-card selected" : "memory-card"} onClick={() => onSelect(item.id)}>
           <div>
             <b>{item.text.slice(0, 92)}{item.text.length > 92 ? "…" : ""}</b>
-            <p>{item.kind} · rev {item.revision} · confidence {Math.round(item.confidence * 100)}%</p>
+            <p>{translateKind(item.kind)} · ревизия {item.revision} · уверенность {Math.round(item.confidence * 100)}%</p>
           </div>
-          <span className={`tag ${item.layer}`}>{item.layer}</span>
-          <span className={`tag ${item.status}`}>{item.status}</span>
+          <span className={`tag ${item.layer}`}>{translateLayer(item.layer)}</span>
+          <span className={`tag ${item.status}`}>{translateStatus(item.status)}</span>
         </button>
       ))}
     </div>
@@ -384,13 +395,13 @@ function RecallPanel({ query, setQuery, runRecall, results }: {
   return (
     <div className="recall-panel">
       <textarea value={query} onChange={(event) => setQuery(event.target.value)} />
-      <button onClick={() => void runRecall()}>Run recall</button>
+      <button onClick={() => void runRecall()}>Найти в памяти</button>
       <div className="recall-results">
         {results.map((item) => (
           <article key={item.id}>
-            <b>{item.layer} · {item.source}</b>
+            <b>{translateLayer(item.layer)} · {translateSource(item.source)}</b>
             <p>{item.text}</p>
-            <small>score {item.score.toFixed(3)}</small>
+            <small>оценка {item.score.toFixed(3)}</small>
           </article>
         ))}
       </div>
@@ -446,7 +457,7 @@ function MemoryGraph({ memories, selectedId, onSelect }: { memories: MemoryItem[
       onPointerUp={() => setDragging(null)}
       onPointerLeave={() => setDragging(null)}
       role="img"
-      aria-label="Obsidian-style interactive memory graph"
+      aria-label="Интерактивный граф памяти в стиле Obsidian"
     >
       <defs>
         <radialGradient id="nodeGlow">
@@ -471,15 +482,15 @@ function MemoryGraph({ memories, selectedId, onSelect }: { memories: MemoryItem[
         >
           <circle r={index === 0 ? 68 : 42} />
           <text>{node.text.slice(0, index === 0 ? 42 : 18)}</text>
-          <text y="15" className="node-layer">{node.layer}</text>
+          <text y="15" className="node-layer">{translateLayer(node.layer)}</text>
         </g>
       ))}
     </svg>
     <div className="graph-legend">
-      <span><i className="blue-dot" /> Core Memory</span>
-      <span><i className="purple-dot" /> Semantic Memory</span>
-      <span><i className="cyan-dot" /> Contextual Memory</span>
-      <span><i className="dim-dot" /> Weak Connection</span>
+      <span><i className="blue-dot" /> Ядро памяти</span>
+      <span><i className="purple-dot" /> Семантическая память</span>
+      <span><i className="cyan-dot" /> Контекстная память</span>
+      <span><i className="dim-dot" /> Слабая связь</span>
     </div>
     </div>
   );
@@ -496,7 +507,7 @@ function VaultPreview({ files, selectedPath, setSelectedFile }: { files: VaultFi
           </button>
         ))}
       </div>
-      <pre>{stripFrontmatter(file?.content ?? "Vault пуст. Сохрани первую память.")}</pre>
+      <pre>{stripFrontmatter(file?.content ?? "Файлов пока нет. Сохрани первую память.")}</pre>
     </div>
   );
 }
@@ -519,7 +530,7 @@ function VaultEditor(props: {
     if (!file || !canEdit) return;
     const next = replaceBody(file.content, text);
     const result = await api.importVault(props.workspace, props.tenant, [{ path: file.path, content: next }], dryRun);
-    props.setStatus(`${dryRun ? "Dry-run" : "Saved"}: ${result.supersede_count} supersede, ${result.changes.length} changes`);
+      props.setStatus(`${dryRun ? "Проверка" : "Сохранено"}: замен ${result.supersede_count}, изменений ${result.changes.length}`);
     if (!dryRun) {
       await api.reindex(props.workspace, props.tenant);
       await props.refresh();
@@ -536,11 +547,11 @@ function VaultEditor(props: {
         ))}
       </div>
       <div className="editor-pane">
-        <p className="hint">Редактируй обычный текст памяти. Frontmatter, ревизии и embedding остаются под капотом.</p>
+        <p className="hint">Редактируй обычный текст памяти. Служебные поля, ревизии и векторы остаются под капотом.</p>
         <textarea value={text} disabled={!canEdit} onChange={(event) => setText(event.target.value)} />
         <div className="actions">
           <button onClick={() => void save(true)}>Dry-run</button>
-          <button className="primary" onClick={() => void save(false)}>Сохранить и пересчитать embedding</button>
+          <button className="primary" onClick={() => void save(false)}>Сохранить и пересчитать вектор</button>
         </div>
       </div>
     </div>
@@ -582,7 +593,7 @@ function SettingsPanel({ settings, setStatus, refresh }: {
 
   function applyDgxSparkPreset() {
     setForm(dgxSparkPreset);
-    setStatus("DGX Spark Q8 preset selected. Нажми Test endpoint, затем Save model config.");
+    setStatus("Выбран preset DGX Spark Q8. Проверь endpoint, затем сохрани конфиг модели.");
   }
 
   async function save(testOnly: boolean) {
@@ -602,15 +613,15 @@ function SettingsPanel({ settings, setStatus, refresh }: {
     <div className="settings-grid">
       <div className="preset-card">
         <div>
-          <span className="eyebrow">Recommended real embedding</span>
-          <b>DGX Spark · Jina v4 Q8 · 2048 dims</b>
-          <p>OpenAI-compatible endpoint: <code>http://192.168.0.10:8002/v1/embeddings</code></p>
+          <span className="eyebrow">Рекомендованная реальная модель векторов</span>
+          <b>DGX Spark · Jina v4 Q8 · 2048 измерений</b>
+          <p>OpenAI-совместимый endpoint: <code>http://192.168.0.10:8002/v1/embeddings</code></p>
         </div>
-        <button onClick={applyDgxSparkPreset}>Use DGX preset</button>
+        <button onClick={applyDgxSparkPreset}>Использовать preset</button>
       </div>
       {(["provider", "model_name", "base_url", "api_key"] as const).map((key) => (
         <label key={key}>
-          {key}
+          {modelFieldLabel(key)}
           <input
             type={key === "api_key" ? "password" : "text"}
             value={String(form[key])}
@@ -619,25 +630,25 @@ function SettingsPanel({ settings, setStatus, refresh }: {
         </label>
       ))}
       <label>
-        dimension
+        Размерность
         <input type="number" value={form.dimension} onChange={(event) => setForm((current) => ({ ...current, dimension: Number(event.target.value) }))} />
       </label>
       <label>
-        timeout_seconds
+        Таймаут, сек
         <input type="number" value={form.timeout_seconds} onChange={(event) => setForm((current) => ({ ...current, timeout_seconds: Number(event.target.value) }))} />
       </label>
       <div className="settings-summary">
-        <b>Runtime embedding</b>
-        <p>{settings?.runtime.provider} · {settings?.runtime.model_name} · {settings?.runtime.dimension} dims</p>
+        <b>Текущая модель векторов</b>
+        <p>{settings?.runtime.provider} · {settings?.runtime.model_name} · {settings?.runtime.dimension} измерений</p>
         <small>
-          Desired: {settings?.desired.provider} · {settings?.desired.model_name} · {settings?.desired.dimension} dims
+          Желаемый: {settings?.desired.provider} · {settings?.desired.model_name} · {settings?.desired.dimension} измерений
           {" · "}
-          restart_required: {settings?.restart_required ? "да, нужен restart + reindex" : "нет"}
+          Перезапуск: {settings?.restart_required ? "да, нужен restart + reindex" : "нет"}
         </small>
       </div>
       <div className="actions">
-        <button onClick={() => void save(true)}>Test endpoint</button>
-        <button className="primary" onClick={() => void save(false)}>Save model config</button>
+        <button onClick={() => void save(true)}>Проверить endpoint</button>
+        <button className="primary" onClick={() => void save(false)}>Сохранить конфиг модели</button>
       </div>
     </div>
   );
@@ -661,11 +672,11 @@ function ConflictList({ conflicts, compact = false }: { conflicts: ConflictCase[
 
 function ActivityLog({ memories, conflicts, status }: { memories: MemoryItem[]; conflicts: ConflictCase[]; status: string }) {
   const events = [
-    ["✦", status, "just now"],
-    ["▱", `${memories.length} memories indexed`, "live"],
-    ["⚖", `${conflicts.length} conflicts tracked`, "live"],
-    ["▤", "Vault plain-text mode", "ready"],
-    ["◎", "Graph nodes draggable", "ready"]
+    ["✦", status, "сейчас"],
+    ["▱", `воспоминаний в индексе: ${memories.length}`, "онлайн"],
+    ["⚖", `конфликтов отслеживается: ${conflicts.length}`, "онлайн"],
+    ["▤", "Файлы в режиме обычного текста", "готово"],
+    ["◎", "Узлы графа можно двигать", "готово"]
   ];
   return (
     <div className="activity">
@@ -682,6 +693,88 @@ function ActivityLog({ memories, conflicts, status }: { memories: MemoryItem[]; 
 
 function Empty({ text }: { text: string }) {
   return <div className="empty">{text}</div>;
+}
+
+function translateKind(value: string) {
+  const map: Record<string, string> = {
+    fact: "факт",
+    preference: "предпочтение",
+    task: "задача",
+    note: "заметка",
+    placeholder: "узел"
+  };
+  return map[value] ?? value;
+}
+
+function translateLayer(value: string) {
+  const map: Record<string, string> = {
+    core: "ядро",
+    semantic: "семантика",
+    episodic: "эпизоды",
+    procedural: "процедуры",
+    reflection: "рефлексия",
+    error: "ошибки",
+    social: "социальное"
+  };
+  return map[value] ?? value;
+}
+
+function translateStatus(value: string) {
+  const map: Record<string, string> = {
+    active: "активна",
+    pinned: "закреплена",
+    stale: "устарела",
+    disputed: "спорная",
+    archived: "архив"
+  };
+  return map[value] ?? value;
+}
+
+function translateSource(value: string) {
+  if (value.includes("qdrant")) return "гибридный поиск";
+  if (value.includes("postgres")) return "лексический поиск";
+  return value;
+}
+
+function modelFieldLabel(value: "provider" | "model_name" | "base_url" | "api_key") {
+  const map = {
+    provider: "Провайдер",
+    model_name: "Модель",
+    base_url: "Base URL",
+    api_key: "API ключ"
+  };
+  return map[value];
+}
+
+function shortUuid(value: string) {
+  if (value.length <= 13) return value;
+  return `${value.slice(0, 8)}…${value.slice(-4)}`;
+}
+
+function formatBytes(value?: number) {
+  if (value == null) return "н/д";
+  const units = ["B", "KiB", "MiB", "GiB", "TiB"];
+  let size = value;
+  let unit = 0;
+  while (size >= 1024 && unit < units.length - 1) {
+    size /= 1024;
+    unit += 1;
+  }
+  return `${size >= 10 ? size.toFixed(1) : size.toFixed(2)} ${units[unit]}`;
+}
+
+function formatDuration(seconds?: number) {
+  if (seconds == null) return "н/д";
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  if (days > 0) return `${days}д ${hours}ч`;
+  if (hours > 0) return `${hours}ч ${minutes}м`;
+  return `${minutes}м`;
+}
+
+function formatNumber(value?: number | null) {
+  return value == null ? "н/д" : value.toFixed(2);
 }
 
 function isOpenConflict(item: ConflictCase) {
