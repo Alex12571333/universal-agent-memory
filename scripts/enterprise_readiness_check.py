@@ -47,6 +47,7 @@ def run_checks(*, static_only: bool) -> list[Check]:
         ".github/workflows/ci.yml",
         "migrations/008_audit_events.sql",
         "migrations/009_api_key_registry.sql",
+        "scripts/restore_drill.py",
         "docs/assets/obelisk-memory-hero.png",
         "docs/OPERATIONS_RUNBOOK.md",
         "docs/ENTERPRISE_READINESS.md",
@@ -208,6 +209,20 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 "tests:key-registry",
                 "test_api_key_registry_tracks_last_used_and_revocation" in tests,
                 "key registry last-used and revocation behavior is covered",
+            ),
+            Check(
+                "restore-drill:script",
+                "docker" in read("scripts/restore_drill.py")
+                and "pg_restore" in read("scripts/restore_drill.py")
+                and "REQUIRED_TABLES" in read("scripts/restore_drill.py"),
+                "restore drill verifies backups in isolated PostgreSQL",
+            ),
+            Check(
+                "tests:restore-drill",
+                "test_restore_drill_uses_temporary_docker_target" in read(
+                    "tests/test_backup_restore_scripts.py"
+                ),
+                "restore drill command flow is covered by tests",
             ),
         ]
     )

@@ -1,6 +1,6 @@
 # Production envelope report — 2026-07-10
 
-Passed: 47
+Passed: 50
 Failed: 0
 
 | Check | Status | Detail |
@@ -12,6 +12,7 @@ Failed: 0
 | `file:.github/workflows/ci.yml` | PASS | required production artifact |
 | `file:migrations/008_audit_events.sql` | PASS | required production artifact |
 | `file:migrations/009_api_key_registry.sql` | PASS | required production artifact |
+| `file:scripts/restore_drill.py` | PASS | required production artifact |
 | `file:docs/assets/obelisk-memory-hero.png` | PASS | required production artifact |
 | `file:docs/OPERATIONS_RUNBOOK.md` | PASS | required production artifact |
 | `file:docs/ENTERPRISE_READINESS.md` | PASS | required production artifact |
@@ -48,6 +49,8 @@ Failed: 0
 | `keys:registry-rls` | PASS | API key registry stores non-secret metadata under RLS |
 | `keys:operator-api` | PASS | API key registry is operator-scoped |
 | `tests:key-registry` | PASS | key registry last-used and revocation behavior is covered |
+| `restore-drill:script` | PASS | restore drill verifies backups in isolated PostgreSQL |
+| `tests:restore-drill` | PASS | restore drill command flow is covered by tests |
 | `gap-audit:no-overclaim` | PASS | gap audit explicitly forbids readiness over-claims |
 | `gap-audit:full-production-gates` | PASS | gap audit defines full-production gates |
 | `benchmark:passed` | PASS | latest benchmark pass count |

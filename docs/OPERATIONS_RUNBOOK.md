@@ -64,6 +64,16 @@ Move `./backups/obelisk-memory.dump` to durable storage outside Docker volumes.
 Before a destructive maintenance task, make two backups and test restore on a
 separate stack.
 
+Run a non-destructive restore drill after creating a backup and before upgrades:
+
+```bash
+python scripts/restore_drill.py ./backups/obelisk-memory.dump
+```
+
+The drill creates a temporary PostgreSQL Docker container and volume, restores
+the dump inside it, verifies required production tables, then removes the
+temporary resources. Use `--keep` only when you need manual forensic inspection.
+
 ## Upgrade
 
 1. Pull/build the new image.
@@ -74,15 +84,16 @@ separate stack.
    ```
 
 3. Back up PostgreSQL.
-4. Start the stack; migrations run through the one-shot `migrate` service.
-5. Run:
+4. Run `python scripts/restore_drill.py ./backups/obelisk-memory.dump`.
+5. Start the stack; migrations run through the one-shot `migrate` service.
+6. Run:
 
    ```bash
    python scripts/benchmark_suite.py
    python scripts/enterprise_readiness_check.py
    ```
 
-6. Review `/metrics` and worker logs.
+7. Review `/metrics` and worker logs.
 
 ## Model changes
 

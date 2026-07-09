@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import subprocess
 from pathlib import Path
 from types import ModuleType
 from unittest.mock import Mock
@@ -21,6 +22,7 @@ def _load_script(name: str) -> ModuleType:
 
 backup = _load_script("backup")
 restore = _load_script("restore")
+restore_drill = _load_script("restore_drill")
 export_vault = _load_script("export_vault")
 import_vault = _load_script("import_vault")
 migrate = _load_script("migrate")
@@ -90,6 +92,42 @@ def test_restore_invokes_pg_restore_with_optional_clean(
         ],
         check=True,
     )
+
+
+def test_restore_drill_uses_temporary_docker_target(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    backup_file = tmp_path / "obelisk.dump"
+    backup_file.write_bytes(b"PGDMP")
+    commands: list[list[str]] = []
+    tokens = iter(("abcd1234", "passwordseed"))
+
+    def fake_run(
+        command: list[str],
+        *,
+        check: bool = True,
+        text: bool = True,
+        capture_output: bool = False,
+    ) -> subprocess.CompletedProcess[str]:
+        commands.append(command)
+        stdout = "\n3\n0\n0\n0\n" if capture_output else ""
+        return subprocess.CompletedProcess(command, 0, stdout=stdout, stderr="")
+
+    monkeypatch.setattr(restore_drill.subprocess, "run", fake_run)
+    monkeypatch.setattr(restore_drill.secrets, "token_hex", lambda _: next(tokens))
+    monkeypatch.setattr("sys.argv", ["restore_drill.py", str(backup_file)])
+
+    assert restore_drill.main() == 0
+
+    container = "obelisk-restore-drill-abcd1234"
+    volume = f"{container}-data"
+    assert commands[0] == ["docker", "volume", "create", volume]
+    assert commands[1][:6] == ["docker", "run", "-d", "--name", container, "-e"]
+    assert ["docker", "cp", str(backup_file), f"{container}:/tmp/obelisk-memory.dump"] in commands
+    assert any(command[:4] == ["docker", "exec", container, "pg_restore"] for command in commands)
+    assert any(command[:4] == ["docker", "exec", container, "psql"] for command in commands)
+    assert commands[-2] == ["docker", "rm", "-f", container]
+    assert commands[-1] == ["docker", "volume", "rm", "-f", volume]
 
 
 def test_export_vault_builds_postgres_exporter(

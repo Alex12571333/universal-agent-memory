@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added a non-destructive restore drill script that restores backups into an
+  isolated PostgreSQL Docker container and verifies production tables.
 - Added non-secret API-key registry with scoped-key fingerprints, last-used
   tracking, revocation API, metrics and auth enforcement.
 - Added durable audit events with PostgreSQL RLS, operator export API, metrics
