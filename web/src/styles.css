@@ -556,10 +556,10 @@ button:disabled {
 }
 
 .graph-node circle {
-  fill: url(#nodeGlow);
+  fill: rgba(3, 12, 28, 0.28);
   stroke: rgba(83, 174, 255, 0.88);
   stroke-width: 2;
-  filter: drop-shadow(0 0 14px rgba(45, 150, 255, 0.7));
+  filter: drop-shadow(0 0 12px rgba(45, 150, 255, 0.34));
 }
 
 .graph-node.selected circle {
@@ -1406,32 +1406,32 @@ textarea {
 }
 
 .graph-node circle {
-  fill: url(#nodeGlow);
+  fill: rgba(3, 12, 28, 0.32);
   stroke-width: 1.8;
 }
 
 .graph-node.agent circle {
-  fill: url(#agentGlow);
+  fill: rgba(5, 12, 30, 0.28);
   stroke: rgba(167, 112, 255, 0.92);
 }
 
 .graph-node.context circle {
-  fill: url(#contextGlow);
+  fill: rgba(4, 18, 34, 0.3);
   stroke: rgba(67, 232, 255, 0.88);
 }
 
 .graph-node.semantic circle {
-  fill: rgba(11, 65, 136, 0.96);
+  fill: rgba(5, 18, 38, 0.32);
   stroke: rgba(62, 145, 255, 0.9);
 }
 
 .graph-node.error circle {
-  fill: rgba(54, 25, 124, 0.96);
+  fill: rgba(16, 9, 34, 0.34);
   stroke: rgba(151, 92, 255, 0.9);
 }
 
 .graph-node.weak circle {
-  fill: rgba(66, 92, 171, 0.86);
+  fill: rgba(35, 52, 102, 0.32);
   stroke: rgba(116, 143, 255, 0.76);
 }
 

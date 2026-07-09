@@ -13,7 +13,21 @@ import {
 } from "./types";
 
 type View = "dashboard" | "memory" | "inbox" | "vault" | "graph" | "settings";
-type ArtName = "brain" | "graph" | "vault" | "conflict" | "status" | "operation";
+type ArtName =
+  | "brain"
+  | "graph"
+  | "vault"
+  | "conflict"
+  | "status"
+  | "operation"
+  | "graphOpenClaw"
+  | "graphHermes"
+  | "graphProject"
+  | "graphFacts"
+  | "graphPreferences"
+  | "graphTasks"
+  | "graphErrors"
+  | "graphContext";
 
 const ART: Record<ArtName, string> = {
   brain: "/ui/art/memory-brain.png",
@@ -21,7 +35,15 @@ const ART: Record<ArtName, string> = {
   vault: "/ui/art/vault-folder.png",
   conflict: "/ui/art/conflict-scale.png",
   status: "/ui/art/status-heartbeat.png",
-  operation: "/ui/art/operation-crystal.png"
+  operation: "/ui/art/operation-crystal.png",
+  graphOpenClaw: "/ui/art/graph-openclaw.png",
+  graphHermes: "/ui/art/graph-hermes.png",
+  graphProject: "/ui/art/graph-project-memory.png",
+  graphFacts: "/ui/art/graph-facts.png",
+  graphPreferences: "/ui/art/graph-preferences.png",
+  graphTasks: "/ui/art/graph-tasks.png",
+  graphErrors: "/ui/art/graph-errors.png",
+  graphContext: "/ui/art/graph-context.png"
 };
 
 const layers = ["core", "semantic", "episodic", "procedural", "reflection", "error", "social"] as const;
@@ -506,14 +528,14 @@ function MemoryGraph({
     const semanticCount = memories.filter((item) => item.layer === "semantic").length;
     const coreCount = memories.filter((item) => item.layer === "core").length;
     return [
-      { id: "project", label: "Проект памяти", sublabel: `${memories.length} записей`, kind: "core", art: "brain", x: 500, y: 330, r: 76 },
-      { id: "openclaw", label: "OpenClaw", sublabel: "агент", kind: "agent", art: "operation", x: 330, y: 188, r: 58 },
-      { id: "hermes", label: "Hermes", sublabel: "агент", kind: "agent", art: "graph", x: 690, y: 188, r: 58 },
-      { id: "facts", label: "Факты", sublabel: `${semanticCount || memories.length} записей`, kind: "context", art: "vault", x: 260, y: 346, r: 52 },
-      { id: "prefs", label: "Предпочтения", sublabel: "стиль", kind: "context", art: "status", x: 760, y: 346, r: 52 },
-      { id: "tasks", label: "Задачи", sublabel: "планы", kind: "semantic", art: "operation", x: 360, y: 505, r: 47 },
-      { id: "errors", label: "Ошибки", sublabel: "ограничения", kind: "error", art: "conflict", x: 520, y: 540, r: 47 },
-      { id: "context", label: "Контекст", sublabel: "сессия", kind: "context", art: "graph", x: 690, y: 480, r: 50 },
+      { id: "project", label: "Проект памяти", sublabel: `${memories.length} записей`, kind: "core", art: "graphProject", x: 500, y: 330, r: 76 },
+      { id: "openclaw", label: "OpenClaw", sublabel: "агент", kind: "agent", art: "graphOpenClaw", x: 330, y: 188, r: 58 },
+      { id: "hermes", label: "Hermes", sublabel: "агент", kind: "agent", art: "graphHermes", x: 690, y: 188, r: 58 },
+      { id: "facts", label: "Факты", sublabel: `${semanticCount || memories.length} записей`, kind: "context", art: "graphFacts", x: 260, y: 346, r: 52 },
+      { id: "prefs", label: "Предпочтения", sublabel: "стиль", kind: "context", art: "graphPreferences", x: 760, y: 346, r: 52 },
+      { id: "tasks", label: "Задачи", sublabel: "планы", kind: "semantic", art: "graphTasks", x: 360, y: 505, r: 47 },
+      { id: "errors", label: "Ошибки", sublabel: "ограничения", kind: "error", art: "graphErrors", x: 520, y: 540, r: 47 },
+      { id: "context", label: "Контекст", sublabel: "сессия", kind: "context", art: "graphContext", x: 690, y: 480, r: 50 },
       { id: "plugins", label: "Плагины", sublabel: "связь", kind: "weak", art: null, x: 250, y: 135, r: 16 },
       { id: "commands", label: "Команды", sublabel: "связь", kind: "weak", art: null, x: 170, y: 232, r: 14 },
       { id: "protocols", label: "Протоколы", sublabel: "связь", kind: "weak", art: null, x: 430, y: 102, r: 15 },
@@ -623,6 +645,12 @@ function MemoryGraph({
           <stop offset="72%" stopColor="#047484" />
           <stop offset="100%" stopColor="#06262e" />
         </radialGradient>
+        <clipPath id="nodeArtLargeClip">
+          <circle cx="0" cy="-25" r="34" />
+        </clipPath>
+        <clipPath id="nodeArtClip">
+          <circle cx="0" cy="-24" r="25" />
+        </clipPath>
       </defs>
       <g className="graph-stars" aria-hidden="true">
         {resolved.slice(0, 16).map((node, index) => (
@@ -662,10 +690,11 @@ function MemoryGraph({
             <image
               className="node-art-image"
               href={ART[node.art]}
-              x={node.id === "project" ? -32 : -25}
-              y={node.id === "project" ? -54 : -46}
-              width={node.id === "project" ? 64 : 50}
-              height={node.id === "project" ? 64 : 50}
+              x={node.id === "project" ? -34 : -25}
+              y={node.id === "project" ? -59 : -49}
+              width={node.id === "project" ? 68 : 50}
+              height={node.id === "project" ? 68 : 50}
+              clipPath={node.id === "project" ? "url(#nodeArtLargeClip)" : "url(#nodeArtClip)"}
               preserveAspectRatio="xMidYMid meet"
             />
           ) : null}
