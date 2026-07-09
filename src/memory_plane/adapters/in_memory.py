@@ -8,6 +8,7 @@ from uuid import UUID
 
 from memory_plane.contracts.dto import Candidate, RecallQuery
 from memory_plane.contracts.events import IntegrationEvent
+from memory_plane.domain.audit import AuditEvent
 from memory_plane.domain.checkpoint import Checkpoint, StaleRevisionError
 from memory_plane.domain.conflict import ConflictReviewDecision
 from memory_plane.domain.conversation import ConversationTurn
@@ -39,6 +40,7 @@ class InMemoryMemoryStore:
         self._turn_idempotency: dict[tuple[UUID, str], UUID] = {}
         self._proposals: dict[UUID, MemoryProposal] = {}
         self._proposal_idempotency: dict[tuple[UUID, str], UUID] = {}
+        self._audit_events: dict[UUID, AuditEvent] = {}
         self.events: list[IntegrationEvent] = []
         self._lock = RLock()
 
@@ -314,7 +316,41 @@ class InMemoryMemoryStore:
                 "outbox_lag_seconds": 0.0,
                 "processed_events_inflight_total": 0,
                 "checkpoints_total": 0,
+                "audit_events_total": len(
+                    [
+                        event
+                        for event in self._audit_events.values()
+                        if tenant_id is None or event.tenant_id == tenant_id
+                    ]
+                ),
             }
+
+    def append_audit_event(self, event: AuditEvent) -> AuditEvent:
+        """Append one immutable audit event."""
+        with self._lock:
+            self._audit_events.setdefault(event.id, event)
+            return self._audit_events[event.id]
+
+    def list_audit_events(
+        self,
+        tenant_id: UUID,
+        *,
+        workspace_id: UUID | None = None,
+        action: str | None = None,
+        resource_type: str | None = None,
+        limit: int = 100,
+    ) -> tuple[AuditEvent, ...]:
+        """List recent audit events for operator review."""
+        rows = [
+            event
+            for event in self._audit_events.values()
+            if event.tenant_id == tenant_id
+            and (workspace_id is None or event.workspace_id == workspace_id)
+            and (action is None or event.action == action)
+            and (resource_type is None or event.resource_type == resource_type)
+        ]
+        rows.sort(key=lambda event: (event.created_at, event.id), reverse=True)
+        return tuple(rows[:limit])
 
     def save(self, observation: Observation) -> Observation:
         """Store a derived observation without mutating evidence."""

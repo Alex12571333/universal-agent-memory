@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added durable audit events with PostgreSQL RLS, operator export API, metrics
+  and API coverage for memory, vault, conflict and model-setting actions.
 - Added `EmbeddingService` to coordinate generation and indexing of dense memory representations (WP-04).
 - Added `EmbeddingClient` port protocol and `FakeEmbeddingClient` adapter for test-driven embedding workflows.
 - Added an executable `embedding-worker` daemon to process retention events and generate vector embeddings asynchronously.

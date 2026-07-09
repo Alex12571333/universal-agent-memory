@@ -173,6 +173,42 @@ def test_scoped_api_keys_limit_agent_and_operator_access(monkeypatch) -> None:
     assert operator_metrics.status_code == 200
 
 
+def test_audit_events_require_operator_scope(monkeypatch) -> None:
+    monkeypatch.setenv(
+        "UAM_API_KEYS",
+        "agent:agent-secret:agent,operator:operator-secret:operator",
+    )
+    client = TestClient(create_app(build_in_memory_container()))
+
+    retained = client.post(
+        "/v1/memory/retain",
+        json={
+            "layer": "semantic",
+            "scope": "workspace",
+            "kind": "fact",
+            "text": "Audit scope test memory",
+        },
+        headers={"Authorization": "Bearer agent-secret"},
+    )
+    denied = client.get(
+        "/v1/audit/events",
+        headers={"Authorization": "Bearer agent-secret"},
+    )
+    allowed = client.get(
+        "/v1/audit/events",
+        headers={"Authorization": "Bearer operator-secret"},
+    )
+
+    assert retained.status_code == 201
+    assert denied.status_code == 403
+    assert allowed.status_code == 200
+    assert allowed.json()["count"] == 1
+    event = allowed.json()["events"][0]
+    assert event["action"] == "memory.retain"
+    assert event["actor"] == "agent"
+    assert event["actor_type"] == "agent"
+
+
 def test_metrics_endpoint_uses_prometheus_text_and_api_key() -> None:
     container = build_in_memory_container()
     client = TestClient(create_app(container, api_key="secret"))
@@ -195,6 +231,7 @@ def test_metrics_endpoint_uses_prometheus_text_and_api_key() -> None:
     assert response.headers["content-type"].startswith("text/plain")
     assert "uam_memory_items_total 1" in response.text
     assert "uam_outbox_pending_total 1" in response.text
+    assert "uam_audit_events_total 1" in response.text
 
 
 def test_api_key_is_disabled_when_not_configured(monkeypatch) -> None:
@@ -913,3 +950,101 @@ def test_vault_archive_endpoint_hides_memory_from_recall() -> None:
     assert recall.json()["results"] == []
     rows = container.store.list_for_workspace(DEFAULT_SERVER_ID, DEFAULT_PROJECT_ID)
     assert any(row.status.value == "archived" for row in rows)
+
+
+def test_audit_trail_records_operator_memory_and_vault_actions() -> None:
+    client = TestClient(create_app(build_in_memory_container()))
+    retained = client.post(
+        "/v1/memory/retain",
+        json={
+            "layer": "semantic",
+            "scope": "workspace",
+            "kind": "fact",
+            "text": "Audit trail starts with retain.",
+        },
+    )
+    superseded = client.put(
+        f"/v1/memory/{retained.json()['id']}/supersede",
+        json={
+            "text": "Audit trail includes supersede.",
+            "expected_revision": 1,
+        },
+    )
+    client.put(
+        "/v1/settings/models",
+        json={
+            "provider": "fake",
+            "model_name": "fake-audit-test",
+            "dimension": 32,
+            "timeout_seconds": 5,
+        },
+    )
+    client.post(
+        "/v1/memory/retain",
+        json={
+            "layer": "semantic",
+            "scope": "workspace",
+            "kind": "fact",
+            "text": "AuditConflict releases on July 15",
+        },
+    )
+    client.post(
+        "/v1/memory/retain",
+        json={
+            "layer": "semantic",
+            "scope": "workspace",
+            "kind": "fact",
+            "text": "AuditConflict releases on July 16",
+        },
+    )
+    conflict = client.get(f"/v1/workspaces/{DEFAULT_PROJECT_ID}/conflicts").json()[
+        "cases"
+    ][0]
+    decided = client.put(
+        f"/v1/workspaces/{DEFAULT_PROJECT_ID}/conflicts/{conflict['id']}/decision",
+        json={
+            "status": "accepted",
+            "winner_value": conflict["suggested_winner_value"],
+            "reason": "audit trail test",
+        },
+    )
+    export = client.get(f"/v1/workspaces/{DEFAULT_PROJECT_ID}/vault")
+    memory_file = next(
+        row for row in export.json()["files"] if row["path"].startswith("semantic/")
+    )
+    planned = client.post(
+        f"/v1/workspaces/{DEFAULT_PROJECT_ID}/vault/import",
+        json={"files": [memory_file]},
+    )
+    archived = client.post(
+        f"/v1/workspaces/{DEFAULT_PROJECT_ID}/vault/archive",
+        json={"file": memory_file},
+    )
+
+    audit = client.get(
+        f"/v1/audit/events?workspace_id={DEFAULT_PROJECT_ID}&limit=50"
+    )
+    memory_audit = client.get(
+        "/v1/audit/events?action=memory.supersede&resource_type=memory_item"
+    )
+
+    assert retained.status_code == 201
+    assert superseded.status_code == 201
+    assert decided.status_code == 200
+    assert planned.status_code == 200
+    assert archived.status_code == 200
+    assert audit.status_code == 200
+    actions = {event["action"] for event in audit.json()["events"]}
+    assert {
+        "memory.retain",
+        "memory.supersede",
+        "settings.models.save",
+        "conflict.decide",
+        "vault.import.plan",
+        "vault.archive",
+    }.issubset(actions)
+    assert memory_audit.status_code == 200
+    assert memory_audit.json()["count"] == 1
+    event = memory_audit.json()["events"][0]
+    assert event["resource_id"] == superseded.json()["id"]
+    assert event["metadata"]["supersedes_id"] == retained.json()["id"]

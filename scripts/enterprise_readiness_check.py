@@ -45,6 +45,7 @@ def run_checks(*, static_only: bool) -> list[Check]:
         ".env.production.example",
         "docker-compose.prod.yml",
         ".github/workflows/ci.yml",
+        "migrations/008_audit_events.sql",
         "docs/assets/obelisk-memory-hero.png",
         "docs/OPERATIONS_RUNBOOK.md",
         "docs/ENTERPRISE_READINESS.md",
@@ -153,6 +154,7 @@ def run_checks(*, static_only: bool) -> list[Check]:
 
     api = read("src/memory_plane/api/app.py")
     tests = read("tests/test_api.py")
+    audit_migration = read("migrations/008_audit_events.sql")
     checks.extend(
         [
             Check(
@@ -166,6 +168,25 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 "tests:security-headers",
                 "test_api_responses_include_security_headers" in tests,
                 "security headers are covered by API tests",
+            ),
+            Check(
+                "audit:rls",
+                "create table audit_events" in audit_migration
+                and "enable row level security" in audit_migration
+                and "force row level security" in audit_migration,
+                "audit events are durable and tenant-isolated",
+            ),
+            Check(
+                "audit:operator-export",
+                '@app.get("/v1/audit/events")' in api
+                and 'path.startswith("/v1/audit")' in api,
+                "audit export endpoint is operator-scoped",
+            ),
+            Check(
+                "tests:audit-trail",
+                "test_audit_trail_records_operator_memory_and_vault_actions" in tests
+                and "test_audit_events_require_operator_scope" in tests,
+                "audit trail behavior is covered by API tests",
             ),
         ]
     )

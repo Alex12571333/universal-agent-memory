@@ -15,6 +15,8 @@ remaining hard requirements.
 - [x] API key auth can protect API, docs, metrics, and UI.
 - [x] Scoped API keys can separate operator, agent, read, and write access.
 - [x] HTTP responses include baseline browser/API security headers.
+- [x] Durable audit log records memory writes, supersedes, conflict decisions,
+      vault imports/archives and model-setting changes.
 - [x] Health checks exist for API, PostgreSQL, and NATS.
 - [x] Metrics endpoint exists.
 - [x] Privacy guard redacts common secrets and high-risk PII.
@@ -32,7 +34,8 @@ remaining hard requirements.
 
 - [ ] Put the API behind a real TLS reverse proxy.
 - [ ] Add persistent key registry with rotation metadata and last-used audit.
-- [ ] Add audit log export and retention policy for regulated environments.
+- [ ] Add signed audit export bundles and retention policy for regulated
+      environments.
 - [ ] Add automated scheduled backups and restore drills.
 - [ ] Add dashboards/alerts for outbox lag, dead letters, Qdrant failures, and
       embedding latency.

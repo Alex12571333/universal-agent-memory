@@ -15,6 +15,14 @@
 | `Observation.__post_init__()` | Запрещает belief без summary/evidence | `ValueError` |
 | `ContextPackage.render_markdown()` | Детерминированно рендерит sections для LLM | Нет |
 
+## Audit — `domain/audit.py`, `services/audit.py`
+
+| Функция | Назначение | Гарантия |
+|---|---|---|
+| `AuditEvent.__post_init__()` | Проверяет actor/action/resource/status | `ValueError` при бесполезной audit-записи |
+| `AuditLogService.record(...)` | API/workers → append-only audit event | Не мутирует domain objects |
+| `AuditLogService.list_events(...)` | Operator export с фильтрами | Ограничивает `limit` диапазоном `1..500` |
+
 ## Contracts — `contracts/dto.py`, `contracts/events.py`
 
 | Функция | Назначение | Ограничение |
@@ -178,6 +186,7 @@
 | API-key middleware | Защищает все non-health routes при `UAM_API_KEY` |
 | `GET /metrics` | Prometheus counters/lag; защищён API key |
 | `GET /ui` | Local operator console | Same API-key middleware as API routes |
+| `GET /v1/audit/events` | Operator audit export | Operator/admin scope only; tenant/workspace/action filters |
 | `GET /v1/workspaces/{id}/memories` | Operator memory list | Optional layer/status/label filters |
 | `POST /v1/memory/retain` | REST boundary для retain |
 | `PUT /v1/memory/{id}/supersede` | CAS replacement; stale revision → `409 revision_conflict` |
@@ -208,6 +217,8 @@
 | `list_conflict_reviews(...)` | Read persisted review decisions | Workspace-scoped and deterministic |
 | `save_edge(edge)` | Insert graph edge | Uses existing `memory_edges` table |
 | `list_neighbors(...)` | Read incoming/outgoing edges | RLS tenant-bound; optional type filter |
+| `append_audit_event(event)` | Append operator/agent audit record | RLS tenant-bound; immutable event row |
+| `list_audit_events(...)` | Export recent audit records | Filters workspace/action/resource; newest first |
 | `collect_metrics(tenant)` | Считает counters и outbox lag | Устанавливает RLS tenant context |
 
 ## Checkpoint domain — `domain/checkpoint.py`

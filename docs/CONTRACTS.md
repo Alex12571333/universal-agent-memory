@@ -73,6 +73,13 @@ append-only memory.
 `accept-proposal:{proposal_id}`. Повторный accept не создаёт дубль. Reject
 обновляет только proposal status и никогда не создаёт recallable memory.
 
+`AuditLogService.record` пишет append-only `AuditEvent` для operator/agent
+действий: retain, supersede, proposal review, conflict decision, vault import,
+vault archive и model-settings changes. Audit export доступен через
+`GET /v1/audit/events` только ключам `operator`/`admin`. PostgreSQL хранит
+audit rows под тем же tenant RLS boundary; audit не заменяет outbox events,
+потому что outbox описывает async work, а audit описывает human/agent action.
+
 Reflection v2 остаётся deterministic и offline-safe: сервис извлекает простые
 слоты `subject/predicate/value`, создаёт observations только для повторов или
 конфликтов и помечает устаревшие значения `stale=true`. Повторный запуск с тем

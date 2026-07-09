@@ -13,6 +13,7 @@ it is not enough.
 | Architecture | PostgreSQL source of truth, Qdrant index, outbox, NATS workers, vault, API, UI | Good foundation |
 | Docker | Dev and prod compose exist; prod hides internal infra ports | Good for trusted local/team deployment |
 | API auth | Bearer key and scoped keys exist; `/health` public | Usable, but not complete enterprise IAM |
+| Audit trail | Append-only `audit_events` table, RLS, operator export API, metrics, tests | Baseline present; retention/export policy still needed |
 | Browser/API hardening | Security headers are enforced by middleware and tests | Baseline present |
 | Data model | Append-only memory, CAS supersede, provenance, statuses | Strong foundation |
 | Conversation capture | Raw conversation ledger exists, but curation remains explicit/manual or hook-driven | Not “automatically remembers everything” yet |
@@ -37,7 +38,8 @@ Required gates:
    - Long random master key plus scoped per-agent/operator keys.
    - Key rotation record: owner, scope, created time, last used, revoked time.
    - Audit log export for write, supersede, conflict-decision, vault-import,
-     settings-change and model-change events.
+     settings-change and model-change events. Baseline durable storage exists;
+     retention policy and signed exports are still required.
    - Optional row-level encryption for high-risk scopes.
    - Security headers and CSP stay covered by tests.
 
@@ -93,11 +95,10 @@ Required gates:
 
 ## Highest-priority next work
 
-1. Add durable audit-event storage and export.
-2. Add persistent key registry with rotation metadata.
+1. Add persistent key registry with rotation metadata.
+2. Add audit retention policy and signed audit export bundles.
 3. Add restore-drill script that spins a temporary stack and verifies recall.
 4. Add live `.14` OpenClaw/Hermes soak test script.
 5. Add worker/outbox/embedding alert metrics and dashboard panel.
 6. Add UI conflict-resolution flow with accept/supersede/reject actions.
 7. Add branch-protection/PR-only release policy in GitHub settings.
-

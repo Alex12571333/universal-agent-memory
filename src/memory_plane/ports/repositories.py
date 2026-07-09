@@ -7,6 +7,7 @@ from uuid import UUID
 
 from memory_plane.contracts.dto import Candidate, RecallQuery
 from memory_plane.contracts.events import ClaimedEvent, ConsumerClaim, IntegrationEvent
+from memory_plane.domain.audit import AuditEvent
 from memory_plane.domain.conflict import ConflictReviewDecision
 from memory_plane.domain.graph import MemoryEdge, MemoryEdgeType
 from memory_plane.domain.models import MemoryItem, MemoryLayer, Observation
@@ -202,4 +203,24 @@ class GraphRepository(Protocol):
         edge_type: MemoryEdgeType | None = None,
     ) -> tuple[MemoryEdge, ...]:
         """List incoming and outgoing edges for one item."""
+        ...
+
+
+class AuditRepository(Protocol):
+    """Append-only audit trail for operator and agent actions."""
+
+    def append_audit_event(self, event: AuditEvent) -> AuditEvent:
+        """Persist one audit event."""
+        ...
+
+    def list_audit_events(
+        self,
+        tenant_id: UUID,
+        *,
+        workspace_id: UUID | None = None,
+        action: str | None = None,
+        resource_type: str | None = None,
+        limit: int = 100,
+    ) -> tuple[AuditEvent, ...]:
+        """List recent audit events under tenant/workspace filters."""
         ...

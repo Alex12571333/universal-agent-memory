@@ -21,6 +21,7 @@ from memory_plane.adapters.postgres import (
     PostgresObservationRepository,
 )
 from memory_plane.adapters.qdrant import QdrantCandidateSource
+from memory_plane.services.audit import AuditLogService
 from memory_plane.services.checkpoint import CheckpointService
 from memory_plane.services.conflicts import ConflictService
 from memory_plane.services.context import ContextCompiler
@@ -50,6 +51,7 @@ class Container:
     conversations: ConversationService
     curator: ConversationCurator
     proposals: MemoryProposalService
+    audit: AuditLogService
     embedding: EmbeddingService
     memory_llm: MemoryLLMClient
     vault: VaultExporter
@@ -86,6 +88,7 @@ def build_in_memory_container() -> Container:
         conversations=ConversationService(store),
         curator=ConversationCurator(store, retention),
         proposals=MemoryProposalService(store, retention),
+        audit=AuditLogService(store),
         embedding=embedding,
         memory_llm=build_memory_llm_client(),
         vault=VaultExporter(store, observations, retention),
@@ -158,6 +161,7 @@ def build_postgres_container(
             retention,
             memory_llm=memory_llm,
         ),
+        audit=AuditLogService(store),
         embedding=embedding,
         memory_llm=memory_llm,
         vault=VaultExporter(store, observations, retention),

@@ -1,6 +1,6 @@
 # Production envelope report — 2026-07-10
 
-Passed: 39
+Passed: 43
 Failed: 0
 
 | Check | Status | Detail |
@@ -10,6 +10,7 @@ Failed: 0
 | `file:.env.production.example` | PASS | required production artifact |
 | `file:docker-compose.prod.yml` | PASS | required production artifact |
 | `file:.github/workflows/ci.yml` | PASS | required production artifact |
+| `file:migrations/008_audit_events.sql` | PASS | required production artifact |
 | `file:docs/assets/obelisk-memory-hero.png` | PASS | required production artifact |
 | `file:docs/OPERATIONS_RUNBOOK.md` | PASS | required production artifact |
 | `file:docs/ENTERPRISE_READINESS.md` | PASS | required production artifact |
@@ -40,6 +41,9 @@ Failed: 0
 | `env:scoped-keys` | PASS | scoped API keys documented |
 | `api:security-headers` | PASS | API applies baseline security headers |
 | `tests:security-headers` | PASS | security headers are covered by API tests |
+| `audit:rls` | PASS | audit events are durable and tenant-isolated |
+| `audit:operator-export` | PASS | audit export endpoint is operator-scoped |
+| `tests:audit-trail` | PASS | audit trail behavior is covered by API tests |
 | `gap-audit:no-overclaim` | PASS | gap audit explicitly forbids readiness over-claims |
 | `gap-audit:full-production-gates` | PASS | gap audit defines full-production gates |
 | `benchmark:passed` | PASS | latest benchmark pass count |

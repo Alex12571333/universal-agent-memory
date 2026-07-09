@@ -10,6 +10,7 @@ from uuid import UUID
 
 from memory_plane.contracts.dto import Candidate, RecallQuery
 from memory_plane.contracts.events import ClaimedEvent, ConsumerClaim, IntegrationEvent
+from memory_plane.domain.audit import AuditEvent
 from memory_plane.domain.checkpoint import Checkpoint, StaleRevisionError
 from memory_plane.domain.conflict import ConflictReviewDecision, ConflictReviewStatus
 from memory_plane.domain.conversation import (
@@ -458,7 +459,8 @@ class PostgresMemoryLedger:
                     where processed_at is null
                       and lease_until is not null
                       and lease_until >= clock_timestamp()
-                  ) as processed_events_inflight_total
+                  ) as processed_events_inflight_total,
+                  (select count(*) from audit_events) as audit_events_total
                 """
             ).fetchone()
         return {
@@ -469,7 +471,74 @@ class PostgresMemoryLedger:
             "outbox_dead_letter_total": row["outbox_dead_letter_total"],
             "outbox_lag_seconds": float(row["outbox_lag_seconds"]),
             "processed_events_inflight_total": row["processed_events_inflight_total"],
+            "audit_events_total": row["audit_events_total"],
         }
+
+    def append_audit_event(self, event: AuditEvent) -> AuditEvent:
+        """Append one operator/agent audit event under RLS."""
+        from psycopg.types.json import Jsonb
+
+        with self._connection() as connection:
+            self._set_tenant(connection, event.tenant_id)
+            connection.execute(
+                """
+                insert into audit_events (
+                  id, tenant_id, workspace_id, action, actor, actor_type,
+                  resource_type, resource_id, status, metadata, created_at
+                ) values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                on conflict (id) do nothing
+                """,
+                (
+                    event.id,
+                    event.tenant_id,
+                    event.workspace_id,
+                    event.action,
+                    event.actor,
+                    event.actor_type,
+                    event.resource_type,
+                    event.resource_id,
+                    event.status,
+                    Jsonb(event.metadata),
+                    event.created_at,
+                ),
+            )
+        return event
+
+    def list_audit_events(
+        self,
+        tenant_id: UUID,
+        *,
+        workspace_id: UUID | None = None,
+        action: str | None = None,
+        resource_type: str | None = None,
+        limit: int = 100,
+    ) -> tuple[AuditEvent, ...]:
+        """List recent audit events under RLS."""
+        safe_limit = max(1, min(int(limit), 500))
+        with self._connection() as connection:
+            self._set_tenant(connection, tenant_id)
+            rows = connection.execute(
+                """
+                select id, tenant_id, workspace_id, action, actor, actor_type,
+                  resource_type, resource_id, status, metadata, created_at
+                from audit_events
+                where (%s::uuid is null or workspace_id = %s::uuid)
+                  and (%s::text is null or action = %s::text)
+                  and (%s::text is null or resource_type = %s::text)
+                order by created_at desc, id desc
+                limit %s
+                """,
+                (
+                    workspace_id,
+                    workspace_id,
+                    action,
+                    action,
+                    resource_type,
+                    resource_type,
+                    safe_limit,
+                ),
+            ).fetchall()
+        return tuple(self._to_audit_event(row) for row in rows)
 
     def append(
         self, item: MemoryItem, idempotency_key: str | None = None
@@ -1321,6 +1390,22 @@ class PostgresMemoryLedger:
             reviewed_at=row["reviewed_at"],
             reviewer=row["reviewer"],
             review_reason=row["review_reason"] or "",
+        )
+
+    @staticmethod
+    def _to_audit_event(row: dict[str, Any]) -> AuditEvent:
+        return AuditEvent(
+            id=row["id"],
+            tenant_id=row["tenant_id"],
+            workspace_id=row["workspace_id"],
+            action=row["action"],
+            actor=row["actor"],
+            actor_type=row["actor_type"],
+            resource_type=row["resource_type"],
+            resource_id=row["resource_id"],
+            status=row["status"],
+            metadata=row["metadata"],
+            created_at=row["created_at"],
         )
 
     @staticmethod

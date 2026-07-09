@@ -280,6 +280,23 @@ def _checkpoint_response(cp: Checkpoint) -> dict[str, Any]:
     }
 
 
+def _audit_event_response(event: Any) -> dict[str, Any]:
+    """Render an audit event without exposing internal Python objects."""
+    return {
+        "id": str(event.id),
+        "tenant_id": str(event.tenant_id),
+        "workspace_id": str(event.workspace_id) if event.workspace_id else None,
+        "action": event.action,
+        "actor": event.actor,
+        "actor_type": event.actor_type,
+        "resource_type": event.resource_type,
+        "resource_id": event.resource_id,
+        "status": event.status,
+        "metadata": event.metadata,
+        "created_at": event.created_at.isoformat(),
+    }
+
+
 def _memory_write_response(result: Any) -> dict[str, Any]:
     """Render a write result with revision metadata needed for CAS clients."""
     return {
@@ -630,6 +647,8 @@ def _required_scope_for_request(path: str, method: str) -> str:
     """Return the minimum logical scope required for a route."""
     if path == "/health":
         return "public"
+    if path.startswith("/v1/audit"):
+        return "operator"
     if path.startswith(("/ui", "/docs", "/redoc", "/openapi.json", "/metrics")):
         return "operator"
     if path.startswith(("/v1/system", "/v1/settings")):
@@ -649,6 +668,23 @@ def _scope_allowed(principal: ApiPrincipal, required_scope: str) -> bool:
     if required_scope in {"read", "write"} and principal.has_scope("agent"):
         return True
     return False
+
+
+def _principal_from_request(request: Request) -> ApiPrincipal:
+    """Return the authenticated principal, or an explicit local-dev actor."""
+    principal = getattr(request.state, "api_principal", None)
+    if isinstance(principal, ApiPrincipal):
+        return principal
+    return ApiPrincipal(name="local-dev", scopes=frozenset({"admin"}))
+
+
+def _audit_actor_type(principal: ApiPrincipal) -> str:
+    """Classify the principal for operator review."""
+    if principal.has_scope("agent"):
+        return "agent"
+    if principal.has_scope("operator") or principal.has_scope("admin"):
+        return "operator"
+    return "api_key"
 
 
 def _apply_security_headers(response: Any) -> Any:
@@ -735,10 +771,56 @@ def create_app(
         request.state.api_principal = principal
         return _apply_security_headers(await call_next(request))
 
+    def record_audit(
+        request: Request,
+        *,
+        tenant_id: UUID,
+        workspace_id: UUID | None,
+        action: str,
+        resource_type: str,
+        resource_id: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        """Persist one audit event for a successful API-side action."""
+        principal = _principal_from_request(request)
+        services.audit.record(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            action=action,
+            actor=principal.name,
+            actor_type=_audit_actor_type(principal),
+            resource_type=resource_type,
+            resource_id=resource_id,
+            metadata=metadata or {},
+        )
+
     @app.get("/health")
     def health() -> dict[str, str]:
         """Report process liveness; adapters should extend readiness separately."""
         return {"status": "ok"}
+
+    @app.get("/v1/audit/events")
+    def list_audit_events(
+        tenant_id: UUID = DEFAULT_SERVER_ID,
+        workspace_id: UUID | None = None,
+        action: str | None = None,
+        resource_type: str | None = None,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        """Export recent audit events for operator review and incident response."""
+        events = services.audit.list_events(
+            tenant_id,
+            workspace_id=workspace_id,
+            action=action,
+            resource_type=resource_type,
+            limit=limit,
+        )
+        return {
+            "tenant_id": str(tenant_id),
+            "workspace_id": str(workspace_id) if workspace_id else None,
+            "count": len(events),
+            "events": [_audit_event_response(event) for event in events],
+        }
 
     @app.get("/v1/system/status")
     def system_status() -> dict[str, Any]:
@@ -809,7 +891,7 @@ def create_app(
         return _model_settings_response(services, model_settings)
 
     @app.put("/v1/settings/models")
-    def save_model_settings(body: ModelSettingsBody) -> dict[str, Any]:
+    def save_model_settings(body: ModelSettingsBody, request: Request) -> dict[str, Any]:
         """Save desired model settings without hot-swapping a live vector index."""
         nonlocal model_settings
         previous_settings = model_settings or {}
@@ -822,7 +904,21 @@ def create_app(
             _save_model_settings(model_settings)
         except OSError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
-        return _model_settings_response(services, model_settings)
+        response = _model_settings_response(services, model_settings)
+        record_audit(
+            request,
+            tenant_id=DEFAULT_SERVER_ID,
+            workspace_id=DEFAULT_PROJECT_ID,
+            action="settings.models.save",
+            resource_type="model_settings",
+            resource_id=model_settings["model_name"],
+            metadata={
+                "provider": model_settings["provider"],
+                "dimension": model_settings["dimension"],
+                "restart_required": response["restart_required"],
+            },
+        )
+        return response
 
     @app.post("/v1/settings/models/test")
     def test_model_settings(body: ModelSettingsBody) -> dict[str, Any]:
@@ -855,7 +951,7 @@ def create_app(
         }
 
     @app.post("/v1/memory/retain", status_code=201)
-    def retain(body: RetainBody) -> dict[str, Any]:
+    def retain(body: RetainBody, request: Request) -> dict[str, Any]:
         """Append memory and return its canonical identity and outbox status."""
         try:
             result = services.retention.retain(
@@ -878,6 +974,20 @@ def create_app(
             )
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+        record_audit(
+            request,
+            tenant_id=body.tenant_id,
+            workspace_id=body.workspace_id,
+            action="memory.retain",
+            resource_type="memory_item",
+            resource_id=str(result.item.id),
+            metadata={
+                "created": result.created,
+                "layer": result.item.layer.value,
+                "status": result.item.status.value,
+                "source_kind": body.source_kind,
+            },
+        )
         return _memory_write_response(result)
 
     @app.post("/v1/conversations/turns", status_code=201)
@@ -938,6 +1048,7 @@ def create_app(
     def curate_conversation_turn(
         turn_id: UUID,
         body: CurateConversationTurnBody,
+        request: Request,
     ) -> dict[str, Any]:
         """Distill a raw transcript turn into recallable curated memory."""
         try:
@@ -957,6 +1068,15 @@ def create_app(
             raise HTTPException(status_code=404, detail="conversation turn not found") from exc
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+        record_audit(
+            request,
+            tenant_id=body.tenant_id,
+            workspace_id=result.item.workspace_id,
+            action="conversation.curate",
+            resource_type="memory_item",
+            resource_id=str(result.item.id),
+            metadata={"turn_id": str(turn_id), "created": result.created},
+        )
         return _memory_write_response(result)
 
     @app.post("/v1/memory/proposals", status_code=201)
@@ -1011,6 +1131,7 @@ def create_app(
     def accept_memory_proposal(
         proposal_id: UUID,
         body: MemoryProposalReviewBody,
+        request: Request,
     ) -> dict[str, Any]:
         """Accept a proposal and create a durable memory item."""
         try:
@@ -1030,12 +1151,27 @@ def create_app(
             raise HTTPException(status_code=404, detail="memory proposal not found") from exc
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+        record_audit(
+            request,
+            tenant_id=body.tenant_id,
+            workspace_id=result.proposal.workspace_id,
+            action="proposal.accept",
+            resource_type="memory_proposal",
+            resource_id=str(proposal_id),
+            metadata={
+                "reviewer": body.reviewer,
+                "memory_item_id": (
+                    str(result.retained.item.id) if result.retained else None
+                ),
+            },
+        )
         return _memory_proposal_review_response(result)
 
     @app.post("/v1/memory/proposals/{proposal_id}/reject", status_code=200)
     def reject_memory_proposal(
         proposal_id: UUID,
         body: MemoryProposalReviewBody,
+        request: Request,
     ) -> dict[str, Any]:
         """Reject a proposal without creating durable memory."""
         try:
@@ -1051,10 +1187,23 @@ def create_app(
             raise HTTPException(status_code=404, detail="memory proposal not found") from exc
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+        record_audit(
+            request,
+            tenant_id=body.tenant_id,
+            workspace_id=result.proposal.workspace_id,
+            action="proposal.reject",
+            resource_type="memory_proposal",
+            resource_id=str(proposal_id),
+            metadata={"reviewer": body.reviewer, "reason": body.reason},
+        )
         return _memory_proposal_review_response(result)
 
     @app.put("/v1/memory/{item_id}/supersede", status_code=201)
-    def supersede_memory(item_id: UUID, body: SupersedeMemoryBody) -> dict[str, Any]:
+    def supersede_memory(
+        item_id: UUID,
+        body: SupersedeMemoryBody,
+        request: Request,
+    ) -> dict[str, Any]:
         """Append a replacement only when the caller's revision is still current."""
         try:
             result = services.retention.supersede(
@@ -1081,6 +1230,19 @@ def create_app(
             ) from exc
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+        record_audit(
+            request,
+            tenant_id=body.tenant_id,
+            workspace_id=result.item.workspace_id,
+            action="memory.supersede",
+            resource_type="memory_item",
+            resource_id=str(result.item.id),
+            metadata={
+                "created": result.created,
+                "supersedes_id": str(item_id),
+                "expected_revision": body.expected_revision,
+            },
+        )
         return _memory_write_response(result)
 
     @app.post("/v1/memory/recall")
@@ -1267,6 +1429,7 @@ def create_app(
         workspace_id: UUID,
         case_id: UUID,
         body: ConflictDecisionBody,
+        request: Request,
     ) -> dict[str, Any]:
         """Persist a human/operator decision for one conflict case."""
         try:
@@ -1280,6 +1443,18 @@ def create_app(
             )
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+        record_audit(
+            request,
+            tenant_id=body.tenant_id,
+            workspace_id=workspace_id,
+            action="conflict.decide",
+            resource_type="conflict_case",
+            resource_id=str(case_id),
+            metadata={
+                "status": decision.status.value,
+                "winner_value": decision.winner_value,
+            },
+        )
         return _conflict_decision_response(decision) or {}
 
     @app.post("/v1/graph/edges", status_code=201)
@@ -1350,7 +1525,11 @@ def create_app(
         }
 
     @app.post("/v1/workspaces/{workspace_id}/vault/import")
-    def import_vault(workspace_id: UUID, body: VaultImportBody) -> dict[str, Any]:
+    def import_vault(
+        workspace_id: UUID,
+        body: VaultImportBody,
+        request: Request,
+    ) -> dict[str, Any]:
         """Plan or apply a Markdown vault import without destructive overwrites."""
         files = tuple(
             VaultImportSource(path=file.path, content=file.content) for file in body.files
@@ -1365,6 +1544,18 @@ def create_app(
             raise HTTPException(status_code=503, detail=str(exc)) from exc
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+        record_audit(
+            request,
+            tenant_id=body.tenant_id,
+            workspace_id=workspace_id,
+            action="vault.import.plan" if body.dry_run else "vault.import.apply",
+            resource_type="vault",
+            metadata={
+                "dry_run": result.dry_run,
+                "file_count": len(body.files),
+                "supersede_count": result.supersede_count,
+            },
+        )
         return {
             "tenant_id": str(result.tenant_id),
             "workspace_id": str(result.workspace_id),
@@ -1384,7 +1575,11 @@ def create_app(
         }
 
     @app.post("/v1/workspaces/{workspace_id}/vault/archive")
-    def archive_vault_file(workspace_id: UUID, body: VaultDeleteBody) -> dict[str, Any]:
+    def archive_vault_file(
+        workspace_id: UUID,
+        body: VaultDeleteBody,
+        request: Request,
+    ) -> dict[str, Any]:
         """Archive one memory note without physically deleting audit history."""
         try:
             result = services.vault.archive_file(
@@ -1396,6 +1591,15 @@ def create_app(
             raise HTTPException(status_code=503, detail=str(exc)) from exc
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+        record_audit(
+            request,
+            tenant_id=body.tenant_id,
+            workspace_id=workspace_id,
+            action="vault.archive",
+            resource_type="vault_file",
+            resource_id=body.file.path,
+            metadata={"change_count": len(result.changes)},
+        )
         return {
             "tenant_id": str(result.tenant_id),
             "workspace_id": str(result.workspace_id),
