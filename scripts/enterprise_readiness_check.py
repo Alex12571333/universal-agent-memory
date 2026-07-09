@@ -46,6 +46,7 @@ def run_checks(*, static_only: bool) -> list[Check]:
         "docker-compose.prod.yml",
         ".github/workflows/ci.yml",
         "migrations/008_audit_events.sql",
+        "migrations/009_api_key_registry.sql",
         "docs/assets/obelisk-memory-hero.png",
         "docs/OPERATIONS_RUNBOOK.md",
         "docs/ENTERPRISE_READINESS.md",
@@ -155,6 +156,7 @@ def run_checks(*, static_only: bool) -> list[Check]:
     api = read("src/memory_plane/api/app.py")
     tests = read("tests/test_api.py")
     audit_migration = read("migrations/008_audit_events.sql")
+    key_migration = read("migrations/009_api_key_registry.sql")
     checks.extend(
         [
             Check(
@@ -187,6 +189,25 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 "test_audit_trail_records_operator_memory_and_vault_actions" in tests
                 and "test_audit_events_require_operator_scope" in tests,
                 "audit trail behavior is covered by API tests",
+            ),
+            Check(
+                "keys:registry-rls",
+                "create table api_key_registry" in key_migration
+                and "secret_fingerprint" in key_migration
+                and "force row level security" in key_migration,
+                "API key registry stores non-secret metadata under RLS",
+            ),
+            Check(
+                "keys:operator-api",
+                '@app.get("/v1/keys")' in api
+                and '@app.post("/v1/keys/{key_id}/revoke")' in api
+                and 'path.startswith("/v1/keys")' in api,
+                "API key registry is operator-scoped",
+            ),
+            Check(
+                "tests:key-registry",
+                "test_api_key_registry_tracks_last_used_and_revocation" in tests,
+                "key registry last-used and revocation behavior is covered",
             ),
         ]
     )

@@ -39,6 +39,21 @@ Rotate an agent key by replacing its secret in `.env.production` and restarting
 `memory-server`. If a key leaked, rotate first, then inspect memories retained by
 that agent for accidental secret capture.
 
+The server stores non-secret key metadata in the API-key registry. Operators can
+inspect last-used timestamps and revoke a fingerprint before replacing the env
+secret:
+
+```bash
+curl -H "Authorization: Bearer $UAM_API_KEY" http://localhost:6798/v1/keys
+curl -X POST -H "Authorization: Bearer $UAM_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"reason":"rotation drill"}' \
+  http://localhost:6798/v1/keys/<key_id>/revoke
+```
+
+Revocation is immediate for future requests; env replacement and restart make
+the rotation permanent.
+
 ## Backup
 
 ```bash

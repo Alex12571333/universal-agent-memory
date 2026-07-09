@@ -34,6 +34,22 @@ Scopes:
 `/health` is intentionally public for probes. API routes, OpenAPI docs, UI, and
 metrics require bearer auth when `UAM_API_KEY` is set.
 
+Configured keys are mirrored into the API-key registry by non-secret
+fingerprint. Operators can inspect metadata and revoke a key without storing the
+bearer secret:
+
+```bash
+curl -H "Authorization: Bearer $UAM_API_KEY" http://localhost:6798/v1/keys
+curl -X POST -H "Authorization: Bearer $UAM_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"reason":"rotation"}' \
+  http://localhost:6798/v1/keys/<key_id>/revoke
+```
+
+Revoked keys are denied even if the old secret is still present in
+`.env.production`; replace the secret and restart the server to complete
+rotation.
+
 ## Secrets and PII
 
 The privacy guard redacts common secrets and high-risk PII before retention.
@@ -50,8 +66,8 @@ tool logs unless explicitly needed.
 
 ## Operational rules
 
-- Rotate `UAM_API_KEY`, database passwords, and MinIO credentials when sharing
-  access with new operators.
+- Rotate `UAM_API_KEY`, scoped agent keys, database passwords, and MinIO
+  credentials when sharing access with new operators.
 - Back up PostgreSQL before migrations and before major embedding/model changes.
 - Keep `.env.production` out of git.
 - Do not import edited vault files with `--apply` until dry-run output is

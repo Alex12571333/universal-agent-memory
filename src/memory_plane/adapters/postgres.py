@@ -5,11 +5,13 @@ from __future__ import annotations
 import re
 from collections.abc import Iterator
 from contextlib import contextmanager
+from datetime import datetime
 from typing import Any
 from uuid import UUID
 
 from memory_plane.contracts.dto import Candidate, RecallQuery
 from memory_plane.contracts.events import ClaimedEvent, ConsumerClaim, IntegrationEvent
+from memory_plane.domain.api_key import ApiKeyRecord
 from memory_plane.domain.audit import AuditEvent
 from memory_plane.domain.checkpoint import Checkpoint, StaleRevisionError
 from memory_plane.domain.conflict import ConflictReviewDecision, ConflictReviewStatus
@@ -460,7 +462,13 @@ class PostgresMemoryLedger:
                       and lease_until is not null
                       and lease_until >= clock_timestamp()
                   ) as processed_events_inflight_total,
-                  (select count(*) from audit_events) as audit_events_total
+                  (select count(*) from audit_events) as audit_events_total,
+                  (select count(*) from api_key_registry) as api_keys_total,
+                  (
+                    select count(*)
+                    from api_key_registry
+                    where revoked_at is not null
+                  ) as api_keys_revoked_total
                 """
             ).fetchone()
         return {
@@ -472,6 +480,8 @@ class PostgresMemoryLedger:
             "outbox_lag_seconds": float(row["outbox_lag_seconds"]),
             "processed_events_inflight_total": row["processed_events_inflight_total"],
             "audit_events_total": row["audit_events_total"],
+            "api_keys_total": row["api_keys_total"],
+            "api_keys_revoked_total": row["api_keys_revoked_total"],
         }
 
     def append_audit_event(self, event: AuditEvent) -> AuditEvent:
@@ -539,6 +549,122 @@ class PostgresMemoryLedger:
                 ),
             ).fetchall()
         return tuple(self._to_audit_event(row) for row in rows)
+
+    def save_api_key_record(self, record: ApiKeyRecord) -> ApiKeyRecord:
+        """Create/update one API-key metadata row under RLS."""
+        with self._connection() as connection:
+            self._set_tenant(connection, record.tenant_id)
+            connection.execute(
+                """
+                insert into api_key_registry (
+                  id, tenant_id, name, secret_fingerprint, scopes, created_at,
+                  last_used_at, revoked_at, revoked_reason
+                ) values (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                on conflict (tenant_id, secret_fingerprint) do update set
+                  name = excluded.name,
+                  scopes = excluded.scopes,
+                  last_used_at = coalesce(
+                    api_key_registry.last_used_at,
+                    excluded.last_used_at
+                  ),
+                  revoked_at = excluded.revoked_at,
+                  revoked_reason = excluded.revoked_reason
+                """,
+                (
+                    record.id,
+                    record.tenant_id,
+                    record.name,
+                    record.secret_fingerprint,
+                    list(record.scopes),
+                    record.created_at,
+                    record.last_used_at,
+                    record.revoked_at,
+                    record.revoked_reason,
+                ),
+            )
+        stored = self.get_api_key_by_fingerprint(
+            record.tenant_id, record.secret_fingerprint
+        )
+        return record if stored is None else stored
+
+    def get_api_key_by_fingerprint(
+        self, tenant_id: UUID, secret_fingerprint: str
+    ) -> ApiKeyRecord | None:
+        """Load API-key metadata by fingerprint under RLS."""
+        with self._connection() as connection:
+            self._set_tenant(connection, tenant_id)
+            row = connection.execute(
+                """
+                select id, tenant_id, name, secret_fingerprint, scopes,
+                  created_at, last_used_at, revoked_at, revoked_reason
+                from api_key_registry
+                where secret_fingerprint = %s
+                """,
+                (secret_fingerprint,),
+            ).fetchone()
+        return None if row is None else self._to_api_key_record(row)
+
+    def touch_api_key(
+        self,
+        tenant_id: UUID,
+        secret_fingerprint: str,
+        *,
+        used_at: datetime,
+    ) -> ApiKeyRecord | None:
+        """Update last-used timestamp for one key under RLS."""
+        with self._connection() as connection:
+            self._set_tenant(connection, tenant_id)
+            row = connection.execute(
+                """
+                update api_key_registry
+                set last_used_at = %s
+                where secret_fingerprint = %s
+                returning id, tenant_id, name, secret_fingerprint, scopes,
+                  created_at, last_used_at, revoked_at, revoked_reason
+                """,
+                (used_at, secret_fingerprint),
+            ).fetchone()
+        return None if row is None else self._to_api_key_record(row)
+
+    def list_api_keys(self, tenant_id: UUID) -> tuple[ApiKeyRecord, ...]:
+        """List API-key metadata for operator review."""
+        with self._connection() as connection:
+            self._set_tenant(connection, tenant_id)
+            rows = connection.execute(
+                """
+                select id, tenant_id, name, secret_fingerprint, scopes,
+                  created_at, last_used_at, revoked_at, revoked_reason
+                from api_key_registry
+                order by name, created_at, id
+                """
+            ).fetchall()
+        return tuple(self._to_api_key_record(row) for row in rows)
+
+    def revoke_api_key(
+        self,
+        tenant_id: UUID,
+        key_id: UUID,
+        *,
+        revoked_at: datetime,
+        reason: str = "",
+    ) -> ApiKeyRecord:
+        """Mark one API key revoked under RLS."""
+        with self._connection() as connection:
+            self._set_tenant(connection, tenant_id)
+            row = connection.execute(
+                """
+                update api_key_registry
+                set revoked_at = %s,
+                    revoked_reason = %s
+                where id = %s
+                returning id, tenant_id, name, secret_fingerprint, scopes,
+                  created_at, last_used_at, revoked_at, revoked_reason
+                """,
+                (revoked_at, reason, key_id),
+            ).fetchone()
+        if row is None:
+            raise KeyError("api key not found")
+        return self._to_api_key_record(row)
 
     def append(
         self, item: MemoryItem, idempotency_key: str | None = None
@@ -1406,6 +1532,20 @@ class PostgresMemoryLedger:
             status=row["status"],
             metadata=row["metadata"],
             created_at=row["created_at"],
+        )
+
+    @staticmethod
+    def _to_api_key_record(row: dict[str, Any]) -> ApiKeyRecord:
+        return ApiKeyRecord(
+            id=row["id"],
+            tenant_id=row["tenant_id"],
+            name=row["name"],
+            secret_fingerprint=row["secret_fingerprint"],
+            scopes=tuple(row["scopes"]),
+            created_at=row["created_at"],
+            last_used_at=row["last_used_at"],
+            revoked_at=row["revoked_at"],
+            revoked_reason=row["revoked_reason"] or "",
         )
 
     @staticmethod

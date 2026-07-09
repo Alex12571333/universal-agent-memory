@@ -12,7 +12,7 @@ it is not enough.
 |---|---|---|
 | Architecture | PostgreSQL source of truth, Qdrant index, outbox, NATS workers, vault, API, UI | Good foundation |
 | Docker | Dev and prod compose exist; prod hides internal infra ports | Good for trusted local/team deployment |
-| API auth | Bearer key and scoped keys exist; `/health` public | Usable, but not complete enterprise IAM |
+| API auth | Bearer key, scoped keys and non-secret key registry with last-used/revoked state exist; `/health` public | Strong local/team baseline; still not enterprise IAM |
 | Audit trail | Append-only `audit_events` table, RLS, operator export API, metrics, tests | Baseline present; retention/export policy still needed |
 | Browser/API hardening | Security headers are enforced by middleware and tests | Baseline present |
 | Data model | Append-only memory, CAS supersede, provenance, statuses | Strong foundation |
@@ -37,6 +37,8 @@ Required gates:
    - TLS or VPN/reverse proxy in front of any non-local deployment.
    - Long random master key plus scoped per-agent/operator keys.
    - Key rotation record: owner, scope, created time, last used, revoked time.
+     Baseline registry exists; external secret manager integration is still
+     recommended for larger deployments.
    - Audit log export for write, supersede, conflict-decision, vault-import,
      settings-change and model-change events. Baseline durable storage exists;
      retention policy and signed exports are still required.
@@ -95,10 +97,10 @@ Required gates:
 
 ## Highest-priority next work
 
-1. Add persistent key registry with rotation metadata.
-2. Add audit retention policy and signed audit export bundles.
-3. Add restore-drill script that spins a temporary stack and verifies recall.
-4. Add live `.14` OpenClaw/Hermes soak test script.
-5. Add worker/outbox/embedding alert metrics and dashboard panel.
-6. Add UI conflict-resolution flow with accept/supersede/reject actions.
-7. Add branch-protection/PR-only release policy in GitHub settings.
+1. Add audit retention policy and signed audit export bundles.
+2. Add restore-drill script that spins a temporary stack and verifies recall.
+3. Add live `.14` OpenClaw/Hermes soak test script.
+4. Add worker/outbox/embedding alert metrics and dashboard panel.
+5. Add UI conflict-resolution flow with accept/supersede/reject actions.
+6. Add branch-protection/PR-only release policy in GitHub settings.
+7. Add optional external secret-manager integration.

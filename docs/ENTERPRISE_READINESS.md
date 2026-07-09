@@ -14,6 +14,8 @@ remaining hard requirements.
 - [x] Production compose exposes only API/UI to the host.
 - [x] API key auth can protect API, docs, metrics, and UI.
 - [x] Scoped API keys can separate operator, agent, read, and write access.
+- [x] API-key registry tracks non-secret fingerprints, scopes, last-used time
+      and revocation state.
 - [x] HTTP responses include baseline browser/API security headers.
 - [x] Durable audit log records memory writes, supersedes, conflict decisions,
       vault imports/archives and model-setting changes.
@@ -33,7 +35,7 @@ remaining hard requirements.
 ## Required before calling it full production
 
 - [ ] Put the API behind a real TLS reverse proxy.
-- [ ] Add persistent key registry with rotation metadata and last-used audit.
+- [ ] Move bearer secrets to an external secret manager for larger deployments.
 - [ ] Add signed audit export bundles and retention policy for regulated
       environments.
 - [ ] Add automated scheduled backups and restore drills.

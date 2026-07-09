@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from threading import RLock
 from uuid import UUID
 
 from memory_plane.contracts.dto import Candidate, RecallQuery
 from memory_plane.contracts.events import IntegrationEvent
+from memory_plane.domain.api_key import ApiKeyRecord
 from memory_plane.domain.audit import AuditEvent
 from memory_plane.domain.checkpoint import Checkpoint, StaleRevisionError
 from memory_plane.domain.conflict import ConflictReviewDecision
@@ -41,6 +43,7 @@ class InMemoryMemoryStore:
         self._proposals: dict[UUID, MemoryProposal] = {}
         self._proposal_idempotency: dict[tuple[UUID, str], UUID] = {}
         self._audit_events: dict[UUID, AuditEvent] = {}
+        self._api_keys: dict[UUID, ApiKeyRecord] = {}
         self.events: list[IntegrationEvent] = []
         self._lock = RLock()
 
@@ -323,6 +326,21 @@ class InMemoryMemoryStore:
                         if tenant_id is None or event.tenant_id == tenant_id
                     ]
                 ),
+                "api_keys_total": len(
+                    [
+                        record
+                        for record in self._api_keys.values()
+                        if tenant_id is None or record.tenant_id == tenant_id
+                    ]
+                ),
+                "api_keys_revoked_total": len(
+                    [
+                        record
+                        for record in self._api_keys.values()
+                        if (tenant_id is None or record.tenant_id == tenant_id)
+                        and record.revoked
+                    ]
+                ),
             }
 
     def append_audit_event(self, event: AuditEvent) -> AuditEvent:
@@ -351,6 +369,89 @@ class InMemoryMemoryStore:
         ]
         rows.sort(key=lambda event: (event.created_at, event.id), reverse=True)
         return tuple(rows[:limit])
+
+    def save_api_key_record(self, record: ApiKeyRecord) -> ApiKeyRecord:
+        """Create/update one API key metadata row."""
+        with self._lock:
+            self._api_keys[record.id] = record
+            return record
+
+    def get_api_key_by_fingerprint(
+        self, tenant_id: UUID, secret_fingerprint: str
+    ) -> ApiKeyRecord | None:
+        """Find one API key by non-secret fingerprint."""
+        with self._lock:
+            for record in self._api_keys.values():
+                if (
+                    record.tenant_id == tenant_id
+                    and record.secret_fingerprint == secret_fingerprint
+                ):
+                    return record
+        return None
+
+    def touch_api_key(
+        self,
+        tenant_id: UUID,
+        secret_fingerprint: str,
+        *,
+        used_at: datetime,
+    ) -> ApiKeyRecord | None:
+        """Update last-used metadata for one API key."""
+        with self._lock:
+            record = self.get_api_key_by_fingerprint(tenant_id, secret_fingerprint)
+            if record is None:
+                return None
+            updated = ApiKeyRecord(
+                id=record.id,
+                tenant_id=record.tenant_id,
+                name=record.name,
+                secret_fingerprint=record.secret_fingerprint,
+                scopes=record.scopes,
+                created_at=record.created_at,
+                last_used_at=used_at,
+                revoked_at=record.revoked_at,
+                revoked_reason=record.revoked_reason,
+            )
+            self._api_keys[record.id] = updated
+            return updated
+
+    def list_api_keys(self, tenant_id: UUID) -> tuple[ApiKeyRecord, ...]:
+        """List key metadata for one tenant."""
+        with self._lock:
+            rows = [
+                record
+                for record in self._api_keys.values()
+                if record.tenant_id == tenant_id
+            ]
+        rows.sort(key=lambda record: (record.name, record.created_at, record.id))
+        return tuple(rows)
+
+    def revoke_api_key(
+        self,
+        tenant_id: UUID,
+        key_id: UUID,
+        *,
+        revoked_at: datetime,
+        reason: str = "",
+    ) -> ApiKeyRecord:
+        """Mark one API key revoked."""
+        with self._lock:
+            record = self._api_keys.get(key_id)
+            if record is None or record.tenant_id != tenant_id:
+                raise KeyError("api key not found")
+            updated = ApiKeyRecord(
+                id=record.id,
+                tenant_id=record.tenant_id,
+                name=record.name,
+                secret_fingerprint=record.secret_fingerprint,
+                scopes=record.scopes,
+                created_at=record.created_at,
+                last_used_at=record.last_used_at,
+                revoked_at=revoked_at,
+                revoked_reason=reason,
+            )
+            self._api_keys[key_id] = updated
+            return updated
 
     def save(self, observation: Observation) -> Observation:
         """Store a derived observation without mutating evidence."""

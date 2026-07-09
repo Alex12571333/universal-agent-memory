@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Added non-secret API-key registry with scoped-key fingerprints, last-used
+  tracking, revocation API, metrics and auth enforcement.
 - Added durable audit events with PostgreSQL RLS, operator export API, metrics
   and API coverage for memory, vault, conflict and model-setting actions.
 - Added `EmbeddingService` to coordinate generation and indexing of dense memory representations (WP-04).

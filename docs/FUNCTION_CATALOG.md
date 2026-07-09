@@ -23,6 +23,15 @@
 | `AuditLogService.record(...)` | API/workers → append-only audit event | Не мутирует domain objects |
 | `AuditLogService.list_events(...)` | Operator export с фильтрами | Ограничивает `limit` диапазоном `1..500` |
 
+## API keys — `domain/api_key.py`, `services/api_keys.py`
+
+| Функция | Назначение | Гарантия |
+|---|---|---|
+| `ApiKeyRecord.__post_init__()` | Валидирует name/fingerprint/scopes | Secret не хранится |
+| `ApiKeyRegistryService.ensure_configured_key(...)` | Env key → registry metadata | Создаёт/обновляет fingerprint без bearer secret |
+| `ApiKeyRegistryService.touch(...)` | Successful auth → `last_used_at` | Не меняет scopes/revocation |
+| `ApiKeyRegistryService.revoke(...)` | Operator revocation | Сохраняет row для audit/forensics |
+
 ## Contracts — `contracts/dto.py`, `contracts/events.py`
 
 | Функция | Назначение | Ограничение |
@@ -187,6 +196,8 @@
 | `GET /metrics` | Prometheus counters/lag; защищён API key |
 | `GET /ui` | Local operator console | Same API-key middleware as API routes |
 | `GET /v1/audit/events` | Operator audit export | Operator/admin scope only; tenant/workspace/action filters |
+| `GET /v1/keys` | Operator API-key registry | Non-secret fingerprints, scopes, last-used/revoked state |
+| `POST /v1/keys/{id}/revoke` | Revoke one configured key | Future requests with that bearer are denied |
 | `GET /v1/workspaces/{id}/memories` | Operator memory list | Optional layer/status/label filters |
 | `POST /v1/memory/retain` | REST boundary для retain |
 | `PUT /v1/memory/{id}/supersede` | CAS replacement; stale revision → `409 revision_conflict` |
@@ -219,6 +230,9 @@
 | `list_neighbors(...)` | Read incoming/outgoing edges | RLS tenant-bound; optional type filter |
 | `append_audit_event(event)` | Append operator/agent audit record | RLS tenant-bound; immutable event row |
 | `list_audit_events(...)` | Export recent audit records | Filters workspace/action/resource; newest first |
+| `save_api_key_record(record)` | Upsert key registry row | Stores fingerprint, never secret |
+| `touch_api_key(...)` | Update `last_used_at` | RLS tenant-bound |
+| `revoke_api_key(...)` | Set `revoked_at/reason` | Does not delete row |
 | `collect_metrics(tenant)` | Считает counters и outbox lag | Устанавливает RLS tenant context |
 
 ## Checkpoint domain — `domain/checkpoint.py`

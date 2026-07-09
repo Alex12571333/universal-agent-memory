@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import hashlib
 import json
 import os
 import secrets
@@ -260,6 +261,13 @@ class CheckpointUpdateBody(BaseModel):
     expected_revision: int = Field(ge=1)
 
 
+class ApiKeyRevokeBody(BaseModel):
+    """Operator request to revoke one configured API key."""
+
+    tenant_id: UUID = DEFAULT_SERVER_ID
+    reason: str = ""
+
+
 class CheckpointCompactBody(BaseModel):
     """Compaction request body."""
 
@@ -294,6 +302,25 @@ def _audit_event_response(event: Any) -> dict[str, Any]:
         "status": event.status,
         "metadata": event.metadata,
         "created_at": event.created_at.isoformat(),
+    }
+
+
+def _api_key_response(record: Any) -> dict[str, Any]:
+    """Render API-key metadata without exposing bearer secrets."""
+    fingerprint = str(record.secret_fingerprint)
+    return {
+        "id": str(record.id),
+        "tenant_id": str(record.tenant_id),
+        "name": record.name,
+        "fingerprint": f"{fingerprint[:12]}…{fingerprint[-6:]}",
+        "scopes": list(record.scopes),
+        "created_at": record.created_at.isoformat(),
+        "last_used_at": record.last_used_at.isoformat()
+        if record.last_used_at
+        else None,
+        "revoked_at": record.revoked_at.isoformat() if record.revoked_at else None,
+        "revoked": bool(record.revoked),
+        "revoked_reason": record.revoked_reason,
     }
 
 
@@ -615,6 +642,7 @@ class ApiPrincipal:
 
     name: str
     scopes: frozenset[str]
+    secret_fingerprint: str | None = None
 
     def has_scope(self, scope: str) -> bool:
         return "admin" in self.scopes or "operator" in self.scopes or scope in self.scopes
@@ -643,10 +671,22 @@ def _parse_scoped_api_keys(raw: str | None) -> tuple[tuple[str, str, frozenset[s
     return tuple(parsed)
 
 
+def _secret_fingerprint(secret: str) -> str:
+    """Return a stable non-secret fingerprint for a bearer token."""
+    return hashlib.sha256(secret.encode("utf-8")).hexdigest()
+
+
+def _registry_tenant_id() -> UUID:
+    """Return the deployment tenant used for auth/key metadata."""
+    return UUID(os.getenv("UAM_SERVER_ID", str(DEFAULT_SERVER_ID)))
+
+
 def _required_scope_for_request(path: str, method: str) -> str:
     """Return the minimum logical scope required for a route."""
     if path == "/health":
         return "public"
+    if path.startswith("/v1/keys"):
+        return "operator"
     if path.startswith("/v1/audit"):
         return "operator"
     if path.startswith(("/ui", "/docs", "/redoc", "/openapi.json", "/metrics")):
@@ -720,6 +760,7 @@ def create_app(
     documents = DocumentIngestor(services.ingestion)
     configured_key = api_key if api_key is not None else os.getenv("UAM_API_KEY")
     configured_scoped_keys = _parse_scoped_api_keys(os.getenv("UAM_API_KEYS"))
+    auth_tenant_id = _registry_tenant_id()
     model_settings = _load_model_settings()
     app = FastAPI(
         title="Obelisk Memory Server",
@@ -735,6 +776,25 @@ def create_app(
             name="operator-ui-assets",
         )
 
+    def sync_configured_api_keys() -> None:
+        """Mirror configured env keys into the non-secret key registry."""
+        if configured_key:
+            services.api_keys.ensure_configured_key(
+                auth_tenant_id,
+                name="server",
+                secret_fingerprint=_secret_fingerprint(configured_key),
+                scopes=("admin",),
+            )
+        for name, secret, scopes in configured_scoped_keys:
+            services.api_keys.ensure_configured_key(
+                auth_tenant_id,
+                name=name,
+                secret_fingerprint=_secret_fingerprint(secret),
+                scopes=tuple(sorted(scopes)),
+            )
+
+    sync_configured_api_keys()
+
     @app.middleware("http")
     async def require_api_key(request: Request, call_next: Any) -> Any:
         """Protect every endpoint except liveness when API keys are configured."""
@@ -748,11 +808,19 @@ def create_app(
         principal: ApiPrincipal | None = None
         if scheme.casefold() == "bearer":
             if configured_key and secrets.compare_digest(credential, configured_key):
-                principal = ApiPrincipal(name="server", scopes=frozenset({"admin"}))
+                principal = ApiPrincipal(
+                    name="server",
+                    scopes=frozenset({"admin"}),
+                    secret_fingerprint=_secret_fingerprint(credential),
+                )
             else:
                 for name, secret, scopes in configured_scoped_keys:
                     if secrets.compare_digest(credential, secret):
-                        principal = ApiPrincipal(name=name, scopes=scopes)
+                        principal = ApiPrincipal(
+                            name=name,
+                            scopes=scopes,
+                            secret_fingerprint=_secret_fingerprint(credential),
+                        )
                         break
         if principal is None:
             return _apply_security_headers(JSONResponse(
@@ -760,6 +828,17 @@ def create_app(
                 content={"detail": "invalid or missing API key"},
                 headers={"WWW-Authenticate": "Bearer"},
             ))
+        if principal.secret_fingerprint:
+            record = services.api_keys.get_by_fingerprint(
+                auth_tenant_id,
+                principal.secret_fingerprint,
+            )
+            if record is not None and record.revoked:
+                return _apply_security_headers(JSONResponse(
+                    status_code=401,
+                    content={"detail": "API key has been revoked"},
+                    headers={"WWW-Authenticate": "Bearer"},
+                ))
         if not _scope_allowed(principal, required_scope):
             return _apply_security_headers(JSONResponse(
                 status_code=403,
@@ -769,6 +848,8 @@ def create_app(
                 },
             ))
         request.state.api_principal = principal
+        if principal.secret_fingerprint:
+            services.api_keys.touch(auth_tenant_id, principal.secret_fingerprint)
         return _apply_security_headers(await call_next(request))
 
     def record_audit(
@@ -821,6 +902,42 @@ def create_app(
             "count": len(events),
             "events": [_audit_event_response(event) for event in events],
         }
+
+    @app.get("/v1/keys")
+    def list_api_keys(tenant_id: UUID = DEFAULT_SERVER_ID) -> dict[str, Any]:
+        """List configured API-key metadata without exposing secrets."""
+        records = services.api_keys.list_keys(tenant_id)
+        return {
+            "tenant_id": str(tenant_id),
+            "count": len(records),
+            "keys": [_api_key_response(record) for record in records],
+        }
+
+    @app.post("/v1/keys/{key_id}/revoke")
+    def revoke_api_key(
+        key_id: UUID,
+        body: ApiKeyRevokeBody,
+        request: Request,
+    ) -> dict[str, Any]:
+        """Revoke one key fingerprint while preserving audit evidence."""
+        try:
+            record = services.api_keys.revoke(
+                body.tenant_id,
+                key_id,
+                reason=body.reason,
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="api key not found") from exc
+        record_audit(
+            request,
+            tenant_id=body.tenant_id,
+            workspace_id=None,
+            action="api_key.revoke",
+            resource_type="api_key",
+            resource_id=str(key_id),
+            metadata={"name": record.name, "reason": body.reason},
+        )
+        return _api_key_response(record)
 
     @app.get("/v1/system/status")
     def system_status() -> dict[str, Any]:

@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
 from memory_plane.contracts.dto import Candidate, RecallQuery
 from memory_plane.contracts.events import ClaimedEvent, ConsumerClaim, IntegrationEvent
+from memory_plane.domain.api_key import ApiKeyRecord
 from memory_plane.domain.audit import AuditEvent
 from memory_plane.domain.conflict import ConflictReviewDecision
 from memory_plane.domain.graph import MemoryEdge, MemoryEdgeType
@@ -223,4 +225,39 @@ class AuditRepository(Protocol):
         limit: int = 100,
     ) -> tuple[AuditEvent, ...]:
         """List recent audit events under tenant/workspace filters."""
+        ...
+
+
+class ApiKeyRegistryRepository(Protocol):
+    """Durable API-key metadata without bearer-secret storage."""
+
+    def save_api_key_record(self, record: ApiKeyRecord) -> ApiKeyRecord:
+        """Create or update one key metadata row."""
+        ...
+
+    def get_api_key_by_fingerprint(
+        self, tenant_id: UUID, secret_fingerprint: str
+    ) -> ApiKeyRecord | None:
+        """Load one key by non-secret fingerprint."""
+        ...
+
+    def touch_api_key(
+        self, tenant_id: UUID, secret_fingerprint: str, *, used_at: datetime
+    ) -> ApiKeyRecord | None:
+        """Update last-used metadata for one key."""
+        ...
+
+    def list_api_keys(self, tenant_id: UUID) -> tuple[ApiKeyRecord, ...]:
+        """List key metadata under tenant boundary."""
+        ...
+
+    def revoke_api_key(
+        self,
+        tenant_id: UUID,
+        key_id: UUID,
+        *,
+        revoked_at: datetime,
+        reason: str = "",
+    ) -> ApiKeyRecord:
+        """Mark one key revoked."""
         ...

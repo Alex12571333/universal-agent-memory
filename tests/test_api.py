@@ -209,6 +209,68 @@ def test_audit_events_require_operator_scope(monkeypatch) -> None:
     assert event["actor_type"] == "agent"
 
 
+def test_api_key_registry_tracks_last_used_and_revocation(monkeypatch) -> None:
+    monkeypatch.setenv(
+        "UAM_API_KEYS",
+        "agent:agent-secret:agent,operator:operator-secret:operator",
+    )
+    client = TestClient(create_app(build_in_memory_container()))
+
+    agent_write = client.post(
+        "/v1/memory/retain",
+        json={
+            "layer": "semantic",
+            "scope": "workspace",
+            "kind": "fact",
+            "text": "Key registry tracks this agent call.",
+        },
+        headers={"Authorization": "Bearer agent-secret"},
+    )
+    listed = client.get(
+        "/v1/keys",
+        headers={"Authorization": "Bearer operator-secret"},
+    )
+    agent_key = next(row for row in listed.json()["keys"] if row["name"] == "agent")
+    operator_key = next(
+        row for row in listed.json()["keys"] if row["name"] == "operator"
+    )
+    revoked = client.post(
+        f"/v1/keys/{agent_key['id']}/revoke",
+        json={"reason": "rotation drill"},
+        headers={"Authorization": "Bearer operator-secret"},
+    )
+    denied_after_revoke = client.post(
+        "/v1/memory/recall",
+        json={"query": "Key registry"},
+        headers={"Authorization": "Bearer agent-secret"},
+    )
+    audit = client.get(
+        "/v1/audit/events?action=api_key.revoke",
+        headers={"Authorization": "Bearer operator-secret"},
+    )
+    relisted = client.get(
+        "/v1/keys",
+        headers={"Authorization": "Bearer operator-secret"},
+    )
+    revoked_key = next(row for row in relisted.json()["keys"] if row["name"] == "agent")
+
+    assert agent_write.status_code == 201
+    assert listed.status_code == 200
+    assert listed.json()["count"] == 2
+    assert agent_key["last_used_at"] is not None
+    assert operator_key["last_used_at"] is not None
+    assert "agent-secret" not in str(listed.json())
+    assert revoked.status_code == 200
+    assert revoked.json()["revoked"] is True
+    assert revoked.json()["revoked_reason"] == "rotation drill"
+    assert denied_after_revoke.status_code == 401
+    assert denied_after_revoke.json()["detail"] == "API key has been revoked"
+    assert audit.status_code == 200
+    assert audit.json()["count"] == 1
+    assert audit.json()["events"][0]["metadata"]["name"] == "agent"
+    assert revoked_key["revoked"] is True
+
+
 def test_metrics_endpoint_uses_prometheus_text_and_api_key() -> None:
     container = build_in_memory_container()
     client = TestClient(create_app(container, api_key="secret"))
@@ -232,6 +294,7 @@ def test_metrics_endpoint_uses_prometheus_text_and_api_key() -> None:
     assert "uam_memory_items_total 1" in response.text
     assert "uam_outbox_pending_total 1" in response.text
     assert "uam_audit_events_total 1" in response.text
+    assert "uam_api_keys_total 1" in response.text
 
 
 def test_api_key_is_disabled_when_not_configured(monkeypatch) -> None:

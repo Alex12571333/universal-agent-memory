@@ -42,9 +42,9 @@ Current verified baseline, July 10, 2026:
 
 This means the repository is ready for a trusted local/team pilot. It is not yet
 “full production” in the strong sense. Full production still requires branch
-protection/PR-only releases, tested restore drills, alerting, audit export,
-scoped key rotation metadata, security review, and real OpenClaw/Hermes soak
-tests on the target machines.
+protection/PR-only releases, tested restore drills, alerting, signed audit
+exports, security review, and real OpenClaw/Hermes soak tests on the target
+machines.
 
 Honest gap audit:
 [docs/PRODUCTION_GAP_AUDIT_2026_07_10.md](docs/PRODUCTION_GAP_AUDIT_2026_07_10.md).
