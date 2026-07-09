@@ -2302,3 +2302,226 @@ textarea:focus-visible {
     grid-template-columns: 1fr;
   }
 }
+
+/* Raster art + alignment hardening.
+   Generated PNG assets are the visible icon language; SVG remains only for
+   data surfaces like graph links, minimap and KPI sparklines. */
+
+.art-icon {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  user-select: none;
+  pointer-events: none;
+  filter:
+    saturate(1.12)
+    contrast(1.06)
+    drop-shadow(0 0 11px rgba(68, 179, 255, 0.36));
+}
+
+.brand-mark {
+  overflow: hidden;
+  padding: 4px;
+}
+
+.brand-mark .art-icon {
+  width: 100%;
+  height: 100%;
+  border-radius: 999px;
+  filter:
+    saturate(1.18)
+    contrast(1.08)
+    drop-shadow(0 0 15px rgba(65, 230, 255, 0.48));
+}
+
+.sidebar nav button span {
+  overflow: hidden;
+  padding: 2px;
+}
+
+.sidebar nav button span .art-icon {
+  border-radius: 7px;
+  opacity: 0.94;
+}
+
+.kpi {
+  grid-template-columns: 58px minmax(0, 1fr) minmax(72px, 92px);
+  align-items: center;
+}
+
+.kpi-icon {
+  overflow: hidden;
+  padding: 5px;
+}
+
+.kpi-icon .art-icon {
+  border-radius: 14px;
+}
+
+.icon-brain .kpi-icon,
+.icon-brain path {
+  color: var(--accent-blue);
+  stroke: var(--accent-blue);
+}
+
+.icon-conflict .kpi-icon,
+.icon-conflict path {
+  color: var(--accent-purple);
+  stroke: var(--accent-purple);
+}
+
+.icon-vault .kpi-icon,
+.icon-vault path {
+  color: var(--accent-cyan);
+  stroke: var(--accent-cyan);
+}
+
+.icon-status .kpi-icon,
+.icon-status path {
+  color: var(--accent-green);
+  stroke: var(--accent-green);
+}
+
+.operation span,
+.activity article span {
+  overflow: hidden;
+  padding: 4px;
+}
+
+.operation span .art-icon,
+.activity span .art-icon {
+  width: 100%;
+  height: 100%;
+  border-radius: 10px;
+}
+
+.node-art-image {
+  pointer-events: none;
+  opacity: 0.96;
+  filter:
+    saturate(1.14)
+    contrast(1.08)
+    drop-shadow(0 0 10px rgba(106, 195, 255, 0.48));
+}
+
+.graph-node.core .node-art-image {
+  filter:
+    saturate(1.2)
+    contrast(1.1)
+    drop-shadow(0 0 18px rgba(69, 164, 255, 0.72));
+}
+
+.graph-node.agent .node-art-image {
+  filter:
+    saturate(1.16)
+    contrast(1.08)
+    drop-shadow(0 0 15px rgba(156, 98, 255, 0.62));
+}
+
+.graph-node.context .node-art-image {
+  filter:
+    saturate(1.15)
+    contrast(1.08)
+    drop-shadow(0 0 14px rgba(65, 230, 255, 0.58));
+}
+
+.node-svg-icon,
+.ui-icon {
+  display: none;
+}
+
+.vault-preview-grid,
+.vault-editor {
+  grid-template-columns: minmax(210px, 300px) minmax(0, 1fr);
+  align-items: stretch;
+}
+
+.file-tree,
+.file-rail {
+  gap: 7px;
+  max-height: 420px;
+  overflow-x: hidden;
+}
+
+.file-tree button,
+.file-rail button {
+  min-height: 50px;
+  max-height: 64px;
+  padding: 9px 11px;
+  border: 1px solid rgba(105, 151, 226, 0.08);
+  background: rgba(4, 13, 30, 0.35);
+}
+
+.file-tree button:hover,
+.file-rail button:hover {
+  border-color: rgba(73, 151, 255, 0.32);
+  background: rgba(16, 43, 86, 0.46);
+}
+
+.file-tree button span,
+.file-rail button span {
+  display: -webkit-box;
+  max-height: 2.55em;
+  overflow: hidden;
+  color: #e1ecff;
+  font-size: 12.5px;
+  font-weight: 760;
+  line-height: 1.28;
+  text-overflow: ellipsis;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.file-tree button small,
+.file-rail button small {
+  overflow: hidden;
+  font-size: 10.5px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vault-readable,
+.editor-pane textarea {
+  min-height: 300px;
+  max-height: 440px;
+}
+
+.vault-readable p {
+  font-size: 14px;
+  line-height: 1.58;
+}
+
+.editor-pane textarea {
+  font-size: 14px;
+  line-height: 1.62;
+}
+
+.content-grid.vault-editing .memory-panel {
+  min-height: 600px;
+}
+
+@media (max-width: 1480px) {
+  .kpi {
+    grid-template-columns: 58px minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 760px) {
+  .vault-preview-grid,
+  .vault-editor {
+    grid-template-columns: 1fr;
+  }
+
+  .file-tree,
+  .file-rail {
+    max-height: 260px;
+  }
+
+  .vault-readable,
+  .editor-pane textarea {
+    min-height: 260px;
+  }
+}

@@ -13,22 +13,16 @@ import {
 } from "./types";
 
 type View = "dashboard" | "memory" | "inbox" | "vault" | "graph" | "settings";
-type IconName =
-  | "activity"
-  | "archive"
-  | "brain"
-  | "check"
-  | "database"
-  | "folder"
-  | "graph"
-  | "heartbeat"
-  | "inbox"
-  | "layers"
-  | "orbit"
-  | "refresh"
-  | "scale"
-  | "settings"
-  | "spark";
+type ArtName = "brain" | "graph" | "vault" | "conflict" | "status" | "operation";
+
+const ART: Record<ArtName, string> = {
+  brain: "/ui/art/memory-brain.png",
+  graph: "/ui/art/memory-graph.png",
+  vault: "/ui/art/vault-folder.png",
+  conflict: "/ui/art/conflict-scale.png",
+  status: "/ui/art/status-heartbeat.png",
+  operation: "/ui/art/operation-crystal.png"
+};
 
 const layers = ["core", "semantic", "episodic", "procedural", "reflection", "error", "social"] as const;
 
@@ -37,7 +31,7 @@ type GraphNode = {
   label: string;
   sublabel: string;
   kind: "core" | "agent" | "semantic" | "context" | "task" | "error" | "weak";
-  icon: "brain" | "paw" | "wing" | "document" | "heart" | "check" | "warning" | "cube" | null;
+  art: ArtName | null;
   x: number;
   y: number;
   r: number;
@@ -128,11 +122,11 @@ function Dashboard() {
   const selectedVault = visibleVault.find((item) => item.path === selectedFile) ?? preferredVaultFile(visibleVault) ?? visibleVault[0];
 
   const kpis = [
-    ["Память", memories.length.toLocaleString(), `активных: ${activeMemories.length}`, "database"],
-    ["Конфликты", openConflicts.length.toLocaleString(), "на проверку", "scale"],
-    ["Файлы", vault.length.toLocaleString(), "редактируемый текст", "folder"],
-    ["Статус", systemStatus?.status === "ok" ? "Онлайн" : "н/д", settings?.runtime.model_name ?? "runtime", "heartbeat"]
-  ] satisfies Array<[string, string, string, IconName]>;
+    ["Память", memories.length.toLocaleString(), `активных: ${activeMemories.length}`, "brain"],
+    ["Конфликты", openConflicts.length.toLocaleString(), "на проверку", "conflict"],
+    ["Файлы", vault.length.toLocaleString(), "редактируемый текст", "vault"],
+    ["Статус", systemStatus?.status === "ok" ? "Онлайн" : "н/д", settings?.runtime.model_name ?? "движок", "status"]
+  ] satisfies Array<[string, string, string, ArtName]>;
 
   async function runRecall() {
     setStatus("Ищу в памяти...");
@@ -173,7 +167,7 @@ function Dashboard() {
     setSelectedFile(null);
     await api.reindex(workspace, tenant);
     await refresh();
-    setStatus(`Архивировано: ${change?.message ?? "память скрыта из актуального vault"}`);
+    setStatus(`Архивировано: ${change?.message ?? "память скрыта из актуального хранилища"}`);
   }
 
   async function decideConflict(
@@ -254,17 +248,17 @@ function Dashboard() {
             <PanelHeader title="Операции" />
             <div className="operation-list">
               <button className="operation purple" onClick={() => void runOperation("reflect")}>
-                <span><UiIcon name="spark" /></span>
+                <span><ArtIcon name="operation" /></span>
                 <b>Рефлексия</b>
                 <small>Синтезировать наблюдения</small>
               </button>
               <button className="operation blue" onClick={() => void runOperation("reindex")}>
-                <span><UiIcon name="refresh" /></span>
+                <span><ArtIcon name="graph" /></span>
                 <b>Переиндексация</b>
                 <small>Пересчитать векторы</small>
               </button>
               <button className="operation pink" onClick={() => setView("inbox")}>
-                <span><UiIcon name="inbox" /></span>
+                <span><ArtIcon name="conflict" /></span>
                 <b>Входящие</b>
                 <small>{openConflicts.length} конфликтов</small>
               </button>
@@ -282,7 +276,7 @@ function Dashboard() {
 
           <div className="panel vault-preview">
             <PanelHeader
-              title="Предпросмотр vault"
+              title="Предпросмотр хранилища"
               action={
                 <div className="header-actions">
                   <button onClick={openVaultEditor}>Редактировать</button>
@@ -316,27 +310,27 @@ function Dashboard() {
 }
 
 function Sidebar({ view, setView, conflicts, systemStatus }: { view: View; setView: (view: View) => void; conflicts: number; systemStatus: SystemStatus | null }) {
-  const overviewItems: Array<[View, string, IconName]> = [
-    ["dashboard", "Панель", "layers"],
+  const overviewItems: Array<[View, string, ArtName]> = [
+    ["dashboard", "Панель", "graph"],
     ["memory", "Память", "brain"],
-    ["inbox", "Входящие", "inbox"]
+    ["inbox", "Входящие", "conflict"]
   ];
-  const systemItems: Array<[View, string, IconName]> = [
+  const systemItems: Array<[View, string, ArtName]> = [
     ["graph", "Граф памяти", "graph"],
-    ["vault", "Хранилище", "archive"],
-    ["settings", "Настройки", "settings"]
+    ["vault", "Хранилище", "vault"],
+    ["settings", "Настройки", "operation"]
   ];
   return (
     <aside className="sidebar" role="navigation">
       <div className="brand">
-        <span className="brand-mark"><UiIcon name="orbit" /></span>
-        <span><b>Obelisk</b><small>agent memory</small></span>
+        <span className="brand-mark"><ArtIcon name="brain" /></span>
+        <span><b>Obelisk</b><small>память агентов</small></span>
       </div>
       <span className="nav-label">Обзор</span>
       <nav>
         {overviewItems.map(([key, label, icon]) => (
           <button key={key} className={view === key ? "active" : ""} onClick={() => setView(key)}>
-            <span><UiIcon name={icon} /></span>
+            <span><ArtIcon name={icon} /></span>
             {label}
             {key === "inbox" && conflicts > 0 ? <em>{conflicts}</em> : null}
           </button>
@@ -346,7 +340,7 @@ function Sidebar({ view, setView, conflicts, systemStatus }: { view: View; setVi
       <nav>
         {systemItems.map(([key, label, icon]) => (
           <button key={key} className={view === key ? "active" : ""} onClick={() => setView(key)}>
-            <span><UiIcon name={icon} /></span>
+            <span><ArtIcon name={icon} /></span>
             {label}
           </button>
         ))}
@@ -427,10 +421,10 @@ function TabStrip({ view, setView }: { view: View; setView: (view: View) => void
   );
 }
 
-function KpiCard({ label, value, hint, icon }: { label: string; value: string; hint: string; icon: IconName }) {
+function KpiCard({ label, value, hint, icon }: { label: string; value: string; hint: string; icon: ArtName }) {
   return (
     <article className={`kpi icon-${icon}`}>
-      <div className="kpi-icon"><UiIcon name={icon} /></div>
+      <div className="kpi-icon"><ArtIcon name={icon} /></div>
       <div>
         <small>{label}</small>
         <strong>{value}</strong>
@@ -441,6 +435,10 @@ function KpiCard({ label, value, hint, icon }: { label: string; value: string; h
       </svg>
     </article>
   );
+}
+
+function ArtIcon({ name, className = "" }: { name: ArtName; className?: string }) {
+  return <img className={`art-icon ${className}`.trim()} src={ART[name]} alt="" aria-hidden="true" draggable={false} />;
 }
 
 function PanelHeader({ title, action, badge }: { title: string; action?: ReactNode; badge?: number }) {
@@ -508,24 +506,24 @@ function MemoryGraph({
     const semanticCount = memories.filter((item) => item.layer === "semantic").length;
     const coreCount = memories.filter((item) => item.layer === "core").length;
     return [
-      { id: "project", label: "Проект памяти", sublabel: `${memories.length} memories`, kind: "core", icon: "brain", x: 500, y: 330, r: 76 },
-      { id: "openclaw", label: "OpenClaw", sublabel: "агент", kind: "agent", icon: "paw", x: 330, y: 188, r: 58 },
-      { id: "hermes", label: "Hermes", sublabel: "агент", kind: "agent", icon: "wing", x: 690, y: 188, r: 58 },
-      { id: "facts", label: "Факты", sublabel: `${semanticCount || memories.length} записей`, kind: "context", icon: "document", x: 260, y: 346, r: 52 },
-      { id: "prefs", label: "Предпочтения", sublabel: "стиль", kind: "context", icon: "heart", x: 760, y: 346, r: 52 },
-      { id: "tasks", label: "Задачи", sublabel: "планы", kind: "semantic", icon: "check", x: 360, y: 505, r: 47 },
-      { id: "errors", label: "Ошибки", sublabel: "ограничения", kind: "error", icon: "warning", x: 520, y: 540, r: 47 },
-      { id: "context", label: "Контекст", sublabel: "сессия", kind: "context", icon: "cube", x: 690, y: 480, r: 50 },
-      { id: "plugins", label: "Плагины", sublabel: "связь", kind: "weak", icon: null, x: 250, y: 135, r: 16 },
-      { id: "commands", label: "Команды", sublabel: "связь", kind: "weak", icon: null, x: 170, y: 232, r: 14 },
-      { id: "protocols", label: "Протоколы", sublabel: "связь", kind: "weak", icon: null, x: 430, y: 102, r: 15 },
-      { id: "sessions", label: "Сессии", sublabel: "связь", kind: "weak", icon: null, x: 520, y: 142, r: 15 },
-      { id: "style", label: "Стиль работы", sublabel: "связь", kind: "weak", icon: null, x: 890, y: 292, r: 15 },
-      { id: "format", label: "Формат ответов", sublabel: "связь", kind: "weak", icon: null, x: 930, y: 390, r: 14 },
-      { id: "environment", label: "Окружение", sublabel: "связь", kind: "weak", icon: null, x: 790, y: 570, r: 14 },
-      { id: "events", label: "События", sublabel: "связь", kind: "weak", icon: null, x: 610, y: 620, r: 14 },
-      { id: "goals", label: "Цели", sublabel: "связь", kind: "weak", icon: null, x: 405, y: 420, r: 14 },
-      { id: "core", label: "Ядро", sublabel: `${coreCount} core`, kind: "weak", icon: null, x: 480, y: 445, r: 12 }
+      { id: "project", label: "Проект памяти", sublabel: `${memories.length} записей`, kind: "core", art: "brain", x: 500, y: 330, r: 76 },
+      { id: "openclaw", label: "OpenClaw", sublabel: "агент", kind: "agent", art: "operation", x: 330, y: 188, r: 58 },
+      { id: "hermes", label: "Hermes", sublabel: "агент", kind: "agent", art: "graph", x: 690, y: 188, r: 58 },
+      { id: "facts", label: "Факты", sublabel: `${semanticCount || memories.length} записей`, kind: "context", art: "vault", x: 260, y: 346, r: 52 },
+      { id: "prefs", label: "Предпочтения", sublabel: "стиль", kind: "context", art: "status", x: 760, y: 346, r: 52 },
+      { id: "tasks", label: "Задачи", sublabel: "планы", kind: "semantic", art: "operation", x: 360, y: 505, r: 47 },
+      { id: "errors", label: "Ошибки", sublabel: "ограничения", kind: "error", art: "conflict", x: 520, y: 540, r: 47 },
+      { id: "context", label: "Контекст", sublabel: "сессия", kind: "context", art: "graph", x: 690, y: 480, r: 50 },
+      { id: "plugins", label: "Плагины", sublabel: "связь", kind: "weak", art: null, x: 250, y: 135, r: 16 },
+      { id: "commands", label: "Команды", sublabel: "связь", kind: "weak", art: null, x: 170, y: 232, r: 14 },
+      { id: "protocols", label: "Протоколы", sublabel: "связь", kind: "weak", art: null, x: 430, y: 102, r: 15 },
+      { id: "sessions", label: "Сессии", sublabel: "связь", kind: "weak", art: null, x: 520, y: 142, r: 15 },
+      { id: "style", label: "Стиль работы", sublabel: "связь", kind: "weak", art: null, x: 890, y: 292, r: 15 },
+      { id: "format", label: "Формат ответов", sublabel: "связь", kind: "weak", art: null, x: 930, y: 390, r: 14 },
+      { id: "environment", label: "Окружение", sublabel: "связь", kind: "weak", art: null, x: 790, y: 570, r: 14 },
+      { id: "events", label: "События", sublabel: "связь", kind: "weak", art: null, x: 610, y: 620, r: 14 },
+      { id: "goals", label: "Цели", sublabel: "связь", kind: "weak", art: null, x: 405, y: 420, r: 14 },
+      { id: "core", label: "Ядро", sublabel: `${coreCount} core`, kind: "weak", art: null, x: 480, y: 445, r: 12 }
     ];
   }, [memories]);
   const [positions, setPositions] = useState<Record<string, { x: number; y: number }>>({});
@@ -645,7 +643,7 @@ function MemoryGraph({
           />
         );
       })}
-      {resolved.map((node, index) => (
+      {resolved.map((node) => (
         <g
           key={node.id}
           className={`graph-node ${node.kind} ${node.id === selectedId ? "selected" : ""}`}
@@ -660,7 +658,17 @@ function MemoryGraph({
           }}
         >
           <circle r={node.r} />
-          {node.icon ? <GraphIcon type={node.icon} large={node.id === "project"} /> : null}
+          {node.art ? (
+            <image
+              className="node-art-image"
+              href={ART[node.art]}
+              x={node.id === "project" ? -32 : -25}
+              y={node.id === "project" ? -54 : -46}
+              width={node.id === "project" ? 64 : 50}
+              height={node.id === "project" ? 64 : 50}
+              preserveAspectRatio="xMidYMid meet"
+            />
+          ) : null}
           <text y={node.id === "project" ? 19 : 12} className="node-title">{node.label}</text>
           {expanded || node.r > 45 ? <text y={node.id === "project" ? 42 : 31} className="node-layer">{node.sublabel}</text> : null}
         </g>
@@ -718,78 +726,11 @@ function VaultPreview({ files, selectedPath, setSelectedFile }: { files: VaultFi
       </div>
       <article className="vault-readable">
         <div>
-          <small>{file ? `${fileDisplayName(file.path)} · ${fileFolderName(file.path)}` : "vault"}</small>
+          <small>{file ? `${fileDisplayName(file.path)} · ${fileFolderName(file.path)}` : "хранилище"}</small>
           <p>{readable || "Файлов пока нет. Сохрани первую память."}</p>
         </div>
       </article>
     </div>
-  );
-}
-
-function GraphIcon({ type, large = false }: { type: NonNullable<GraphNode["icon"]>; large?: boolean }) {
-  const scale = large ? 1.24 : 1;
-  const common = {
-    fill: "none",
-    stroke: "currentColor",
-    strokeLinecap: "round" as const,
-    strokeLinejoin: "round" as const,
-    strokeWidth: 2.1
-  };
-  return (
-    <g className="node-svg-icon" transform={`translate(-12 ${large ? -33 : -31}) scale(${scale})`}>
-      {type === "brain" ? (
-        <>
-          <path {...common} d="M9 5.5c-2.5 0-4.5 2-4.5 4.5 0 1 .3 1.9.8 2.6A5.1 5.1 0 0 0 4 16.2C4 19.4 6.6 22 9.8 22H12V7.8A3.7 3.7 0 0 0 9 5.5Z" />
-          <path {...common} d="M15 5.5c2.5 0 4.5 2 4.5 4.5 0 1-.3 1.9-.8 2.6a5.1 5.1 0 0 1 1.3 3.6c0 3.2-2.6 5.8-5.8 5.8H12V7.8a3.7 3.7 0 0 1 3-2.3Z" />
-          <path {...common} d="M8.2 12.2h3.2M12.6 12.2h3.2M7.8 16.3h3.4M12.8 16.3h3.4" />
-        </>
-      ) : null}
-      {type === "paw" ? (
-        <>
-          <ellipse cx="12" cy="15.3" rx="4.7" ry="4" fill="currentColor" opacity="0.92" />
-          <circle cx="6.8" cy="10" r="2.1" fill="currentColor" opacity="0.85" />
-          <circle cx="10.3" cy="7.2" r="2.1" fill="currentColor" opacity="0.85" />
-          <circle cx="13.8" cy="7.2" r="2.1" fill="currentColor" opacity="0.85" />
-          <circle cx="17.2" cy="10" r="2.1" fill="currentColor" opacity="0.85" />
-        </>
-      ) : null}
-      {type === "wing" ? (
-        <>
-          <path {...common} d="M20 5c-6.6.6-11.6 3.3-15 8.2 4.5-.5 8.3-2.2 11.3-5.2" />
-          <path {...common} d="M17 10c-3.6 4.1-7.7 6.4-12.4 7 2.2 1.9 5.2 2.3 8.1 1.2 3.1-1.2 5.5-3.9 7.3-8.2Z" />
-          <path {...common} d="M8 14.2c2.3.2 4.7-.5 7.2-2.2" />
-        </>
-      ) : null}
-      {type === "document" ? (
-        <>
-          <path {...common} d="M7 4.5h7l4 4V20H7z" />
-          <path {...common} d="M14 4.5V9h4" />
-          <path {...common} d="M10 13h5M10 16h6" />
-        </>
-      ) : null}
-      {type === "heart" ? (
-        <path fill="currentColor" d="M12 21s-7.5-4.8-9.2-9.2C1.5 8.4 3.6 5.5 6.8 5.5c1.9 0 3.3 1 4.2 2.3.9-1.3 2.3-2.3 4.2-2.3 3.2 0 5.3 2.9 4 6.3C19.5 16.2 12 21 12 21Z" opacity="0.92" />
-      ) : null}
-      {type === "check" ? (
-        <>
-          <rect {...common} x="5" y="5" width="14" height="16" rx="3" />
-          <path {...common} d="m8.5 13.5 2.4 2.4 4.8-5.4" />
-        </>
-      ) : null}
-      {type === "warning" ? (
-        <>
-          <path {...common} d="M12 4.5 21 20H3z" />
-          <path {...common} d="M12 10v4" />
-          <circle cx="12" cy="17" r="1" fill="currentColor" />
-        </>
-      ) : null}
-      {type === "cube" ? (
-        <>
-          <path {...common} d="m12 3.8 8 4.4v8.9l-8 4.4-8-4.4V8.2z" />
-          <path {...common} d="M4.4 8.5 12 13l7.6-4.5M12 13v8" />
-        </>
-      ) : null}
-    </g>
   );
 }
 
@@ -836,7 +777,7 @@ function VaultEditor(props: {
         </div>
         <textarea value={text} disabled={!canEdit} onChange={(event) => setText(event.target.value)} />
         <div className="actions">
-          <button onClick={() => void save(true)}>Dry-run</button>
+          <button onClick={() => void save(true)}>Проверить без записи</button>
           <button className="primary" onClick={() => void save(false)}>Сохранить и пересчитать вектор</button>
         </div>
       </div>
@@ -1009,107 +950,23 @@ function ConflictList({
 }
 
 function ActivityLog({ memories, conflicts, status }: { memories: MemoryItem[]; conflicts: ConflictCase[]; status: string }) {
-  const events: Array<[IconName, string, string]> = [
-    ["spark", status, "сейчас"],
-    ["database", `воспоминаний в индексе: ${memories.length}`, "онлайн"],
-    ["scale", `конфликтов отслеживается: ${conflicts.length}`, "онлайн"],
-    ["archive", "Файлы в режиме обычного текста", "готово"],
+  const events: Array<[ArtName, string, string]> = [
+    ["operation", status, "сейчас"],
+    ["brain", `воспоминаний в индексе: ${memories.length}`, "онлайн"],
+    ["conflict", `конфликтов отслеживается: ${conflicts.length}`, "онлайн"],
+    ["vault", "Файлы в режиме обычного текста", "готово"],
     ["graph", "Узлы графа можно двигать", "готово"]
   ];
   return (
     <div className="activity">
       {events.map(([icon, text, time]) => (
         <article key={text}>
-          <span><UiIcon name={icon} /></span>
+          <span><ArtIcon name={icon} /></span>
           <p>{text}</p>
           <small>{time}</small>
         </article>
       ))}
     </div>
-  );
-}
-
-function UiIcon({ name }: { name: IconName }) {
-  const common = {
-    fill: "none",
-    stroke: "currentColor",
-    strokeLinecap: "round" as const,
-    strokeLinejoin: "round" as const,
-    strokeWidth: 1.9
-  };
-  return (
-    <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true">
-      {name === "activity" ? <path {...common} d="M3 12h4l2-6 4 12 2-6h6" /> : null}
-      {name === "archive" ? (
-        <>
-          <path {...common} d="M4 7.5h16M6 7.5V19h12V7.5M8 4h8l2 3.5H6z" />
-          <path {...common} d="M9.5 12h5" />
-        </>
-      ) : null}
-      {name === "brain" ? (
-        <>
-          <path {...common} d="M9 4.5A4 4 0 0 0 5.6 11 4.7 4.7 0 0 0 8.8 19H12V7.8A3.5 3.5 0 0 0 9 4.5Z" />
-          <path {...common} d="M15 4.5A4 4 0 0 1 18.4 11a4.7 4.7 0 0 1-3.2 8H12V7.8a3.5 3.5 0 0 1 3-3.3Z" />
-          <path {...common} d="M8 12h3M13 12h3M8.7 15.5h2.5M12.8 15.5h2.5" />
-        </>
-      ) : null}
-      {name === "check" ? <path {...common} d="m5 12.5 4.2 4.2L19 6.8" /> : null}
-      {name === "database" ? (
-        <>
-          <ellipse {...common} cx="12" cy="6" rx="7" ry="3" />
-          <path {...common} d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6" />
-          <path {...common} d="M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6" />
-        </>
-      ) : null}
-      {name === "folder" ? <path {...common} d="M3.5 7.5h6l2 2H20.5V19a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 19z" /> : null}
-      {name === "graph" ? (
-        <>
-          <circle {...common} cx="6" cy="12" r="2" />
-          <circle {...common} cx="16" cy="6" r="2" />
-          <circle {...common} cx="18" cy="18" r="2" />
-          <path {...common} d="m7.8 11 6.4-4M7.8 13 16.2 17" />
-        </>
-      ) : null}
-      {name === "heartbeat" ? <path {...common} d="M3 12h4l2-5 4 10 2-5h6" /> : null}
-      {name === "inbox" ? (
-        <>
-          <path {...common} d="M4 5.5h16v13H4z" />
-          <path {...common} d="M4 13h4l2 3h4l2-3h4" />
-        </>
-      ) : null}
-      {name === "layers" ? (
-        <>
-          <path {...common} d="m12 3 8 4.5-8 4.5-8-4.5z" />
-          <path {...common} d="m4 12 8 4.5 8-4.5M4 16.5 12 21l8-4.5" />
-        </>
-      ) : null}
-      {name === "orbit" ? (
-        <>
-          <circle {...common} cx="12" cy="12" r="3" />
-          <ellipse {...common} cx="12" cy="12" rx="9" ry="4.2" transform="rotate(-25 12 12)" />
-          <ellipse {...common} cx="12" cy="12" rx="9" ry="4.2" transform="rotate(35 12 12)" />
-        </>
-      ) : null}
-      {name === "refresh" ? (
-        <>
-          <path {...common} d="M20 7v5h-5" />
-          <path {...common} d="M4 17v-5h5" />
-          <path {...common} d="M18.3 10A6.8 6.8 0 0 0 6 7.8M5.7 14A6.8 6.8 0 0 0 18 16.2" />
-        </>
-      ) : null}
-      {name === "scale" ? (
-        <>
-          <path {...common} d="M12 4v16M6 7h12M7 7l-3 6h6zm10 0-3 6h6z" />
-        </>
-      ) : null}
-      {name === "settings" ? (
-        <>
-          <circle {...common} cx="12" cy="12" r="3" />
-          <path {...common} d="M12 3.8v2M12 18.2v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M3.8 12h2M18.2 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
-        </>
-      ) : null}
-      {name === "spark" ? <path {...common} d="M12 2.8 14.2 9l6.2 3-6.2 3L12 21.2 9.8 15l-6.2-3 6.2-3z" /> : null}
-    </svg>
   );
 }
 
@@ -1133,7 +990,7 @@ function primaryPanelTitle(view: View) {
     dashboard: "Последние воспоминания",
     memory: "Последние воспоминания",
     inbox: "Входящие конфликты",
-    vault: "Редактор vault",
+    vault: "Редактор хранилища",
     graph: "Последние воспоминания",
     settings: "Настройки моделей"
   };
@@ -1233,7 +1090,7 @@ function preferredVaultFile(files: VaultFile[]) {
 
 function fileFolderName(path: string) {
   const parts = path.split("/");
-  if (parts.length <= 1) return "vault root";
+  if (parts.length <= 1) return "корень хранилища";
   return parts.slice(0, -1).join("/");
 }
 
@@ -1278,7 +1135,7 @@ function isOpenConflict(item: ConflictCase) {
 
 function conflictTitle(item: ConflictCase) {
   if (item.key) return item.key;
-  return [item.subject, item.predicate].filter(Boolean).join(" · ") || "memory conflict";
+  return [item.subject, item.predicate].filter(Boolean).join(" · ") || "конфликт памяти";
 }
 
 function conflictValues(item: ConflictCase) {
@@ -1289,7 +1146,7 @@ function conflictValues(item: ConflictCase) {
 }
 
 function conflictRationale(item: ConflictCase) {
-  return item.rationale ?? item.suggested_reason ?? "Сервер предлагает самую свежую активную версию, исходные memories остаются append-only.";
+  return item.rationale ?? item.suggested_reason ?? "Сервер предлагает самую свежую активную версию, исходные записи остаются append-only.";
 }
 
 function vaultReadableBody(content: string) {
