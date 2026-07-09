@@ -13,6 +13,22 @@ import {
 } from "./types";
 
 type View = "dashboard" | "memory" | "inbox" | "vault" | "graph" | "settings";
+type IconName =
+  | "activity"
+  | "archive"
+  | "brain"
+  | "check"
+  | "database"
+  | "folder"
+  | "graph"
+  | "heartbeat"
+  | "inbox"
+  | "layers"
+  | "orbit"
+  | "refresh"
+  | "scale"
+  | "settings"
+  | "spark";
 
 const layers = ["core", "semantic", "episodic", "procedural", "reflection", "error", "social"] as const;
 
@@ -112,11 +128,11 @@ function Dashboard() {
   const selectedVault = visibleVault.find((item) => item.path === selectedFile) ?? preferredVaultFile(visibleVault) ?? visibleVault[0];
 
   const kpis = [
-    ["Память", memories.length.toLocaleString(), `активных: ${activeMemories.length}`, "db"],
+    ["Память", memories.length.toLocaleString(), `активных: ${activeMemories.length}`, "database"],
     ["Конфликты", openConflicts.length.toLocaleString(), "на проверку", "scale"],
     ["Файлы", vault.length.toLocaleString(), "редактируемый текст", "folder"],
-    ["Статус", systemStatus?.status === "ok" ? "Онлайн" : "н/д", settings?.runtime.model_name ?? "runtime", "pulse"]
-  ];
+    ["Статус", systemStatus?.status === "ok" ? "Онлайн" : "н/д", settings?.runtime.model_name ?? "runtime", "heartbeat"]
+  ] satisfies Array<[string, string, string, IconName]>;
 
   async function runRecall() {
     setStatus("Ищу в памяти...");
@@ -194,7 +210,7 @@ function Dashboard() {
         <section className={view === "graph" ? "content-grid graph-expanded" : view === "vault" ? "content-grid vault-editing" : "content-grid"}>
           <div className="panel memory-panel">
             <PanelHeader
-              title={view === "settings" ? "Настройки моделей" : "Последние воспоминания"}
+              title={primaryPanelTitle(view)}
               action={<button onClick={() => void refresh()}>Обновить</button>}
             />
             <TabStrip view={view} setView={setView} />
@@ -238,17 +254,17 @@ function Dashboard() {
             <PanelHeader title="Операции" />
             <div className="operation-list">
               <button className="operation purple" onClick={() => void runOperation("reflect")}>
-                <span>✳</span>
+                <span><UiIcon name="spark" /></span>
                 <b>Рефлексия</b>
                 <small>Синтезировать наблюдения</small>
               </button>
               <button className="operation blue" onClick={() => void runOperation("reindex")}>
-                <span>⌬</span>
+                <span><UiIcon name="refresh" /></span>
                 <b>Переиндексация</b>
                 <small>Пересчитать векторы</small>
               </button>
               <button className="operation pink" onClick={() => setView("inbox")}>
-                <span>▣</span>
+                <span><UiIcon name="inbox" /></span>
                 <b>Входящие</b>
                 <small>{openConflicts.length} конфликтов</small>
               </button>
@@ -300,27 +316,27 @@ function Dashboard() {
 }
 
 function Sidebar({ view, setView, conflicts, systemStatus }: { view: View; setView: (view: View) => void; conflicts: number; systemStatus: SystemStatus | null }) {
-  const overviewItems: Array<[View, string, string]> = [
-    ["dashboard", "Панель", "◈"],
-    ["memory", "Память", "✦"],
-    ["inbox", "Входящие", "□"]
+  const overviewItems: Array<[View, string, IconName]> = [
+    ["dashboard", "Панель", "layers"],
+    ["memory", "Память", "brain"],
+    ["inbox", "Входящие", "inbox"]
   ];
-  const systemItems: Array<[View, string, string]> = [
-    ["graph", "Граф памяти", "◎"],
-    ["vault", "Хранилище", "▤"],
-    ["settings", "Настройки", "⚙"]
+  const systemItems: Array<[View, string, IconName]> = [
+    ["graph", "Граф памяти", "graph"],
+    ["vault", "Хранилище", "archive"],
+    ["settings", "Настройки", "settings"]
   ];
   return (
     <aside className="sidebar" role="navigation">
       <div className="brand">
-        <span className="brand-mark">◌</span>
-        <span><b>UAM</b><small>слой памяти</small></span>
+        <span className="brand-mark"><UiIcon name="orbit" /></span>
+        <span><b>Obelisk</b><small>agent memory</small></span>
       </div>
       <span className="nav-label">Обзор</span>
       <nav>
         {overviewItems.map(([key, label, icon]) => (
           <button key={key} className={view === key ? "active" : ""} onClick={() => setView(key)}>
-            <span>{icon}</span>
+            <span><UiIcon name={icon} /></span>
             {label}
             {key === "inbox" && conflicts > 0 ? <em>{conflicts}</em> : null}
           </button>
@@ -330,7 +346,7 @@ function Sidebar({ view, setView, conflicts, systemStatus }: { view: View; setVi
       <nav>
         {systemItems.map(([key, label, icon]) => (
           <button key={key} className={view === key ? "active" : ""} onClick={() => setView(key)}>
-            <span>{icon}</span>
+            <span><UiIcon name={icon} /></span>
             {label}
           </button>
         ))}
@@ -372,8 +388,8 @@ function Hero(props: {
       <div className="hero-orbits" aria-hidden="true"><i /><i /><i /></div>
       <div>
         <p className="eyebrow">Локальный сервер · слой памяти агентов</p>
-        <h1>Universal Agent Memory</h1>
-        <p>Единый слой долговременной памяти для OpenClaw, Hermes и других агентов.</p>
+        <h1>Obelisk Memory</h1>
+        <p>Единый production-слой долговременной памяти для OpenClaw, Hermes и других агентов.</p>
       </div>
       <div className="identity-card">
         <span className="self-hosted"><i /> Локально</span>
@@ -411,10 +427,10 @@ function TabStrip({ view, setView }: { view: View; setView: (view: View) => void
   );
 }
 
-function KpiCard({ label, value, hint, icon }: { label: string; value: string; hint: string; icon: string }) {
+function KpiCard({ label, value, hint, icon }: { label: string; value: string; hint: string; icon: IconName }) {
   return (
     <article className={`kpi icon-${icon}`}>
-      <div className="kpi-icon">{icon === "db" ? "▱" : icon === "scale" ? "⚖" : icon === "folder" ? "▰" : "∿"}</div>
+      <div className="kpi-icon"><UiIcon name={icon} /></div>
       <div>
         <small>{label}</small>
         <strong>{value}</strong>
@@ -564,6 +580,14 @@ function MemoryGraph({
     ["facts", "goals", "weak"]
   ] as const;
   const byId = Object.fromEntries(resolved.map((node) => [node.id, node]));
+  const moveNodeToPointer = (nodeId: string, event: PointerEvent<SVGElement>) => {
+    const svg = event.currentTarget.ownerSVGElement ?? (event.currentTarget as SVGSVGElement);
+    const point = svg.createSVGPoint();
+    point.x = event.clientX;
+    point.y = event.clientY;
+    const mapped = point.matrixTransform(svg.getScreenCTM()?.inverse());
+    setPositions((current) => ({ ...current, [nodeId]: { x: mapped.x, y: mapped.y } }));
+  };
 
   return (
     <div className={expanded ? "graph-wrap expanded" : "graph-wrap compact"}>
@@ -578,12 +602,7 @@ function MemoryGraph({
       viewBox={`${pan.x} ${pan.y} ${viewport.width} ${viewport.height}`}
       onPointerMove={(event) => {
         if (!dragging) return;
-        const svg = event.currentTarget;
-        const point = svg.createSVGPoint();
-        point.x = event.clientX;
-        point.y = event.clientY;
-        const mapped = point.matrixTransform(svg.getScreenCTM()?.inverse());
-        setPositions((current) => ({ ...current, [dragging]: { x: mapped.x, y: mapped.y } }));
+        moveNodeToPointer(dragging, event);
       }}
       onPointerUp={() => setDragging(null)}
       onPointerLeave={() => setDragging(null)}
@@ -635,6 +654,9 @@ function MemoryGraph({
             event.currentTarget.setPointerCapture(event.pointerId);
             setDragging(node.id);
             onSelect(node.id);
+          }}
+          onPointerMove={(event) => {
+            if (dragging === node.id) moveNodeToPointer(node.id, event);
           }}
         >
           <circle r={node.r} />
@@ -987,23 +1009,107 @@ function ConflictList({
 }
 
 function ActivityLog({ memories, conflicts, status }: { memories: MemoryItem[]; conflicts: ConflictCase[]; status: string }) {
-  const events = [
-    ["✦", status, "сейчас"],
-    ["▱", `воспоминаний в индексе: ${memories.length}`, "онлайн"],
-    ["⚖", `конфликтов отслеживается: ${conflicts.length}`, "онлайн"],
-    ["▤", "Файлы в режиме обычного текста", "готово"],
-    ["◎", "Узлы графа можно двигать", "готово"]
+  const events: Array<[IconName, string, string]> = [
+    ["spark", status, "сейчас"],
+    ["database", `воспоминаний в индексе: ${memories.length}`, "онлайн"],
+    ["scale", `конфликтов отслеживается: ${conflicts.length}`, "онлайн"],
+    ["archive", "Файлы в режиме обычного текста", "готово"],
+    ["graph", "Узлы графа можно двигать", "готово"]
   ];
   return (
     <div className="activity">
       {events.map(([icon, text, time]) => (
         <article key={text}>
-          <span>{icon}</span>
+          <span><UiIcon name={icon} /></span>
           <p>{text}</p>
           <small>{time}</small>
         </article>
       ))}
     </div>
+  );
+}
+
+function UiIcon({ name }: { name: IconName }) {
+  const common = {
+    fill: "none",
+    stroke: "currentColor",
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+    strokeWidth: 1.9
+  };
+  return (
+    <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden="true">
+      {name === "activity" ? <path {...common} d="M3 12h4l2-6 4 12 2-6h6" /> : null}
+      {name === "archive" ? (
+        <>
+          <path {...common} d="M4 7.5h16M6 7.5V19h12V7.5M8 4h8l2 3.5H6z" />
+          <path {...common} d="M9.5 12h5" />
+        </>
+      ) : null}
+      {name === "brain" ? (
+        <>
+          <path {...common} d="M9 4.5A4 4 0 0 0 5.6 11 4.7 4.7 0 0 0 8.8 19H12V7.8A3.5 3.5 0 0 0 9 4.5Z" />
+          <path {...common} d="M15 4.5A4 4 0 0 1 18.4 11a4.7 4.7 0 0 1-3.2 8H12V7.8a3.5 3.5 0 0 1 3-3.3Z" />
+          <path {...common} d="M8 12h3M13 12h3M8.7 15.5h2.5M12.8 15.5h2.5" />
+        </>
+      ) : null}
+      {name === "check" ? <path {...common} d="m5 12.5 4.2 4.2L19 6.8" /> : null}
+      {name === "database" ? (
+        <>
+          <ellipse {...common} cx="12" cy="6" rx="7" ry="3" />
+          <path {...common} d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6" />
+          <path {...common} d="M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6" />
+        </>
+      ) : null}
+      {name === "folder" ? <path {...common} d="M3.5 7.5h6l2 2H20.5V19a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 19z" /> : null}
+      {name === "graph" ? (
+        <>
+          <circle {...common} cx="6" cy="12" r="2" />
+          <circle {...common} cx="16" cy="6" r="2" />
+          <circle {...common} cx="18" cy="18" r="2" />
+          <path {...common} d="m7.8 11 6.4-4M7.8 13 16.2 17" />
+        </>
+      ) : null}
+      {name === "heartbeat" ? <path {...common} d="M3 12h4l2-5 4 10 2-5h6" /> : null}
+      {name === "inbox" ? (
+        <>
+          <path {...common} d="M4 5.5h16v13H4z" />
+          <path {...common} d="M4 13h4l2 3h4l2-3h4" />
+        </>
+      ) : null}
+      {name === "layers" ? (
+        <>
+          <path {...common} d="m12 3 8 4.5-8 4.5-8-4.5z" />
+          <path {...common} d="m4 12 8 4.5 8-4.5M4 16.5 12 21l8-4.5" />
+        </>
+      ) : null}
+      {name === "orbit" ? (
+        <>
+          <circle {...common} cx="12" cy="12" r="3" />
+          <ellipse {...common} cx="12" cy="12" rx="9" ry="4.2" transform="rotate(-25 12 12)" />
+          <ellipse {...common} cx="12" cy="12" rx="9" ry="4.2" transform="rotate(35 12 12)" />
+        </>
+      ) : null}
+      {name === "refresh" ? (
+        <>
+          <path {...common} d="M20 7v5h-5" />
+          <path {...common} d="M4 17v-5h5" />
+          <path {...common} d="M18.3 10A6.8 6.8 0 0 0 6 7.8M5.7 14A6.8 6.8 0 0 0 18 16.2" />
+        </>
+      ) : null}
+      {name === "scale" ? (
+        <>
+          <path {...common} d="M12 4v16M6 7h12M7 7l-3 6h6zm10 0-3 6h6z" />
+        </>
+      ) : null}
+      {name === "settings" ? (
+        <>
+          <circle {...common} cx="12" cy="12" r="3" />
+          <path {...common} d="M12 3.8v2M12 18.2v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M3.8 12h2M18.2 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+        </>
+      ) : null}
+      {name === "spark" ? <path {...common} d="M12 2.8 14.2 9l6.2 3-6.2 3L12 21.2 9.8 15l-6.2-3 6.2-3z" /> : null}
+    </svg>
   );
 }
 
@@ -1020,6 +1126,18 @@ function translateKind(value: string) {
     placeholder: "узел"
   };
   return map[value] ?? value;
+}
+
+function primaryPanelTitle(view: View) {
+  const map: Record<View, string> = {
+    dashboard: "Последние воспоминания",
+    memory: "Последние воспоминания",
+    inbox: "Входящие конфликты",
+    vault: "Редактор vault",
+    graph: "Последние воспоминания",
+    settings: "Настройки моделей"
+  };
+  return map[view];
 }
 
 function translateLayer(value: string) {
