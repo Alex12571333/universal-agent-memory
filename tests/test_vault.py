@@ -132,6 +132,47 @@ def test_vault_import_dry_run_detects_changed_memory_note() -> None:
     assert plan.changes[0].new_item_id is None
 
 
+def test_vault_import_ignores_embedding_sections_from_editable_body() -> None:
+    container = build_in_memory_container()
+    tenant = uuid4()
+    workspace = uuid4()
+    container.retention.retain(
+        RetainCommand(
+            tenant_id=tenant,
+            workspace_id=workspace,
+            layer=MemoryLayer.SEMANTIC,
+            scope=MemoryScope.WORKSPACE,
+            kind="fact",
+            text="Редактор показывает только человеческий текст.",
+            provenance=Provenance(source_kind="api"),
+        )
+    )
+    export = container.vault.export(tenant, workspace)
+    note = next(file for file in export.files if file.path.startswith("semantic/"))
+    edited = note.content.replace(
+        "Редактор показывает только человеческий текст.",
+        "\n\n".join(
+            [
+                "Редактор сохраняет только чистый текст.",
+                "## Embedding\n[0.1, 0.2, 0.3]",
+                "## Metadata\ntechnical payload",
+            ]
+        ),
+    )
+
+    result = container.vault.apply_import(
+        tenant,
+        workspace,
+        (VaultImportSource(note.path, edited),),
+    )
+
+    memories = container.store.list_for_workspace(tenant, workspace)
+    assert result.changes[0].action == "supersede"
+    assert any(row.text == "Редактор сохраняет только чистый текст." for row in memories)
+    assert all("[0.1, 0.2, 0.3]" not in row.text for row in memories)
+    assert all("technical payload" not in row.text for row in memories)
+
+
 def test_vault_import_apply_creates_superseding_revision_without_overwrite() -> None:
     container = build_in_memory_container()
     tenant = uuid4()

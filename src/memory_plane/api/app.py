@@ -3697,9 +3697,7 @@ Build a universal memory layer for AI agents that is:
       const frontmatterLines = lines.slice(1, end);
       const frontmatter = parseFrontmatter(frontmatterLines);
       const bodyLines = lines.slice(end + 1);
-      const sectionIndex = bodyLines.findIndex(line =>
-        ["## Provenance", "## Quote", "## Links", "## Evidence"].includes(line)
-      );
+      const sectionIndex = bodyLines.findIndex(isVaultSystemHeading);
       const editableBody = (sectionIndex >= 0 ? bodyLines.slice(0, sectionIndex) : bodyLines).join("\\n").trim();
       const tail = sectionIndex >= 0 ? "\\n\\n" + bodyLines.slice(sectionIndex).join("\\n").trim() : "";
       return {
@@ -3708,6 +3706,18 @@ Build a universal memory layer for AI agents that is:
         body: editableBody,
         tail,
       };
+    }
+
+    function isVaultSystemHeading(line) {
+      const heading = String(line || "").trim().replace(/^#{2,6}\\s+/, "").trim().toLowerCase();
+      return [
+        "provenance", "quote", "links", "evidence",
+        "embedding", "embeddings", "vector", "vectors", "vector data",
+        "metadata", "frontmatter", "revision", "revisions",
+        "technical", "system", "service data",
+        "служебное", "служебные данные", "вектор", "векторы",
+        "embedding данные", "метаданные", "ревизии"
+      ].includes(heading);
     }
 
     function parseFrontmatter(lines) {

@@ -1114,7 +1114,9 @@ function vaultFrontmatterValue(content: string, key: string) {
 }
 
 function preferredVaultFile(files: VaultFile[]) {
-  return files.find((file) => !file.path.endsWith("README.md") && !file.path.endsWith("index.md")) ?? files[0];
+  return files.find(isVaultEditable)
+    ?? files.find((file) => !file.path.endsWith("README.md") && !file.path.endsWith("index.md"))
+    ?? files[0];
 }
 
 function fileFolderName(path: string) {
@@ -1192,13 +1194,43 @@ function splitVaultMarkdown(content: string) {
   const frontmatterMatch = content.match(/^---[\s\S]*?---\s*/);
   const frontmatter = frontmatterMatch?.[0] ?? "";
   const withoutFrontmatter = content.slice(frontmatter.length).trim();
-  const sectionMatch = withoutFrontmatter.match(/\n## (?:Provenance|Quote|Links|Evidence)\b/);
-  if (!sectionMatch || sectionMatch.index === undefined) {
+  const lines = withoutFrontmatter.split(/\r?\n/);
+  const sectionIndex = lines.findIndex(isVaultSystemHeading);
+  if (sectionIndex < 0) {
     return { frontmatter, body: withoutFrontmatter.trim(), systemSections: "" };
   }
   return {
     frontmatter,
-    body: withoutFrontmatter.slice(0, sectionMatch.index).trim(),
-    systemSections: withoutFrontmatter.slice(sectionMatch.index + 1).trim()
+    body: lines.slice(0, sectionIndex).join("\n").trim(),
+    systemSections: lines.slice(sectionIndex).join("\n").trim()
   };
+}
+
+function isVaultSystemHeading(line: string) {
+  const heading = line.trim().replace(/^#{2,6}\s+/, "").trim().toLowerCase();
+  return [
+    "provenance",
+    "quote",
+    "links",
+    "evidence",
+    "embedding",
+    "embeddings",
+    "vector",
+    "vectors",
+    "vector data",
+    "metadata",
+    "frontmatter",
+    "revision",
+    "revisions",
+    "technical",
+    "system",
+    "service data",
+    "служебное",
+    "служебные данные",
+    "вектор",
+    "векторы",
+    "embedding данные",
+    "метаданные",
+    "ревизии"
+  ].includes(heading);
 }

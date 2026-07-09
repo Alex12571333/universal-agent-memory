@@ -664,13 +664,46 @@ def _parse_markdown_note(content: str) -> _ParsedMarkdownNote:
     body_lines = lines[end + 1 :]
     body: list[str] = []
     for line in body_lines:
-        if line in {"## Provenance", "## Quote", "## Links", "## Evidence"}:
+        if _is_system_heading(line):
             break
         body.append(line)
     return _ParsedMarkdownNote(
         frontmatter=frontmatter,
         body="\n".join(body).strip(),
     )
+
+
+def _is_system_heading(line: str) -> bool:
+    """Return true for vault sections that are not human-editable memory text."""
+    stripped = line.strip()
+    if not stripped.startswith("##"):
+        return False
+    heading = stripped.lstrip("#").strip().lower()
+    return heading in {
+        "provenance",
+        "quote",
+        "links",
+        "evidence",
+        "embedding",
+        "embeddings",
+        "vector",
+        "vectors",
+        "vector data",
+        "metadata",
+        "frontmatter",
+        "revision",
+        "revisions",
+        "technical",
+        "system",
+        "service data",
+        "служебное",
+        "служебные данные",
+        "вектор",
+        "векторы",
+        "embedding данные",
+        "метаданные",
+        "ревизии",
+    }
 
 
 def _parse_frontmatter(lines: list[str]) -> dict[str, Any]:
