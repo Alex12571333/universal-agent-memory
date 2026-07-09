@@ -1435,6 +1435,18 @@ textarea {
   stroke: rgba(116, 143, 255, 0.76);
 }
 
+.graph-node:not(.weak) > circle {
+  fill: transparent;
+  stroke: transparent;
+  filter: none;
+}
+
+.graph-node:not(.weak).selected > circle {
+  fill: transparent;
+  stroke: rgba(255, 255, 255, 0.16);
+  filter: none;
+}
+
 .graph-node text {
   letter-spacing: -0.02em;
   fill: #f5f9ff;
