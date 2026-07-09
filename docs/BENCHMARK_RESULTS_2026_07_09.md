@@ -1,23 +1,23 @@
 # Universal Agent Memory benchmark results
 
-Generated: 2026-07-09 20:48:18 KST
+Generated: 2026-07-09 21:13:07 KST
 
 Summary: **12 passed**, **0 failed**, **0 skipped**.
 
 | Benchmark | Status | Duration | Details |
 |---|---:|---:|---|
-| `config_contracts` | PASS | 0.1 ms | Docker/env contract uses 6798 host API port and 128k context. |
-| `api_memory_contract` | PASS | 39.5 ms | In-process API retains, recalls and compiles 128k-budget context. |
-| `llm_wiring_contract` | PASS | 0.1 ms | Conversation curator and Memory Gateway use LLM reasoner contracts. |
-| `in_memory_vector_recall` | PASS | 12.4 ms | In-memory vector pipeline indexes and recalls benchmark memories. |
+| `config_contracts` | PASS | 0.3 ms | Docker/env contract uses 6798 host API port and 128k context. |
+| `api_memory_contract` | PASS | 47.7 ms | In-process API retains, recalls and compiles 128k-budget context. |
+| `llm_wiring_contract` | PASS | 0.2 ms | Conversation curator and Memory Gateway use LLM reasoner contracts. |
+| `in_memory_vector_recall` | PASS | 13.5 ms | In-memory vector pipeline indexes and recalls benchmark memories. |
 | `long_context_compiler` | PASS | 0.8 ms | ContextCompiler packs a large synthetic context under the 128k budget. |
-| `agent_integration_defaults` | PASS | 0.3 ms | OpenClaw/Hermes/native defaults use port 6798 and 128k context. |
-| `web_contract` | PASS | 0.2 ms | Web dashboard keeps Russian UI, graph controls, settings and build script. |
-| `web_build` | PASS | 1129.6 ms | React/Vite dashboard builds successfully. |
-| `docker_compose_state` | PASS | 149.6 ms | Docker compose daemon is reachable and stack state was inspected. |
-| `live_http_api` | PASS | 183.1 ms | Live API health and recall responded. |
-| `live_memory_llm` | PASS | 148.7 ms | Live Qwen/Spark chat-completions returned final content. |
-| `live_embeddings` | PASS | 440.5 ms | Live embedding endpoint ranks Qdrant semantic recall first. |
+| `agent_integration_defaults` | PASS | 0.7 ms | OpenClaw/Hermes/native defaults use port 6798 and 128k context. |
+| `web_contract` | PASS | 0.6 ms | Web dashboard keeps Russian UI, graph controls, settings and build script. |
+| `web_build` | PASS | 1298.9 ms | React/Vite dashboard builds successfully. |
+| `docker_compose_state` | PASS | 90.7 ms | Docker compose daemon is reachable and stack state was inspected. |
+| `live_http_api` | PASS | 163.5 ms | Live API health and recall responded. |
+| `live_memory_llm` | PASS | 153.7 ms | Live Qwen/Spark chat-completions returned final content. |
+| `live_embeddings` | PASS | 424.6 ms | Live embedding endpoint ranks Qdrant semantic recall first. |
 
 ## Metrics
 
@@ -102,7 +102,7 @@ Summary: **12 passed**, **0 failed**, **0 skipped**.
 
 - status: `PASS`
 - base_url: `http://127.0.0.1:6798`
-- retained_id: `970d514d-2534-4c7a-a9fb-bdb1851e43c3`
+- retained_id: `49c22933-39a8-4e5b-a6b6-2e6a7978cc83`
 - context_budget_tokens: `131072`
 - result_count: `5`
 
