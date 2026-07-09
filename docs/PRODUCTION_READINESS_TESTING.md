@@ -44,7 +44,7 @@ UAM_QDRANT_URL=http://qdrant:6333 docker compose --profile advanced up -d
 Then run:
 
 ```bash
-.venv/bin/python scripts/api_e2e_eval.py --base-url http://127.0.0.1:8080
+.venv/bin/python scripts/api_e2e_eval.py --base-url http://127.0.0.1:6798
 ```
 
 Checks:
@@ -63,7 +63,7 @@ Checks:
 Useful post-check:
 
 ```bash
-curl -sS http://127.0.0.1:6333/collections/memory_items
+curl -sS http://127.0.0.1:6799/collections/memory_items
 ```
 
 Expected: collection `memory_items` is green and has points after API writes or

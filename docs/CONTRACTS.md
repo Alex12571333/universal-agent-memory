@@ -49,6 +49,30 @@ Retrieval service повторно проверяет boundary как defense in
 `ObservationRepository` хранит только derived data. Удаление observation не
 удаляет evidence.
 
+`ConversationLedger.append_turn` хранит raw transcript turn отдельно от
+curated memory. Запись в `/v1/conversations/turns` не создаёт `MemoryItem`, не
+попадает в `/v1/memory/recall` напрямую и не должна инжектиться в prompt без
+отдельной обработки. Это audit/replay/reprocessing слой: Куратор памяти может
+позже превратить transcript в curated facts через обычный append-only memory
+pipeline.
+
+`ConversationCurator.curate_turn` является первым deterministic мостом из raw
+ledger в recallable memory. Он создаёт `MemoryItem` с provenance
+`conversation://{turn_id}` через обычный `RetentionService`, поэтому embedding,
+outbox, graph/reflection jobs и idempotency работают тем же путём, что и для
+ручного `/v1/memory/retain`.
+
+`MemoryProposalService.submit` хранит предлагаемое изменение памяти отдельно от
+`MemoryItem`. Запись в `/v1/memory/proposals` не попадает в recall и не запускает
+embedding jobs. Это входной шлюз для агентов: proposal + evidence + confidence
+сначала проходят privacy guard и review/curation, а уже затем могут стать
+append-only memory.
+
+`MemoryProposalService.accept` создаёт `MemoryItem` через обычный
+`RetentionService` с provenance `proposal://{proposal_id}` и идемпотентным ключом
+`accept-proposal:{proposal_id}`. Повторный accept не создаёт дубль. Reject
+обновляет только proposal status и никогда не создаёт recallable memory.
+
 Reflection v2 остаётся deterministic и offline-safe: сервис извлекает простые
 слоты `subject/predicate/value`, создаёт observations только для повторов или
 конфликтов и помечает устаревшие значения `stale=true`. Повторный запуск с тем

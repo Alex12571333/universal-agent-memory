@@ -12,6 +12,7 @@ from memory_plane.adapters.in_memory import (
     InMemoryMemoryStore,
     InMemoryObservationRepository,
 )
+from memory_plane.adapters.llm import MemoryLLMClient, build_memory_llm_client
 from memory_plane.adapters.postgres import (
     PostgresCheckpointStore,
     PostgresConflictReviewRepository,
@@ -23,9 +24,11 @@ from memory_plane.adapters.qdrant import QdrantCandidateSource
 from memory_plane.services.checkpoint import CheckpointService
 from memory_plane.services.conflicts import ConflictService
 from memory_plane.services.context import ContextCompiler
+from memory_plane.services.conversations import ConversationCurator, ConversationService
 from memory_plane.services.embedding import EmbeddingService
 from memory_plane.services.graph import GraphService
 from memory_plane.services.ingestion import IngestionService
+from memory_plane.services.proposals import MemoryProposalService
 from memory_plane.services.reflection import ReflectionService
 from memory_plane.services.retention import RetentionService
 from memory_plane.services.retrieval import RetrievalService
@@ -44,7 +47,11 @@ class Container:
     conflicts: ConflictService
     graph: GraphService
     checkpoint: CheckpointService
+    conversations: ConversationService
+    curator: ConversationCurator
+    proposals: MemoryProposalService
     embedding: EmbeddingService
+    memory_llm: MemoryLLMClient
     vault: VaultExporter
     store: object
 
@@ -76,7 +83,11 @@ def build_in_memory_container() -> Container:
         conflicts=ConflictService(store, conflict_reviews),
         graph=GraphService(store, graph),
         checkpoint=CheckpointService(InMemoryCheckpointStore()),
+        conversations=ConversationService(store),
+        curator=ConversationCurator(store, retention),
+        proposals=MemoryProposalService(store, retention),
         embedding=embedding,
+        memory_llm=build_memory_llm_client(),
         vault=VaultExporter(store, observations, retention),
         store=store,
     )
@@ -129,6 +140,7 @@ def build_postgres_container(
         qdrant._use_in_memory_backend()
 
     embedding = EmbeddingService(store, qdrant, client)
+    memory_llm = build_memory_llm_client()
 
     return Container(
         retention=retention,
@@ -139,7 +151,15 @@ def build_postgres_container(
         conflicts=ConflictService(store, conflict_reviews),
         graph=GraphService(store, graph),
         checkpoint=CheckpointService(PostgresCheckpointStore(store)),
+        conversations=ConversationService(store),
+        curator=ConversationCurator(store, retention, memory_llm=memory_llm),
+        proposals=MemoryProposalService(
+            store,
+            retention,
+            memory_llm=memory_llm,
+        ),
         embedding=embedding,
+        memory_llm=memory_llm,
         vault=VaultExporter(store, observations, retention),
         store=store,
     )

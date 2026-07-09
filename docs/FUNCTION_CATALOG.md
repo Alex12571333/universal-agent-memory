@@ -19,7 +19,7 @@
 
 | Функция | Назначение | Ограничение |
 |---|---|---|
-| `RecallQuery.__post_init__()` | Валидирует query и `top_k` | `1..100` |
+| `RecallQuery.__post_init__()` | Валидирует query и `top_k` | `1..1000` |
 | `ContextRecipe.__post_init__()` | Валидирует token budget | минимум 128 |
 | `IntegrationEvent.__post_init__()` | Требует версию в имени события | пример `memory.retained.v1` |
 
@@ -279,6 +279,17 @@
 | `TEIEmbeddingClient` | TEI/vLLM-style `/v1/embeddings` | OpenAI-compatible payload; optional bearer key |
 | `EmbeddingProviderConfig.from_env()` | Env → provider config | Reads `UAM_EMBEDDING_*` variables |
 | `build_embedding_client()` | Provider config → concrete client | Rejects unsupported providers and invalid dimensions |
+
+## Memory LLM adapter — `adapters/llm.py`
+
+| Класс / Функция | Назначение | Гарантия |
+|---|---|---|
+| `MemoryLLMConfig.from_env()` | Env → Qwen/Spark memory LLM config | Defaults to `qwen3.6-35b-a3b`, 128k context on `192.168.0.10` |
+| `MemoryLLMConfig.public_dict()` | Safe status payload | Does not expose API key |
+| `MemoryLLMClient.chat(messages)` | Calls OpenAI-compatible `/chat/completions` | Returns assistant text or raises `MemoryLLMError` |
+| `MemoryLLMClient.chat_json(messages)` | Requests JSON object output for memory workers | Strips fenced JSON and rejects non-object JSON |
+| `build_memory_llm_client()` | Builds the default memory LLM client | Uses `UAM_MEMORY_LLM_*` runtime config |
+| `MemoryLLMError` | Normalized endpoint/protocol failure | Keeps worker error handling provider-agnostic |
 
 ## Embedding service — `services/embedding.py`
 

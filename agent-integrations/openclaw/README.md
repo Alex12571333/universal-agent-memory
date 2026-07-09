@@ -34,7 +34,7 @@ directory into its plugin path. The important bit is that OpenClaw sees
 Suggested env:
 
 ```text
-UAM_URL=http://localhost:8080
+UAM_URL=http://localhost:6798
 UAM_API_KEY=...
 UAM_AGENT_INTEGRATION=openclaw
 UAM_MEMORY_ENABLED=true

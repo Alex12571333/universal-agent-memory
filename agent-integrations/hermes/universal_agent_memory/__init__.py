@@ -53,7 +53,7 @@ class UniversalAgentMemoryProvider(MemoryProvider):
     """Hermes native memory provider backed by the UAM Docker server."""
 
     def __init__(self) -> None:
-        self._url = os.getenv("UAM_URL", "http://localhost:8080").rstrip("/")
+        self._url = os.getenv("UAM_URL", "http://localhost:6798").rstrip("/")
         self._api_key = os.getenv("UAM_API_KEY", "")
         self._enabled = _env_bool("UAM_MEMORY_ENABLED", True)
         self._tenant_id = _uuid_env("UAM_TENANT_ID", "tenant:default")
@@ -61,7 +61,7 @@ class UniversalAgentMemoryProvider(MemoryProvider):
         self._agent_id = _uuid_env("UAM_AGENT_ID", f"agent:hermes:{os.getenv('USER', 'hermes')}")
         self._thread_id = _stable_uuid("thread:hermes")
         self._top_k = int(os.getenv("UAM_MEMORY_RECALL_TOP_K", "8"))
-        self._context_budget_tokens = int(os.getenv("UAM_CONTEXT_BUDGET_TOKENS", "2400"))
+        self._context_budget_tokens = int(os.getenv("UAM_CONTEXT_BUDGET_TOKENS", "131072"))
         self._reflect_on_session_end = _env_bool("UAM_REFLECT_ON_RUN_COMPLETE", False)
         self._labels: tuple[str, ...] = ("hermes",)
 
@@ -126,14 +126,22 @@ class UniversalAgentMemoryProvider(MemoryProvider):
     ) -> None:
         if not self._enabled:
             return
-        text = f"User: {user_content.strip()}\n\nAssistant: {assistant_content.strip()}".strip()
-        if not text:
+        user_text = user_content.strip()
+        assistant_text = assistant_content.strip()
+        if not user_text and not assistant_text:
             return
-        self._retain(
-            layer="episodic",
-            kind="conversation_turn",
-            text=text,
-            idempotency_key=f"hermes-turn:{session_id or self._thread_id}:{_digest(text)}",
+        turn_messages = []
+        if user_text:
+            turn_messages.append({"role": "user", "content": user_text})
+        if assistant_text:
+            turn_messages.append({"role": "assistant", "content": assistant_text})
+        self._append_conversation_turn(
+            messages=turn_messages,
+            session_id=session_id,
+            idempotency_key=(
+                f"hermes-turn:{session_id or self._thread_id}:"
+                f"{_digest(json.dumps(turn_messages, ensure_ascii=False))}"
+            ),
         )
 
     def on_session_end(self, messages: list[dict[str, Any]]) -> None:
@@ -163,13 +171,13 @@ class UniversalAgentMemoryProvider(MemoryProvider):
             content = str(args.get("content", "")).strip()
             if not content:
                 return json.dumps({"error": "Missing content"})
-            result = self._retain(
-                layer="semantic",
-                kind="explicit_fact",
-                text=content,
-                idempotency_key=f"hermes-explicit:{_digest(content)}",
+            result = self._propose_memory(
+                target="fact",
+                proposal=content,
+                evidence=str(args.get("evidence") or "Hermes explicit memory tool call"),
+                idempotency_key=f"hermes-proposal:{_digest(content)}",
             )
-            return json.dumps({"result": "Fact stored.", "id": result.get("id")})
+            return json.dumps({"result": "Memory proposal stored.", "id": result.get("id")})
         return json.dumps({"error": f"Unknown tool: {tool_name}"})
 
     def _base_payload(self) -> dict[str, Any]:
@@ -201,6 +209,49 @@ class UniversalAgentMemoryProvider(MemoryProvider):
             }
         )
         return self._post_json("/v1/memory/retain", payload)
+
+    def _append_conversation_turn(
+        self,
+        *,
+        messages: list[dict[str, Any]],
+        idempotency_key: str,
+        session_id: str = "",
+    ) -> dict[str, Any]:
+        payload = self._base_payload()
+        payload.update(
+            {
+                "namespace": "hermes",
+                "source_kind": "hermes-memory-provider",
+                "retention_policy": "raw_and_curated",
+                "messages": messages,
+                "metadata": {"session_id": session_id},
+                "idempotency_key": idempotency_key,
+            }
+        )
+        return self._post_json("/v1/conversations/turns", payload)
+
+    def _propose_memory(
+        self,
+        *,
+        target: str,
+        proposal: str,
+        evidence: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        payload = self._base_payload()
+        payload.update(
+            {
+                "namespace": "hermes",
+                "requester": "hermes-memory-provider",
+                "target": target,
+                "proposal": proposal,
+                "evidence": evidence,
+                "confidence": 0.7,
+                "importance": 0.5,
+                "idempotency_key": idempotency_key,
+            }
+        )
+        return self._post_json("/v1/memory/proposals", payload)
 
     def _post_json(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
         headers = {"Content-Type": "application/json"}
@@ -253,10 +304,10 @@ SEARCH_SCHEMA = {
 
 ADD_SCHEMA = {
     "name": "universal_agent_memory_add",
-    "description": "Store an explicit durable fact in Universal Agent Memory.",
+    "description": "Submit an explicit durable fact proposal to Universal Agent Memory.",
     "parameters": {
         "type": "object",
-        "properties": {"content": {"type": "string"}},
+        "properties": {"content": {"type": "string"}, "evidence": {"type": "string"}},
         "required": ["content"],
     },
 }

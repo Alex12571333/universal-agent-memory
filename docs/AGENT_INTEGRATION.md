@@ -43,11 +43,12 @@ Expected hooks:
 Minimal env:
 
 ```text
-UAM_URL=http://127.0.0.1:8080
+UAM_URL=http://127.0.0.1:6798
 UAM_MEMORY_ENABLED=true
 UAM_TENANT_ID=00000000-0000-0000-0000-000000000001
 UAM_WORKSPACE_ID=00000000-0000-0000-0000-000000000002
-UAM_CONTEXT_BUDGET_TOKENS=2400
+UAM_CONTEXT_BUDGET_TOKENS=131072
+UAM_CONTEXT_PER_LAYER_LIMIT=1000
 UAM_MEMORY_RECALL_TOP_K=8
 ```
 
@@ -92,6 +93,35 @@ Safe switch procedure:
 Do not mix fake 1536-dimensional vectors and Jina 2048-dimensional vectors in
 one Qdrant collection. Reindex is the boundary that makes the switch clean.
 
+## Memory LLM runtime
+
+Memory maintenance has its own LLM config. It is not the embedding model and not
+the agent runtime model.
+
+Production target:
+
+```text
+provider=spark
+model=qwen3.6-35b-a3b
+base_url=http://192.168.0.10:8000/v1
+```
+
+Env:
+
+```text
+UAM_MEMORY_LLM_PROVIDER=spark
+UAM_MEMORY_LLM_MODEL=qwen3.6-35b-a3b
+UAM_MEMORY_LLM_BASE_URL=http://192.168.0.10:8000/v1
+UAM_MEMORY_LLM_API_KEY=
+UAM_MEMORY_LLM_CONTEXT_TOKENS=131072
+UAM_MEMORY_LLM_MAX_TOKENS=1600
+UAM_MEMORY_LLM_ENABLE_THINKING=false
+```
+
+Навигатор памяти, Куратор памяти and future graph extraction workers should use
+this Qwen/Spark endpoint. Agents such as OpenClaw/Hermes still use their own
+runtime models; they only call UAM for memory.
+
 ## What gets injected into the agent
 
 The recall endpoint returns a `ContextPackage`:
@@ -131,3 +161,67 @@ Retain only memory that is likely to matter later:
 
 Avoid retaining raw transient chatter, secrets, or large unprocessed logs. The
 server includes privacy redaction, but native adapters should still be selective.
+
+## Raw transcript ledger
+
+When a runtime needs complete conversation retention, use the raw transcript
+endpoint instead of pretending every turn is curated long-term memory:
+
+```http
+POST /v1/conversations/turns
+```
+
+This stores an immutable transcript turn for audit/replay/reprocessing. It does
+not appear in `/v1/memory/recall` by itself. A maintenance worker can later
+distill it into durable facts, preferences, decisions or graph evidence through
+the normal `/v1/memory/retain`/supersede pipeline.
+
+The first deterministic curation bridge is:
+
+```http
+POST /v1/conversations/turns/{turn_id}/curate
+```
+
+It creates a recallable `MemoryItem` summary with provenance
+`conversation://{turn_id}`. This is intentionally explicit: storing a raw
+transcript and making curated memory are different operations.
+
+Use this split:
+
+- `/v1/conversations/turns` for full user/assistant/tool transcript history;
+- `/v1/conversations/turns/{turn_id}/curate` for deterministic raw→curated
+  summarization;
+- `/v1/memory/retain` for direct curated memories that may be recalled by
+  agents.
+
+## Memory Gateway proposals
+
+Agents should not directly mutate durable memory for inferred facts. They
+should submit proposals with evidence:
+
+```http
+POST /v1/memory/proposals
+```
+
+Use this for:
+
+- inferred preferences;
+- project decisions learned from conversation;
+- graph relation candidates;
+- facts extracted from tool output;
+- agent recommendations that need review.
+
+The proposal inbox is auditable and separate from recall. A proposal does not
+appear in `/v1/memory/recall` until it is curated/accepted through the normal
+append-only memory pipeline.
+
+Review endpoints:
+
+```http
+POST /v1/memory/proposals/{proposal_id}/accept
+POST /v1/memory/proposals/{proposal_id}/reject
+```
+
+Accepting a proposal creates a normal `MemoryItem` with provenance
+`proposal://{proposal_id}`. Rejecting it records the review decision and creates
+no recallable memory.

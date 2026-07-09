@@ -1,62 +1,51 @@
-name: CI
+name: ci
 
 on:
   push:
     branches: [main]
   pull_request:
 
-permissions:
-  contents: read
-
 jobs:
-  test:
+  python:
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:17-alpine
-        env:
-          POSTGRES_DB: memory
-          POSTGRES_USER: memory_admin
-          POSTGRES_PASSWORD: memory
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U memory_admin -d memory"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 10
-
-    env:
-      PYTHONPATH: src
-      UAM_TEST_DATABASE_URL: postgresql://memory_app:memory@localhost:5432/memory
-      UAM_ADMIN_DATABASE_URL: postgresql://memory_admin:memory@localhost:5432/memory
-      UAM_TEST_NATS_URL: nats://localhost:4222
-
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: pip
-      - name: Install project
+      - name: Install Python dependencies
         run: |
-          pip install -e ".[dev,api,postgres,nats,documents]"
-          pip install -e sdk/python
-      - name: Apply database schema
-        run: python scripts/migrate.py
-      - name: Start NATS JetStream
-        run: docker run -d --name nats-test -p 4222:4222 nats:2.10-alpine -js
-      - name: Test
-        run: |
-          pytest
-          pytest sdk/python/tests
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[api,postgres,qdrant,nats,s3,documents,dev]"
       - name: Lint
-        run: ruff check .
-      - name: Type check
-        run: mypy src sdk/python/uam_client
-      - name: TypeScript SDK
+        run: ruff check src tests scripts agent-integrations
+      - name: Tests
+        run: pytest -q
+      - name: Docker compose config
         run: |
-          npm ci --prefix sdk/typescript
-          npm test --prefix sdk/typescript
-      - name: Build standalone server image
-        run: docker build -t universal-agent-memory:test .
+          docker compose --profile advanced config
+          docker compose -f docker-compose.prod.yml --env-file .env.production.example config
+      - name: Enterprise readiness static gate
+        run: python scripts/enterprise_readiness_check.py --static-only
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            web/package-lock.json
+            agent-integrations/openclaw/plugin/package-lock.json
+      - name: Build web dashboard
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+      - name: Check OpenClaw plugin
+        working-directory: agent-integrations/openclaw/plugin
+        run: |
+          npm ci
+          npm run check

@@ -38,7 +38,7 @@ npm install
 npm run dev
 ```
 
-Vite proxies `/v1`, `/health` and `/metrics` to `http://127.0.0.1:8080`.
+Vite proxies `/v1`, `/health` and `/metrics` to `http://127.0.0.1:6798`.
 
 For production-like local serving through FastAPI:
 
@@ -46,7 +46,7 @@ For production-like local serving through FastAPI:
 cd web
 npm run build
 cd ..
-UAM_WEB_DIST="$PWD/web/dist" uvicorn memory_plane.api.app:create_app --factory --host 0.0.0.0 --port 8080
+UAM_WEB_DIST="$PWD/web/dist" uvicorn memory_plane.api.app:create_app --factory --host 0.0.0.0 --port 6798
 ```
 
 ## Model settings behavior

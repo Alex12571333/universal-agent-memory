@@ -83,7 +83,7 @@ def retain(api: Api, text: str, *, tenant: UUID = TENANT, key: str) -> dict[str,
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--base-url", default="http://127.0.0.1:8080")
+    parser.add_argument("--base-url", default="http://127.0.0.1:6798")
     parser.add_argument("--api-key")
     args = parser.parse_args()
     api = Api(args.base_url, args.api_key)

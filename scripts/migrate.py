@@ -14,6 +14,8 @@ MIGRATIONS = (
     ROOT / "migrations/003_outbox_delivery.sql",
     ROOT / "migrations/004_conflict_reviews.sql",
     ROOT / "migrations/005_memory_status.sql",
+    ROOT / "migrations/006_conversation_ledger.sql",
+    ROOT / "migrations/007_memory_proposals.sql",
 )
 
 

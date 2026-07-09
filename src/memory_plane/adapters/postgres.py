@@ -12,6 +12,11 @@ from memory_plane.contracts.dto import Candidate, RecallQuery
 from memory_plane.contracts.events import ClaimedEvent, ConsumerClaim, IntegrationEvent
 from memory_plane.domain.checkpoint import Checkpoint, StaleRevisionError
 from memory_plane.domain.conflict import ConflictReviewDecision, ConflictReviewStatus
+from memory_plane.domain.conversation import (
+    ConversationMessage,
+    ConversationRetentionPolicy,
+    ConversationTurn,
+)
 from memory_plane.domain.graph import MemoryEdge, MemoryEdgeType
 from memory_plane.domain.models import (
     MemoryItem,
@@ -21,6 +26,11 @@ from memory_plane.domain.models import (
     MemoryStatus,
     Observation,
     Provenance,
+)
+from memory_plane.domain.proposal import (
+    MemoryProposal,
+    MemoryProposalStatus,
+    MemoryProposalTarget,
 )
 
 _ITEM_COLUMNS = """
@@ -485,6 +495,221 @@ class PostgresMemoryLedger:
                 )
             return item, True
 
+    def append_turn(
+        self, turn: ConversationTurn, idempotency_key: str | None = None
+    ) -> tuple[ConversationTurn, bool]:
+        """Append one raw conversation turn and its ordered messages."""
+        with self._connection() as connection:
+            self._set_tenant(connection, turn.tenant_id)
+            if idempotency_key:
+                self._lock_idempotency_key(connection, turn.tenant_id, idempotency_key)
+                existing = self._get_turn_by_idempotency_key(
+                    connection, turn.tenant_id, idempotency_key
+                )
+                if existing is not None:
+                    return existing, False
+            self._insert_turn(connection, turn)
+            if idempotency_key:
+                connection.execute(
+                    """
+                    insert into conversation_idempotency_keys (
+                      tenant_id, key, turn_id
+                    ) values (%s, %s, %s)
+                    """,
+                    (turn.tenant_id, idempotency_key, turn.id),
+                )
+            return turn, True
+
+    def get_turn(self, tenant_id: UUID, turn_id: UUID) -> ConversationTurn | None:
+        """Load one raw conversation turn under RLS."""
+        with self._connection() as connection:
+            self._set_tenant(connection, tenant_id)
+            row = connection.execute(
+                """
+                select
+                  t.id, t.tenant_id, t.workspace_id, t.thread_id, t.agent_id,
+                  t.namespace, t.source_kind, t.retention_policy, t.metadata,
+                  t.created_at,
+                  coalesce(
+                    jsonb_agg(
+                      jsonb_build_object(
+                        'role', m.role,
+                        'content', m.content,
+                        'name', m.name,
+                        'metadata', m.metadata
+                      )
+                      order by m.position
+                    ) filter (where m.id is not null),
+                    '[]'::jsonb
+                  ) as messages
+                from conversation_turns t
+                left join conversation_messages m on m.turn_id = t.id
+                where t.id = %s
+                group by t.id
+                """,
+                (turn_id,),
+            ).fetchone()
+        return None if row is None else self._to_turn(row)
+
+    def list_turns(
+        self,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        *,
+        thread_id: UUID | None = None,
+        namespace: str | None = None,
+        limit: int = 50,
+    ) -> tuple[ConversationTurn, ...]:
+        """List recent raw conversation turns with their ordered messages."""
+        safe_limit = max(1, min(int(limit), 200))
+        with self._connection() as connection:
+            self._set_tenant(connection, tenant_id)
+            rows = connection.execute(
+                """
+                select
+                  t.id, t.tenant_id, t.workspace_id, t.thread_id, t.agent_id,
+                  t.namespace, t.source_kind, t.retention_policy, t.metadata,
+                  t.created_at,
+                  coalesce(
+                    jsonb_agg(
+                      jsonb_build_object(
+                        'role', m.role,
+                        'content', m.content,
+                        'name', m.name,
+                        'metadata', m.metadata
+                      )
+                      order by m.position
+                    ) filter (where m.id is not null),
+                    '[]'::jsonb
+                  ) as messages
+                from conversation_turns t
+                left join conversation_messages m on m.turn_id = t.id
+                where t.workspace_id = %s
+                  and (%s::uuid is null or t.thread_id = %s::uuid)
+                  and (%s::text is null or t.namespace = %s::text)
+                group by t.id
+                order by t.created_at desc, t.id desc
+                limit %s
+                """,
+                (workspace_id, thread_id, thread_id, namespace, namespace, safe_limit),
+            ).fetchall()
+        return tuple(self._to_turn(row) for row in rows)
+
+    def append_proposal(
+        self, proposal: MemoryProposal, idempotency_key: str | None = None
+    ) -> tuple[MemoryProposal, bool]:
+        """Append one memory proposal under the tenant boundary."""
+        with self._connection() as connection:
+            self._set_tenant(connection, proposal.tenant_id)
+            if idempotency_key:
+                self._lock_idempotency_key(
+                    connection,
+                    proposal.tenant_id,
+                    idempotency_key,
+                )
+                existing = self._get_proposal_by_idempotency_key(
+                    connection,
+                    proposal.tenant_id,
+                    idempotency_key,
+                )
+                if existing is not None:
+                    return existing, False
+            self._insert_proposal(connection, proposal)
+            if idempotency_key:
+                connection.execute(
+                    """
+                    insert into memory_proposal_idempotency_keys (
+                      tenant_id, key, proposal_id
+                    ) values (%s, %s, %s)
+                    """,
+                    (proposal.tenant_id, idempotency_key, proposal.id),
+                )
+            return proposal, True
+
+    def get_proposal(
+        self, tenant_id: UUID, proposal_id: UUID
+    ) -> MemoryProposal | None:
+        """Load one memory proposal under RLS."""
+        with self._connection() as connection:
+            self._set_tenant(connection, tenant_id)
+            row = connection.execute(
+                """
+                select id, tenant_id, workspace_id, agent_id, thread_id, namespace,
+                  requester, target, proposal, evidence, confidence, importance,
+                  status, metadata, created_at, reviewed_at, reviewer, review_reason
+                from memory_proposals
+                where id = %s
+                """,
+                (proposal_id,),
+            ).fetchone()
+        return None if row is None else self._to_proposal(row)
+
+    def save_proposal_review(self, proposal: MemoryProposal) -> MemoryProposal:
+        """Persist proposal review fields under RLS."""
+        from psycopg.types.json import Jsonb
+
+        with self._connection() as connection:
+            self._set_tenant(connection, proposal.tenant_id)
+            row = connection.execute(
+                """
+                update memory_proposals
+                set status = %s,
+                    metadata = %s,
+                    reviewed_at = %s,
+                    reviewer = %s,
+                    review_reason = %s
+                where id = %s
+                returning id
+                """,
+                (
+                    proposal.status.value,
+                    Jsonb(proposal.metadata),
+                    proposal.reviewed_at,
+                    proposal.reviewer,
+                    proposal.review_reason,
+                    proposal.id,
+                ),
+            ).fetchone()
+        if row is None:
+            raise KeyError("memory proposal not found")
+        return proposal
+
+    def list_proposals(
+        self,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        *,
+        namespace: str | None = None,
+        status: MemoryProposalStatus | None = None,
+        limit: int = 50,
+    ) -> tuple[MemoryProposal, ...]:
+        """List recent memory proposals under RLS."""
+        safe_limit = max(1, min(int(limit), 200))
+        with self._connection() as connection:
+            self._set_tenant(connection, tenant_id)
+            rows = connection.execute(
+                """
+                select id, tenant_id, workspace_id, agent_id, thread_id, namespace,
+                  requester, target, proposal, evidence, confidence, importance,
+                  status, metadata, created_at, reviewed_at, reviewer, review_reason
+                from memory_proposals
+                where workspace_id = %s
+                  and (%s::text is null or namespace = %s::text)
+                  and (%s::text is null or status = %s::text)
+                order by created_at desc, id desc
+                limit %s
+                """,
+                (
+                    workspace_id,
+                    namespace,
+                    namespace,
+                    status.value if status else None,
+                    status.value if status else None,
+                    safe_limit,
+                ),
+            ).fetchall()
+        return tuple(self._to_proposal(row) for row in rows)
+
     def get(self, tenant_id: UUID, item_id: UUID) -> MemoryItem | None:
         """Load one item under an explicit PostgreSQL RLS tenant context."""
         with self._connection() as connection:
@@ -801,6 +1026,54 @@ class PostgresMemoryLedger:
         ).fetchone()
         return None if row is None else self._to_item(row)
 
+    def _get_turn_by_idempotency_key(
+        self, connection: Any, tenant_id: UUID, key: str
+    ) -> ConversationTurn | None:
+        row = connection.execute(
+            """
+            select
+              t.id, t.tenant_id, t.workspace_id, t.thread_id, t.agent_id,
+              t.namespace, t.source_kind, t.retention_policy, t.metadata,
+              t.created_at,
+              coalesce(
+                jsonb_agg(
+                  jsonb_build_object(
+                    'role', m.role,
+                    'content', m.content,
+                    'name', m.name,
+                    'metadata', m.metadata
+                  )
+                  order by m.position
+                ) filter (where m.id is not null),
+                '[]'::jsonb
+              ) as messages
+            from conversation_idempotency_keys i
+            join conversation_turns t on t.id = i.turn_id
+            left join conversation_messages m on m.turn_id = t.id
+            where i.tenant_id = %s and i.key = %s
+            group by t.id
+            """,
+            (tenant_id, key),
+        ).fetchone()
+        return None if row is None else self._to_turn(row)
+
+    def _get_proposal_by_idempotency_key(
+        self, connection: Any, tenant_id: UUID, key: str
+    ) -> MemoryProposal | None:
+        row = connection.execute(
+            """
+            select p.id, p.tenant_id, p.workspace_id, p.agent_id, p.thread_id,
+              p.namespace, p.requester, p.target, p.proposal, p.evidence,
+              p.confidence, p.importance, p.status, p.metadata, p.created_at,
+              p.reviewed_at, p.reviewer, p.review_reason
+            from memory_proposal_idempotency_keys i
+            join memory_proposals p on p.id = i.proposal_id
+            where i.tenant_id = %s and i.key = %s
+            """,
+            (tenant_id, key),
+        ).fetchone()
+        return None if row is None else self._to_proposal(row)
+
     @staticmethod
     def _insert_item(connection: Any, item: MemoryItem) -> None:
         from psycopg.types.json import Jsonb
@@ -884,6 +1157,82 @@ class PostgresMemoryLedger:
         )
 
     @staticmethod
+    def _insert_turn(connection: Any, turn: ConversationTurn) -> None:
+        from psycopg.types.json import Jsonb
+
+        connection.execute(
+            """
+            insert into conversation_turns (
+              id, tenant_id, workspace_id, thread_id, agent_id, namespace,
+              source_kind, retention_policy, metadata, created_at
+            ) values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                turn.id,
+                turn.tenant_id,
+                turn.workspace_id,
+                turn.thread_id,
+                turn.agent_id,
+                turn.namespace,
+                turn.source_kind,
+                turn.retention_policy.value,
+                Jsonb(turn.metadata),
+                turn.created_at,
+            ),
+        )
+        for position, message in enumerate(turn.messages):
+            connection.execute(
+                """
+                insert into conversation_messages (
+                  tenant_id, turn_id, position, role, name, content, metadata
+                ) values (%s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    turn.tenant_id,
+                    turn.id,
+                    position,
+                    message.role,
+                    message.name,
+                    message.content,
+                    Jsonb(message.metadata),
+                ),
+            )
+
+    @staticmethod
+    def _insert_proposal(connection: Any, proposal: MemoryProposal) -> None:
+        from psycopg.types.json import Jsonb
+
+        connection.execute(
+            """
+            insert into memory_proposals (
+              id, tenant_id, workspace_id, agent_id, thread_id, namespace,
+              requester, target, proposal, evidence, confidence, importance,
+              status, metadata, created_at, reviewed_at, reviewer, review_reason
+            ) values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                proposal.id,
+                proposal.tenant_id,
+                proposal.workspace_id,
+                proposal.agent_id,
+                proposal.thread_id,
+                proposal.namespace,
+                proposal.requester,
+                proposal.target.value,
+                proposal.proposal,
+                proposal.evidence,
+                proposal.confidence,
+                proposal.importance,
+                proposal.status.value,
+                Jsonb(proposal.metadata),
+                proposal.created_at,
+                proposal.reviewed_at,
+                proposal.reviewer,
+                proposal.review_reason,
+            ),
+        )
+
+    @staticmethod
     def _validate_event(item: MemoryItem, event: IntegrationEvent) -> None:
         if (item.tenant_id, item.workspace_id) != (
             event.tenant_id,
@@ -925,6 +1274,53 @@ class PostgresMemoryLedger:
                 quote=row["quote_text"],
                 extraction_version=row["extraction_version"],
             ),
+        )
+
+    @staticmethod
+    def _to_turn(row: dict[str, Any]) -> ConversationTurn:
+        return ConversationTurn(
+            id=row["id"],
+            tenant_id=row["tenant_id"],
+            workspace_id=row["workspace_id"],
+            thread_id=row["thread_id"],
+            agent_id=row["agent_id"],
+            namespace=row["namespace"],
+            source_kind=row["source_kind"],
+            retention_policy=ConversationRetentionPolicy(row["retention_policy"]),
+            metadata=row["metadata"],
+            created_at=row["created_at"],
+            messages=tuple(
+                ConversationMessage(
+                    role=str(message.get("role") or ""),
+                    name=message.get("name"),
+                    content=str(message.get("content") or ""),
+                    metadata=dict(message.get("metadata") or {}),
+                )
+                for message in row["messages"]
+            ),
+        )
+
+    @staticmethod
+    def _to_proposal(row: dict[str, Any]) -> MemoryProposal:
+        return MemoryProposal(
+            id=row["id"],
+            tenant_id=row["tenant_id"],
+            workspace_id=row["workspace_id"],
+            agent_id=row["agent_id"],
+            thread_id=row["thread_id"],
+            namespace=row["namespace"],
+            requester=row["requester"],
+            target=MemoryProposalTarget(row["target"]),
+            proposal=row["proposal"],
+            evidence=row["evidence"] or "",
+            confidence=row["confidence"],
+            importance=row["importance"],
+            status=MemoryProposalStatus(row["status"]),
+            metadata=row["metadata"],
+            created_at=row["created_at"],
+            reviewed_at=row["reviewed_at"],
+            reviewer=row["reviewer"],
+            review_reason=row["review_reason"] or "",
         )
 
     @staticmethod

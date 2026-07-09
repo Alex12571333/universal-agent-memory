@@ -2,7 +2,10 @@
 
 Latest hardening audit: [HARDENING_AUDIT_2026_07_07.md](HARDENING_AUDIT_2026_07_07.md).
 DGX Spark embedding notes: [DGX_SPARK_EMBEDDINGS.md](DGX_SPARK_EMBEDDINGS.md).
+DGX Spark memory LLM notes: [DGX_SPARK_MEMORY_LLM.md](DGX_SPARK_MEMORY_LLM.md).
 Production readiness tests: [PRODUCTION_READINESS_TESTING.md](PRODUCTION_READINESS_TESTING.md).
+Next archival-memory stage:
+[ROADMAP_PHASE_4_ARCHIVAL_MEMORY.md](ROADMAP_PHASE_4_ARCHIVAL_MEMORY.md).
 
 Phase 2 turned the project into a self-hosted memory server with native agent
 integrations, vault import/export, conflict review and a local operator UI.

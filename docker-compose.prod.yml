@@ -1,0 +1,166 @@
+name: obelisk-memory
+
+services:
+  memory-server:
+    build:
+      context: .
+    environment:
+      UAM_DATABASE_URL: postgresql://${UAM_APP_DB_USER}:${UAM_APP_DB_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      UAM_SERVER_ID: ${UAM_SERVER_ID}
+      UAM_PROJECT_ID: ${UAM_PROJECT_ID}
+      UAM_API_KEY: ${UAM_API_KEY:?set UAM_API_KEY in .env.production}
+      UAM_API_KEYS: ${UAM_API_KEYS:-}
+      UAM_CONTEXT_BUDGET_TOKENS: ${UAM_CONTEXT_BUDGET_TOKENS:-131072}
+      UAM_CONTEXT_PER_LAYER_LIMIT: ${UAM_CONTEXT_PER_LAYER_LIMIT:-1000}
+      UAM_PRIVACY_ENABLED: ${UAM_PRIVACY_ENABLED:-true}
+      UAM_PRIVACY_ACTION: ${UAM_PRIVACY_ACTION:-redact}
+      UAM_QDRANT_URL: http://qdrant:6333
+      UAM_EMBEDDING_PROVIDER: ${UAM_EMBEDDING_PROVIDER:-tei}
+      UAM_EMBEDDING_MODEL: ${UAM_EMBEDDING_MODEL:-jina-embeddings-v4}
+      UAM_EMBEDDING_DIM: ${UAM_EMBEDDING_DIM:-2048}
+      UAM_EMBEDDING_BASE_URL: ${UAM_EMBEDDING_BASE_URL}
+      UAM_EMBEDDING_API_KEY: ${UAM_EMBEDDING_API_KEY:-}
+      UAM_MEMORY_LLM_PROVIDER: ${UAM_MEMORY_LLM_PROVIDER:-spark}
+      UAM_MEMORY_LLM_MODEL: ${UAM_MEMORY_LLM_MODEL:-qwen3.6-35b-a3b}
+      UAM_MEMORY_LLM_BASE_URL: ${UAM_MEMORY_LLM_BASE_URL:-http://192.168.0.10:8000/v1}
+      UAM_MEMORY_LLM_API_KEY: ${UAM_MEMORY_LLM_API_KEY:-}
+      UAM_MEMORY_LLM_TIMEOUT_SECONDS: ${UAM_MEMORY_LLM_TIMEOUT_SECONDS:-120}
+      UAM_MEMORY_LLM_TEMPERATURE: ${UAM_MEMORY_LLM_TEMPERATURE:-0.1}
+      UAM_MEMORY_LLM_CONTEXT_TOKENS: ${UAM_MEMORY_LLM_CONTEXT_TOKENS:-131072}
+      UAM_MEMORY_LLM_MAX_TOKENS: ${UAM_MEMORY_LLM_MAX_TOKENS:-1600}
+      UAM_MEMORY_LLM_ENABLE_THINKING: ${UAM_MEMORY_LLM_ENABLE_THINKING:-false}
+    ports:
+      - "6798:8080"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      qdrant:
+        condition: service_started
+      nats:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  migrate:
+    build:
+      context: .
+    command: ["python", "scripts/migrate.py"]
+    environment:
+      UAM_ADMIN_DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      UAM_APP_DB_USER: ${UAM_APP_DB_USER}
+      UAM_APP_DB_PASSWORD: ${UAM_APP_DB_PASSWORD}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  qdrant:
+    image: qdrant/qdrant:v1.12.6
+    volumes:
+      - qdrant_data:/qdrant/storage
+    restart: unless-stopped
+
+  nats:
+    image: nats:2.10-alpine
+    command: ["-js", "-sd", "/data", "-m", "8222"]
+    volumes:
+      - nats_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8222/healthz >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  outbox-relay:
+    build:
+      context: .
+    command: ["python", "-m", "memory_plane.workers.outbox_main"]
+    environment:
+      UAM_DATABASE_URL: postgresql://${UAM_APP_DB_USER}:${UAM_APP_DB_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      UAM_SERVER_ID: ${UAM_SERVER_ID}
+      UAM_NATS_URL: nats://nats:4222
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      nats:
+        condition: service_healthy
+    restart: unless-stopped
+
+  embedding-worker:
+    build:
+      context: .
+    command: ["python", "-m", "memory_plane.workers.embedding_main"]
+    environment:
+      UAM_DATABASE_URL: postgresql://${UAM_APP_DB_USER}:${UAM_APP_DB_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      UAM_SERVER_ID: ${UAM_SERVER_ID}
+      UAM_PROJECT_ID: ${UAM_PROJECT_ID}
+      UAM_NATS_URL: nats://nats:4222
+      UAM_QDRANT_URL: http://qdrant:6333
+      UAM_EMBEDDING_PROVIDER: ${UAM_EMBEDDING_PROVIDER:-tei}
+      UAM_EMBEDDING_MODEL: ${UAM_EMBEDDING_MODEL:-jina-embeddings-v4}
+      UAM_EMBEDDING_DIM: ${UAM_EMBEDDING_DIM:-2048}
+      UAM_EMBEDDING_BASE_URL: ${UAM_EMBEDDING_BASE_URL}
+      UAM_EMBEDDING_API_KEY: ${UAM_EMBEDDING_API_KEY:-}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      nats:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:RELEASE.2024-12-18T13-15-44Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - minio_data:/data
+    restart: unless-stopped
+
+  backup:
+    profiles: ["ops"]
+    build:
+      context: .
+    command: ["python", "scripts/backup.py", "/backups/obelisk-memory.dump"]
+    environment:
+      UAM_BACKUP_DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    volumes:
+      - ./backups:/backups
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: "no"
+
+volumes:
+  postgres_data:
+  qdrant_data:
+  nats_data:
+  minio_data:

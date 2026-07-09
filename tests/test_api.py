@@ -5,7 +5,12 @@ import base64
 from fastapi.testclient import TestClient
 
 from memory_plane.adapters.in_memory import InMemoryMemoryStore
-from memory_plane.api.app import DEFAULT_PROJECT_ID, DEFAULT_SERVER_ID, create_app
+from memory_plane.api.app import (
+    DEFAULT_PROJECT_ID,
+    DEFAULT_SERVER_ID,
+    DEFAULT_THREAD_ID,
+    create_app,
+)
 from memory_plane.bootstrap import build_in_memory_container
 
 
@@ -111,6 +116,44 @@ def test_api_key_protects_memory_routes_but_not_health() -> None:
     assert valid.status_code == 201
 
 
+def test_scoped_api_keys_limit_agent_and_operator_access(monkeypatch) -> None:
+    monkeypatch.setenv(
+        "UAM_API_KEYS",
+        "reader:read-secret:read,agent:agent-secret:agent,operator:operator-secret:operator",
+    )
+    client = TestClient(create_app(build_in_memory_container()))
+    body = {
+        "layer": "semantic",
+        "scope": "workspace",
+        "kind": "fact",
+        "text": "Scoped key memory",
+    }
+
+    read_recall = client.post(
+        "/v1/memory/recall",
+        json={"query": "Scoped"},
+        headers={"Authorization": "Bearer read-secret"},
+    )
+    read_write = client.post(
+        "/v1/memory/retain",
+        json=body,
+        headers={"Authorization": "Bearer read-secret"},
+    )
+    agent_write = client.post(
+        "/v1/memory/retain",
+        json=body,
+        headers={"Authorization": "Bearer agent-secret"},
+    )
+    agent_metrics = client.get("/metrics", headers={"Authorization": "Bearer agent-secret"})
+    operator_metrics = client.get("/metrics", headers={"Authorization": "Bearer operator-secret"})
+
+    assert read_recall.status_code == 200
+    assert read_write.status_code == 403
+    assert agent_write.status_code == 201
+    assert agent_metrics.status_code == 403
+    assert operator_metrics.status_code == 200
+
+
 def test_metrics_endpoint_uses_prometheus_text_and_api_key() -> None:
     container = build_in_memory_container()
     client = TestClient(create_app(container, api_key="secret"))
@@ -145,6 +188,278 @@ def test_api_key_is_disabled_when_not_configured(monkeypatch) -> None:
     )
 
     assert response.status_code == 200
+
+
+def test_recall_default_context_budget_is_128k() -> None:
+    client = TestClient(create_app(build_in_memory_container()))
+
+    response = client.post(
+        "/v1/memory/recall",
+        json={"query": "production context budget"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["context"]["budget_tokens"] == 131072
+
+
+def test_recall_128k_context_can_include_more_than_100_items() -> None:
+    client = TestClient(create_app(build_in_memory_container()))
+    for index in range(120):
+        retained = client.post(
+            "/v1/memory/retain",
+            json={
+                "layer": "semantic",
+                "scope": "workspace",
+                "kind": "fact",
+                "text": f"Bulk 128k context memory {index} shared keyword zephyr.",
+                "idempotency_key": f"api-bulk-128k:{index}",
+            },
+        )
+        assert retained.status_code == 201
+
+    response = client.post(
+        "/v1/memory/recall",
+        json={"query": "zephyr", "top_k": 120},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["context"]["budget_tokens"] == 131072
+    assert len(response.json()["context"]["trace_ids"]) == 120
+
+
+def test_conversation_turn_endpoint_stores_raw_transcript_separately() -> None:
+    container = build_in_memory_container()
+    client = TestClient(create_app(container))
+    body = {
+        "namespace": "hermes",
+        "thread_id": str(DEFAULT_THREAD_ID),
+        "source_kind": "test-suite",
+        "messages": [
+            {"role": "user", "content": "Запомни весь этот диалог"},
+            {"role": "assistant", "content": "Ок, пишу transcript turn"},
+        ],
+        "idempotency_key": "turn-1",
+    }
+
+    first = client.post("/v1/conversations/turns", json=body)
+    retry = client.post("/v1/conversations/turns", json=body)
+    listed = client.get("/v1/conversations/turns?namespace=hermes")
+    recalled = client.post(
+        "/v1/memory/recall",
+        json={"query": "Запомни весь этот диалог"},
+    )
+
+    assert first.status_code == 201
+    assert first.json()["created"] is True
+    assert first.json()["retention_policy"] == "raw_and_curated"
+    assert first.json()["messages"][0]["content"] == "Запомни весь этот диалог"
+    assert retry.status_code == 201
+    assert retry.json()["created"] is False
+    assert retry.json()["id"] == first.json()["id"]
+    assert listed.status_code == 200
+    assert listed.json()["count"] == 1
+    assert listed.json()["turns"][0]["namespace"] == "hermes"
+    assert recalled.status_code == 200
+    assert recalled.json()["results"] == []
+
+
+def test_conversation_turn_endpoint_applies_privacy_guard() -> None:
+    client = TestClient(create_app(build_in_memory_container()))
+
+    response = client.post(
+        "/v1/conversations/turns",
+        json={
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "password=supersecret123 надо убрать",
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 201
+    message = response.json()["messages"][0]
+    assert "supersecret123" not in message["content"]
+    assert "[REDACTED:password_assignment]" in message["content"]
+    assert message["metadata"]["privacy"]["finding_count"] == 1
+
+
+def test_conversation_curate_endpoint_creates_recallable_memory() -> None:
+    client = TestClient(create_app(build_in_memory_container()))
+    turn = client.post(
+        "/v1/conversations/turns",
+        json={
+            "namespace": "openclaw",
+            "thread_id": str(DEFAULT_THREAD_ID),
+            "messages": [
+                {"role": "user", "content": "Интерфейс должен быть на русском"},
+                {"role": "assistant", "content": "Принял, буду делать русский UI"},
+            ],
+        },
+    )
+
+    curated = client.post(
+        f"/v1/conversations/turns/{turn.json()['id']}/curate",
+        json={"labels": ["ui"], "idempotency_key": "curate-russian-ui"},
+    )
+    retry = client.post(
+        f"/v1/conversations/turns/{turn.json()['id']}/curate",
+        json={"labels": ["ui"], "idempotency_key": "curate-russian-ui"},
+    )
+    recalled = client.post(
+        "/v1/memory/recall",
+        json={
+            "query": "русский интерфейс",
+            "thread_id": str(DEFAULT_THREAD_ID),
+        },
+    )
+
+    assert curated.status_code == 201
+    assert curated.json()["created"] is True
+    assert retry.status_code == 201
+    assert retry.json()["created"] is False
+    assert retry.json()["id"] == curated.json()["id"]
+    assert recalled.status_code == 200
+    assert recalled.json()["results"][0]["id"] == curated.json()["id"]
+    assert "Conversation turn summary" in recalled.json()["results"][0]["text"]
+    assert "Интерфейс должен быть на русском" in recalled.json()["results"][0]["text"]
+
+
+def test_memory_proposal_endpoint_stores_review_item_not_recall_memory() -> None:
+    client = TestClient(create_app(build_in_memory_container()))
+    body = {
+        "namespace": "openclaw",
+        "requester": "openclaw-plugin",
+        "target": "preference",
+        "proposal": "User prefers the interface in Russian.",
+        "evidence": "User complained that the UI was not in Russian.",
+        "confidence": 0.91,
+        "importance": 0.8,
+        "idempotency_key": "proposal-russian-ui",
+    }
+
+    first = client.post("/v1/memory/proposals", json=body)
+    retry = client.post("/v1/memory/proposals", json=body)
+    listed = client.get("/v1/memory/proposals?namespace=openclaw&status=open")
+    recalled = client.post(
+        "/v1/memory/recall",
+        json={"query": "Russian interface"},
+    )
+
+    assert first.status_code == 201
+    assert first.json()["created"] is True
+    assert first.json()["status"] == "open"
+    assert first.json()["target"] == "preference"
+    assert retry.status_code == 201
+    assert retry.json()["created"] is False
+    assert retry.json()["id"] == first.json()["id"]
+    assert listed.status_code == 200
+    assert listed.json()["count"] == 1
+    assert listed.json()["proposals"][0]["requester"] == "openclaw-plugin"
+    assert recalled.status_code == 200
+    assert recalled.json()["results"] == []
+
+
+def test_memory_proposal_endpoint_applies_privacy_guard() -> None:
+    client = TestClient(create_app(build_in_memory_container()))
+
+    response = client.post(
+        "/v1/memory/proposals",
+        json={
+            "proposal": "Remember password=supersecret123 as the deploy password",
+            "evidence": "Operator pasted password=supersecret123",
+        },
+    )
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert "supersecret123" not in payload["proposal"]
+    assert "supersecret123" not in payload["evidence"]
+    assert "[REDACTED:password_assignment]" in payload["proposal"]
+    assert payload["metadata"]["privacy"]["finding_count"] == 2
+
+
+def test_memory_proposal_accept_creates_recallable_memory() -> None:
+    client = TestClient(create_app(build_in_memory_container()))
+    proposal = client.post(
+        "/v1/memory/proposals",
+        json={
+            "namespace": "hermes",
+            "target": "preference",
+            "requester": "hermes-memory-provider",
+            "proposal": "User wants premium Russian interface polish.",
+            "evidence": "User asked for a more premium Russian dashboard.",
+            "confidence": 0.9,
+            "importance": 0.8,
+        },
+    )
+
+    accepted = client.post(
+        f"/v1/memory/proposals/{proposal.json()['id']}/accept",
+        json={
+            "reviewer": "operator",
+            "reason": "Evidence is explicit.",
+            "idempotency_key": "accept-premium-russian-ui",
+        },
+    )
+    retry = client.post(
+        f"/v1/memory/proposals/{proposal.json()['id']}/accept",
+        json={
+            "reviewer": "operator",
+            "reason": "Retry should be idempotent.",
+            "idempotency_key": "accept-premium-russian-ui",
+        },
+    )
+    recalled = client.post(
+        "/v1/memory/recall",
+        json={"query": "premium Russian interface"},
+    )
+
+    assert accepted.status_code == 201
+    assert accepted.json()["proposal"]["status"] == "accepted"
+    assert accepted.json()["proposal"]["metadata"]["accepted_memory_id"]
+    memory = accepted.json()["memory"]
+    assert memory["created"] is True
+    assert retry.status_code == 201
+    assert retry.json()["memory"]["created"] is False
+    assert retry.json()["memory"]["id"] == memory["id"]
+    assert recalled.status_code == 200
+    assert recalled.json()["results"][0]["id"] == memory["id"]
+    assert recalled.json()["results"][0]["layer"] == "social"
+
+
+def test_memory_proposal_reject_does_not_create_memory_and_blocks_accept() -> None:
+    client = TestClient(create_app(build_in_memory_container()))
+    proposal = client.post(
+        "/v1/memory/proposals",
+        json={
+            "target": "fact",
+            "proposal": "Probably user likes orange buttons.",
+            "evidence": "No direct evidence.",
+        },
+    )
+
+    rejected = client.post(
+        f"/v1/memory/proposals/{proposal.json()['id']}/reject",
+        json={"reviewer": "operator", "reason": "Weak evidence."},
+    )
+    accepted = client.post(
+        f"/v1/memory/proposals/{proposal.json()['id']}/accept",
+        json={"reviewer": "operator"},
+    )
+    recalled = client.post(
+        "/v1/memory/recall",
+        json={"query": "orange buttons"},
+    )
+
+    assert rejected.status_code == 200
+    assert rejected.json()["proposal"]["status"] == "rejected"
+    assert rejected.json()["memory"] is None
+    assert accepted.status_code == 422
+    assert "rejected proposal cannot be accepted" in accepted.text
+    assert recalled.status_code == 200
+    assert recalled.json()["results"] == []
 
 
 def test_markdown_document_endpoint_is_idempotent() -> None:

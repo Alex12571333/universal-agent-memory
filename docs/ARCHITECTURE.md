@@ -112,7 +112,7 @@ cross-encoder и freshness verification без изменения `RecallQuery`.
 
 ```mermaid
 flowchart LR
-  A["AI agents"] -->|"HTTP :8080"| S["memory-server"]
+  A["AI agents"] -->|"HTTP :6798"| S["memory-server"]
   S --> PG["PostgreSQL source of truth"]
   S -. "advanced profile" .-> Q["Qdrant"]
   PG -. "outbox" .-> W["workers"]

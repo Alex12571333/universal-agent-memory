@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-const DEFAULT_URL = "http://localhost:8080";
+const DEFAULT_URL = "http://localhost:6798";
 
 function envBool(name, fallback) {
   const raw = process.env[name];
@@ -36,7 +36,7 @@ function cfg(pluginConfig = {}) {
       stableUuid(`agent:${integration}:${process.env.USER || "openclaw"}`),
     topK: Number(pluginConfig.topK || process.env.UAM_MEMORY_RECALL_TOP_K || 8),
     contextBudgetTokens: Number(
-      pluginConfig.contextBudgetTokens || process.env.UAM_CONTEXT_BUDGET_TOKENS || 2400,
+      pluginConfig.contextBudgetTokens || process.env.UAM_CONTEXT_BUDGET_TOKENS || 131072,
     ),
     retainToolTraces: envBool("UAM_RETAIN_TOOL_TRACES", pluginConfig.retainToolTraces ?? true),
     reflectOnRunComplete: envBool(
@@ -89,6 +89,28 @@ function lastMessageText(messages) {
   return "";
 }
 
+function normalizeTranscriptMessages(messages) {
+  if (!Array.isArray(messages)) return [];
+  return messages
+    .map((msg) => {
+      const role = String(msg?.role || msg?.type || "message");
+      const content = msg?.content ?? msg?.text ?? msg?.message;
+      let text = "";
+      if (typeof content === "string") {
+        text = content.trim();
+      } else if (Array.isArray(content)) {
+        text = content
+          .map((part) => (typeof part === "string" ? part : part?.text || ""))
+          .filter(Boolean)
+          .join("\n")
+          .trim();
+      }
+      if (!text) return null;
+      return { role, content: text };
+    })
+    .filter(Boolean);
+}
+
 function idempotency(prefix, text, ctx) {
   const digest = createHash("sha256").update(text).digest("hex").slice(0, 24);
   return `${prefix}:${ctx?.runId || ctx?.sessionKey || "openclaw"}:${digest}`;
@@ -99,6 +121,23 @@ async function retain(config, base, body) {
     ...base,
     ...body,
     source_kind: "openclaw-plugin",
+  });
+}
+
+async function appendConversationTurn(config, base, messages, ctx) {
+  if (!messages.length) return undefined;
+  const text = JSON.stringify(messages);
+  return postJson(config, "/v1/conversations/turns", {
+    ...base,
+    namespace: "openclaw",
+    source_kind: "openclaw-plugin",
+    retention_policy: "raw_and_curated",
+    messages,
+    metadata: {
+      runId: ctx?.runId || "",
+      sessionKey: ctx?.sessionKey || "",
+    },
+    idempotency_key: idempotency("openclaw-transcript", text, ctx),
   });
 }
 
@@ -120,7 +159,7 @@ export default {
         agentId: { type: "string" },
         enabled: { type: "boolean", default: true },
         topK: { type: "number", default: 8 },
-        contextBudgetTokens: { type: "number", default: 2400 },
+        contextBudgetTokens: { type: "number", default: 131072 },
       },
     },
   },
@@ -175,16 +214,20 @@ export default {
     api.registerHook("agent_end", async (event, ctx) => {
       if (!config.enabled || !event?.success) return;
       const summary = lastMessageText(event?.messages);
-      if (!summary) return;
+      const transcript = normalizeTranscriptMessages(event?.messages);
+      if (!summary && !transcript.length) return;
       const base = contextFromHook(config, event, ctx);
       try {
-        await retain(config, base, {
-          layer: "episodic",
-          scope: "thread",
-          kind: "run_summary",
-          text: summary,
-          idempotency_key: idempotency("openclaw-run-summary", summary, ctx),
-        });
+        await appendConversationTurn(config, base, transcript, ctx);
+        if (summary) {
+          await retain(config, base, {
+            layer: "episodic",
+            scope: "thread",
+            kind: "run_summary",
+            text: summary,
+            idempotency_key: idempotency("openclaw-run-summary", summary, ctx),
+          });
+        }
         if (config.reflectOnRunComplete) {
           await postJson(
             config,

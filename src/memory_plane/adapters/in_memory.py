@@ -10,6 +10,7 @@ from memory_plane.contracts.dto import Candidate, RecallQuery
 from memory_plane.contracts.events import IntegrationEvent
 from memory_plane.domain.checkpoint import Checkpoint, StaleRevisionError
 from memory_plane.domain.conflict import ConflictReviewDecision
+from memory_plane.domain.conversation import ConversationTurn
 from memory_plane.domain.graph import MemoryEdge, MemoryEdgeType
 from memory_plane.domain.models import (
     MemoryItem,
@@ -19,6 +20,7 @@ from memory_plane.domain.models import (
     MemoryStatus,
     Observation,
 )
+from memory_plane.domain.proposal import MemoryProposal, MemoryProposalStatus
 
 _WORD = re.compile(r"\w+", re.UNICODE)
 
@@ -33,6 +35,10 @@ class InMemoryMemoryStore:
         self._observations: dict[UUID, Observation] = {}
         self._conflict_reviews: dict[tuple[UUID, UUID], ConflictReviewDecision] = {}
         self._edges: dict[UUID, MemoryEdge] = {}
+        self._turns: dict[UUID, ConversationTurn] = {}
+        self._turn_idempotency: dict[tuple[UUID, str], UUID] = {}
+        self._proposals: dict[UUID, MemoryProposal] = {}
+        self._proposal_idempotency: dict[tuple[UUID, str], UUID] = {}
         self.events: list[IntegrationEvent] = []
         self._lock = RLock()
 
@@ -181,6 +187,103 @@ class InMemoryMemoryStore:
         with self._lock:
             if all(existing.id != event.id for existing in self.events):
                 self.events.append(event)
+
+    def append_turn(
+        self, turn: ConversationTurn, idempotency_key: str | None = None
+    ) -> tuple[ConversationTurn, bool]:
+        """Atomically append a raw conversation turn."""
+        with self._lock:
+            if idempotency_key:
+                key = (turn.tenant_id, idempotency_key)
+                existing_id = self._turn_idempotency.get(key)
+                if existing_id is not None:
+                    return self._turns[existing_id], False
+            self._turns[turn.id] = turn
+            if idempotency_key:
+                self._turn_idempotency[(turn.tenant_id, idempotency_key)] = turn.id
+            return turn, True
+
+    def get_turn(self, tenant_id: UUID, turn_id: UUID) -> ConversationTurn | None:
+        """Return a raw conversation turn only for its owning tenant."""
+        turn = self._turns.get(turn_id)
+        return turn if turn is not None and turn.tenant_id == tenant_id else None
+
+    def list_turns(
+        self,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        *,
+        thread_id: UUID | None = None,
+        namespace: str | None = None,
+        limit: int = 50,
+    ) -> tuple[ConversationTurn, ...]:
+        """List recent raw conversation turns."""
+        rows = [
+            turn
+            for turn in self._turns.values()
+            if turn.tenant_id == tenant_id
+            and turn.workspace_id == workspace_id
+            and (thread_id is None or turn.thread_id == thread_id)
+            and (namespace is None or turn.namespace == namespace)
+        ]
+        rows.sort(key=lambda turn: (turn.created_at, turn.id), reverse=True)
+        return tuple(rows[:limit])
+
+    def append_proposal(
+        self, proposal: MemoryProposal, idempotency_key: str | None = None
+    ) -> tuple[MemoryProposal, bool]:
+        """Atomically append a memory proposal."""
+        with self._lock:
+            if idempotency_key:
+                key = (proposal.tenant_id, idempotency_key)
+                existing_id = self._proposal_idempotency.get(key)
+                if existing_id is not None:
+                    return self._proposals[existing_id], False
+            self._proposals[proposal.id] = proposal
+            if idempotency_key:
+                self._proposal_idempotency[(proposal.tenant_id, idempotency_key)] = (
+                    proposal.id
+                )
+            return proposal, True
+
+    def get_proposal(self, tenant_id: UUID, proposal_id: UUID) -> MemoryProposal | None:
+        """Return a memory proposal only for its owning tenant."""
+        proposal = self._proposals.get(proposal_id)
+        return (
+            proposal
+            if proposal is not None and proposal.tenant_id == tenant_id
+            else None
+        )
+
+    def save_proposal_review(self, proposal: MemoryProposal) -> MemoryProposal:
+        """Persist a reviewed proposal copy."""
+        with self._lock:
+            current = self.get_proposal(proposal.tenant_id, proposal.id)
+            if current is None:
+                raise KeyError("memory proposal not found")
+            self._proposals[proposal.id] = proposal
+            return proposal
+
+    def list_proposals(
+        self,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        *,
+        namespace: str | None = None,
+        status: MemoryProposalStatus | None = None,
+        limit: int = 50,
+    ) -> tuple[MemoryProposal, ...]:
+        """List recent memory proposals."""
+        rows = [
+            proposal
+            for proposal in self._proposals.values()
+            if proposal.tenant_id == tenant_id
+            and proposal.workspace_id == workspace_id
+            and (namespace is None or proposal.namespace == namespace)
+            and (status is None or proposal.status == status)
+        ]
+        rows.sort(key=lambda proposal: (proposal.created_at, proposal.id), reverse=True)
+        return tuple(rows[:limit])
 
     def collect_metrics(self, tenant_id: UUID | None = None) -> dict[str, float | int]:
         """Return lightweight local counters for the standalone/dev adapter."""

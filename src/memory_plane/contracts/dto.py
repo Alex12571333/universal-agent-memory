@@ -123,8 +123,8 @@ class RecallQuery:
         """Keep fan-out and API resource use bounded."""
         if not self.text.strip():
             raise ValueError("recall query must not be empty")
-        if not 1 <= self.top_k <= 100:
-            raise ValueError("top_k must be between 1 and 100")
+        if not 1 <= self.top_k <= 1000:
+            raise ValueError("top_k must be between 1 and 1000")
 
 
 @dataclass(frozen=True, slots=True)

@@ -11,6 +11,7 @@ import secrets
 import shutil
 import sys
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 from uuid import UUID
@@ -25,6 +26,7 @@ from memory_plane.adapters.embeddings import (
     EmbeddingProviderConfig,
     build_embedding_client,
 )
+from memory_plane.adapters.llm import MemoryLLMConfig
 from memory_plane.bootstrap import (
     Container,
     build_in_memory_container,
@@ -43,6 +45,10 @@ from memory_plane.domain.conflict import (
     ConflictReviewDecision,
     ConflictReviewStatus,
 )
+from memory_plane.domain.conversation import (
+    ConversationMessage,
+    ConversationRetentionPolicy,
+)
 from memory_plane.domain.graph import MemoryEdge, MemoryEdgeType
 from memory_plane.domain.models import (
     MemoryLayer,
@@ -51,11 +57,27 @@ from memory_plane.domain.models import (
     MemoryStatus,
     Provenance,
 )
+from memory_plane.domain.proposal import MemoryProposalStatus, MemoryProposalTarget
+from memory_plane.services.conversations import (
+    AppendConversationTurnCommand,
+    CurateConversationTurnCommand,
+)
 from memory_plane.services.metrics import render_prometheus
+from memory_plane.services.proposals import (
+    ReviewMemoryProposalCommand,
+    SubmitMemoryProposalCommand,
+)
 from memory_plane.services.vault import VaultImportSource
 
 DEFAULT_SERVER_ID = UUID("00000000-0000-0000-0000-000000000001")
 DEFAULT_PROJECT_ID = UUID("00000000-0000-0000-0000-000000000002")
+DEFAULT_THREAD_ID = UUID("00000000-0000-0000-0000-000000000003")
+DEFAULT_CONTEXT_BUDGET_TOKENS = int(
+    os.getenv("UAM_CONTEXT_BUDGET_TOKENS", "131072")
+)
+DEFAULT_CONTEXT_PER_LAYER_LIMIT = int(
+    os.getenv("UAM_CONTEXT_PER_LAYER_LIMIT", "1000")
+)
 PROCESS_STARTED_AT = time.time()
 
 
@@ -122,10 +144,78 @@ class RecallBody(BaseModel):
     thread_id: UUID | None = None
     layers: list[MemoryLayer] = Field(default_factory=list)
     labels: list[str] = Field(default_factory=list)
-    top_k: int = Field(default=12, ge=1, le=100)
+    top_k: int = Field(default=12, ge=1, le=1000)
     minimum_score: float = Field(default=0, ge=0, le=1)
     operation: str = "chat_reply"
-    context_budget_tokens: int = Field(default=4000, ge=128)
+    context_budget_tokens: int = Field(default=DEFAULT_CONTEXT_BUDGET_TOKENS, ge=128)
+
+
+class ConversationMessageBody(BaseModel):
+    """One raw transcript message."""
+
+    role: str = Field(min_length=1)
+    content: str = Field(min_length=1)
+    name: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class ConversationTurnBody(BaseModel):
+    """Append one immutable raw conversation turn."""
+
+    tenant_id: UUID = DEFAULT_SERVER_ID
+    workspace_id: UUID = DEFAULT_PROJECT_ID
+    thread_id: UUID = DEFAULT_THREAD_ID
+    namespace: str = Field(default="default", min_length=1)
+    agent_id: UUID | None = None
+    source_kind: str = Field(default="api", min_length=1)
+    retention_policy: ConversationRetentionPolicy = (
+        ConversationRetentionPolicy.RAW_AND_CURATED
+    )
+    messages: list[ConversationMessageBody] = Field(min_length=1)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    idempotency_key: str | None = None
+
+
+class CurateConversationTurnBody(BaseModel):
+    """Create curated memory from one raw transcript turn."""
+
+    tenant_id: UUID = DEFAULT_SERVER_ID
+    layer: MemoryLayer = MemoryLayer.EPISODIC
+    kind: str = "conversation_summary"
+    labels: list[str] = Field(default_factory=list)
+    importance: float = Field(default=0.4, ge=0, le=1)
+    confidence: float = Field(default=0.65, ge=0, le=1)
+    idempotency_key: str | None = None
+
+
+class MemoryProposalBody(BaseModel):
+    """Submit one proposed memory update through Memory Gateway."""
+
+    tenant_id: UUID = DEFAULT_SERVER_ID
+    workspace_id: UUID = DEFAULT_PROJECT_ID
+    namespace: str = Field(default="default", min_length=1)
+    requester: str = Field(default="memory-gateway", min_length=1)
+    proposal: str = Field(min_length=1)
+    evidence: str = ""
+    target: MemoryProposalTarget = MemoryProposalTarget.AUTO
+    agent_id: UUID | None = None
+    thread_id: UUID | None = None
+    confidence: float = Field(default=0.7, ge=0, le=1)
+    importance: float = Field(default=0.5, ge=0, le=1)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    idempotency_key: str | None = None
+
+
+class MemoryProposalReviewBody(BaseModel):
+    """Accept or reject one memory proposal."""
+
+    tenant_id: UUID = DEFAULT_SERVER_ID
+    reviewer: str = Field(default="operator", min_length=1)
+    reason: str = ""
+    layer: MemoryLayer | None = None
+    kind: str | None = None
+    labels: list[str] = Field(default_factory=list)
+    idempotency_key: str | None = None
 
 
 class SupersedeMemoryBody(BaseModel):
@@ -202,6 +292,75 @@ def _memory_write_response(result: Any) -> dict[str, Any]:
             else None
         ),
         "queued_event_ids": [str(event_id) for event_id in result.queued_event_ids],
+    }
+
+
+def _conversation_turn_response(turn: Any, *, created: bool | None = None) -> dict[str, Any]:
+    """Render a raw conversation turn without treating it as prompt context."""
+    payload = {
+        "id": str(turn.id),
+        "tenant_id": str(turn.tenant_id),
+        "workspace_id": str(turn.workspace_id),
+        "thread_id": str(turn.thread_id),
+        "agent_id": str(turn.agent_id) if turn.agent_id else None,
+        "namespace": turn.namespace,
+        "source_kind": turn.source_kind,
+        "retention_policy": turn.retention_policy.value,
+        "metadata": turn.metadata,
+        "created_at": turn.created_at.isoformat(),
+        "messages": [
+            {
+                "role": message.role,
+                "name": message.name,
+                "content": message.content,
+                "metadata": message.metadata,
+            }
+            for message in turn.messages
+        ],
+    }
+    if created is not None:
+        payload["created"] = created
+    return payload
+
+
+def _memory_proposal_response(
+    proposal: Any, *, created: bool | None = None
+) -> dict[str, Any]:
+    """Render a Memory Gateway proposal."""
+    payload = {
+        "id": str(proposal.id),
+        "tenant_id": str(proposal.tenant_id),
+        "workspace_id": str(proposal.workspace_id),
+        "agent_id": str(proposal.agent_id) if proposal.agent_id else None,
+        "thread_id": str(proposal.thread_id) if proposal.thread_id else None,
+        "namespace": proposal.namespace,
+        "requester": proposal.requester,
+        "target": proposal.target.value,
+        "proposal": proposal.proposal,
+        "evidence": proposal.evidence,
+        "confidence": proposal.confidence,
+        "importance": proposal.importance,
+        "status": proposal.status.value,
+        "metadata": proposal.metadata,
+        "created_at": proposal.created_at.isoformat(),
+        "reviewed_at": proposal.reviewed_at.isoformat()
+        if proposal.reviewed_at
+        else None,
+        "reviewer": proposal.reviewer,
+        "review_reason": proposal.review_reason,
+    }
+    if created is not None:
+        payload["created"] = created
+    return payload
+
+
+def _memory_proposal_review_response(result: Any) -> dict[str, Any]:
+    """Render proposal review result and optional retained memory."""
+    return {
+        "proposal": _memory_proposal_response(result.proposal),
+        "memory": _memory_write_response(result.retained)
+        if result.retained is not None
+        else None,
     }
 
 
@@ -433,6 +592,65 @@ def _settings_from_body(body: ModelSettingsBody) -> dict[str, Any]:
     }
 
 
+@dataclass(frozen=True, slots=True)
+class ApiPrincipal:
+    """Authenticated API principal derived from a bearer token."""
+
+    name: str
+    scopes: frozenset[str]
+
+    def has_scope(self, scope: str) -> bool:
+        return "admin" in self.scopes or "operator" in self.scopes or scope in self.scopes
+
+
+def _parse_scoped_api_keys(raw: str | None) -> tuple[tuple[str, str, frozenset[str]], ...]:
+    """Parse UAM_API_KEYS entries: name:secret:scope+scope,name2:secret2:admin."""
+    if not raw:
+        return ()
+    parsed: list[tuple[str, str, frozenset[str]]] = []
+    for entry in raw.split(","):
+        entry = entry.strip()
+        if not entry:
+            continue
+        try:
+            name, secret, scopes_raw = entry.split(":", 2)
+        except ValueError:
+            continue
+        scopes = frozenset(
+            scope.strip().lower()
+            for scope in scopes_raw.replace("|", "+").split("+")
+            if scope.strip()
+        )
+        if name.strip() and secret.strip() and scopes:
+            parsed.append((name.strip(), secret.strip(), scopes))
+    return tuple(parsed)
+
+
+def _required_scope_for_request(path: str, method: str) -> str:
+    """Return the minimum logical scope required for a route."""
+    if path == "/health":
+        return "public"
+    if path.startswith(("/ui", "/docs", "/redoc", "/openapi.json", "/metrics")):
+        return "operator"
+    if path.startswith(("/v1/system", "/v1/settings")):
+        return "operator"
+    if path.endswith("/recall") or path.startswith("/v1/context"):
+        return "read"
+    if method in {"GET", "HEAD", "OPTIONS"}:
+        return "read"
+    return "write"
+
+
+def _scope_allowed(principal: ApiPrincipal, required_scope: str) -> bool:
+    if required_scope == "public":
+        return True
+    if principal.has_scope(required_scope):
+        return True
+    if required_scope in {"read", "write"} and principal.has_scope("agent"):
+        return True
+    return False
+
+
 def create_app(
     container: Container | None = None,
     *,
@@ -442,6 +660,7 @@ def create_app(
     services = container or _build_runtime_container()
     documents = DocumentIngestor(services.ingestion)
     configured_key = api_key if api_key is not None else os.getenv("UAM_API_KEY")
+    configured_scoped_keys = _parse_scoped_api_keys(os.getenv("UAM_API_KEYS"))
     model_settings = _load_model_settings()
     app = FastAPI(
         title="Universal Agent Memory Server",
@@ -459,19 +678,38 @@ def create_app(
 
     @app.middleware("http")
     async def require_api_key(request: Request, call_next: Any) -> Any:
-        """Protect every endpoint except liveness when a server key is configured."""
-        if not configured_key or request.url.path == "/health":
+        """Protect every endpoint except liveness when API keys are configured."""
+        required_scope = _required_scope_for_request(request.url.path, request.method.upper())
+        if required_scope == "public":
+            return await call_next(request)
+        if not configured_key and not configured_scoped_keys:
             return await call_next(request)
         authorization = request.headers.get("Authorization", "")
         scheme, _, credential = authorization.partition(" ")
-        credential_matches = secrets.compare_digest(credential, configured_key)
-        valid = scheme.casefold() == "bearer" and credential_matches
-        if not valid:
+        principal: ApiPrincipal | None = None
+        if scheme.casefold() == "bearer":
+            if configured_key and secrets.compare_digest(credential, configured_key):
+                principal = ApiPrincipal(name="server", scopes=frozenset({"admin"}))
+            else:
+                for name, secret, scopes in configured_scoped_keys:
+                    if secrets.compare_digest(credential, secret):
+                        principal = ApiPrincipal(name=name, scopes=scopes)
+                        break
+        if principal is None:
             return JSONResponse(
                 status_code=401,
                 content={"detail": "invalid or missing API key"},
                 headers={"WWW-Authenticate": "Bearer"},
             )
+        if not _scope_allowed(principal, required_scope):
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "detail": "API key scope is insufficient",
+                    "required_scope": required_scope,
+                },
+            )
+        request.state.api_principal = principal
         return await call_next(request)
 
     @app.get("/health")
@@ -502,6 +740,7 @@ def create_app(
                 "five_minutes": load_average[1] if load_average else None,
                 "fifteen_minutes": load_average[2] if load_average else None,
             },
+            "memory_llm": MemoryLLMConfig.from_env().public_dict(),
         }
 
     @app.get("/metrics", response_class=PlainTextResponse)
@@ -618,6 +857,179 @@ def create_app(
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         return _memory_write_response(result)
 
+    @app.post("/v1/conversations/turns", status_code=201)
+    def append_conversation_turn(body: ConversationTurnBody) -> dict[str, Any]:
+        """Append an immutable raw transcript turn separate from curated memory."""
+        try:
+            result = services.conversations.append_turn(
+                AppendConversationTurnCommand(
+                    tenant_id=body.tenant_id,
+                    workspace_id=body.workspace_id,
+                    thread_id=body.thread_id,
+                    namespace=body.namespace,
+                    agent_id=body.agent_id,
+                    source_kind=body.source_kind,
+                    retention_policy=body.retention_policy,
+                    messages=tuple(
+                        ConversationMessage(
+                            role=message.role,
+                            content=message.content,
+                            name=message.name,
+                            metadata=message.metadata,
+                        )
+                        for message in body.messages
+                    ),
+                    metadata=body.metadata,
+                    idempotency_key=body.idempotency_key,
+                )
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return _conversation_turn_response(result.turn, created=result.created)
+
+    @app.get("/v1/conversations/turns")
+    def list_conversation_turns(
+        tenant_id: UUID = DEFAULT_SERVER_ID,
+        workspace_id: UUID = DEFAULT_PROJECT_ID,
+        thread_id: UUID | None = None,
+        namespace: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        """List recent raw transcript turns for operator review."""
+        safe_limit = max(1, min(int(limit), 200))
+        turns = services.conversations.list_turns(
+            tenant_id,
+            workspace_id,
+            thread_id=thread_id,
+            namespace=namespace,
+            limit=safe_limit,
+        )
+        return {
+            "tenant_id": str(tenant_id),
+            "workspace_id": str(workspace_id),
+            "count": len(turns),
+            "turns": [_conversation_turn_response(turn) for turn in turns],
+        }
+
+    @app.post("/v1/conversations/turns/{turn_id}/curate", status_code=201)
+    def curate_conversation_turn(
+        turn_id: UUID,
+        body: CurateConversationTurnBody,
+    ) -> dict[str, Any]:
+        """Distill a raw transcript turn into recallable curated memory."""
+        try:
+            result = services.curator.curate_turn(
+                CurateConversationTurnCommand(
+                    tenant_id=body.tenant_id,
+                    turn_id=turn_id,
+                    layer=body.layer,
+                    kind=body.kind,
+                    labels=tuple(body.labels),
+                    importance=body.importance,
+                    confidence=body.confidence,
+                    idempotency_key=body.idempotency_key,
+                )
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="conversation turn not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return _memory_write_response(result)
+
+    @app.post("/v1/memory/proposals", status_code=201)
+    def submit_memory_proposal(body: MemoryProposalBody) -> dict[str, Any]:
+        """Store a proposed memory update without directly mutating memory."""
+        try:
+            result = services.proposals.submit(
+                SubmitMemoryProposalCommand(
+                    tenant_id=body.tenant_id,
+                    workspace_id=body.workspace_id,
+                    namespace=body.namespace,
+                    requester=body.requester,
+                    target=body.target,
+                    proposal=body.proposal,
+                    evidence=body.evidence,
+                    agent_id=body.agent_id,
+                    thread_id=body.thread_id,
+                    confidence=body.confidence,
+                    importance=body.importance,
+                    metadata=body.metadata,
+                    idempotency_key=body.idempotency_key,
+                )
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return _memory_proposal_response(result.proposal, created=result.created)
+
+    @app.get("/v1/memory/proposals")
+    def list_memory_proposals(
+        tenant_id: UUID = DEFAULT_SERVER_ID,
+        workspace_id: UUID = DEFAULT_PROJECT_ID,
+        namespace: str | None = None,
+        status: MemoryProposalStatus | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        """List proposed memory updates for review."""
+        proposals = services.proposals.list(
+            tenant_id,
+            workspace_id,
+            namespace=namespace,
+            status=status,
+            limit=max(1, min(int(limit), 200)),
+        )
+        return {
+            "tenant_id": str(tenant_id),
+            "workspace_id": str(workspace_id),
+            "count": len(proposals),
+            "proposals": [_memory_proposal_response(proposal) for proposal in proposals],
+        }
+
+    @app.post("/v1/memory/proposals/{proposal_id}/accept", status_code=201)
+    def accept_memory_proposal(
+        proposal_id: UUID,
+        body: MemoryProposalReviewBody,
+    ) -> dict[str, Any]:
+        """Accept a proposal and create a durable memory item."""
+        try:
+            result = services.proposals.accept(
+                ReviewMemoryProposalCommand(
+                    tenant_id=body.tenant_id,
+                    proposal_id=proposal_id,
+                    reviewer=body.reviewer,
+                    reason=body.reason,
+                    layer=body.layer,
+                    kind=body.kind,
+                    labels=tuple(body.labels),
+                    idempotency_key=body.idempotency_key,
+                )
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="memory proposal not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return _memory_proposal_review_response(result)
+
+    @app.post("/v1/memory/proposals/{proposal_id}/reject", status_code=200)
+    def reject_memory_proposal(
+        proposal_id: UUID,
+        body: MemoryProposalReviewBody,
+    ) -> dict[str, Any]:
+        """Reject a proposal without creating durable memory."""
+        try:
+            result = services.proposals.reject(
+                ReviewMemoryProposalCommand(
+                    tenant_id=body.tenant_id,
+                    proposal_id=proposal_id,
+                    reviewer=body.reviewer,
+                    reason=body.reason,
+                )
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="memory proposal not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return _memory_proposal_review_response(result)
+
     @app.put("/v1/memory/{item_id}/supersede", status_code=201)
     def supersede_memory(item_id: UUID, body: SupersedeMemoryBody) -> dict[str, Any]:
         """Append a replacement only when the caller's revision is still current."""
@@ -674,6 +1086,9 @@ def create_app(
                 MemoryLayer.ERROR,
                 MemoryLayer.SOCIAL,
             ),
+            per_layer_limit={
+                layer: DEFAULT_CONTEXT_PER_LAYER_LIMIT for layer in MemoryLayer
+            },
         )
         package = services.context.compile(result, recipe)
         return {

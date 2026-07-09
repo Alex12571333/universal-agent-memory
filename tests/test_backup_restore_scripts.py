@@ -30,10 +30,12 @@ def test_migration_runner_includes_every_versioned_sql_file() -> None:
     expected = {
         "001_initial.sql",
         "002_app_role.sql",
-        "003_outbox_delivery.sql",
-        "004_conflict_reviews.sql",
-        "005_memory_status.sql",
-    }
+            "003_outbox_delivery.sql",
+            "004_conflict_reviews.sql",
+            "005_memory_status.sql",
+            "006_conversation_ledger.sql",
+            "007_memory_proposals.sql",
+        }
     configured = {path.name for path in migrate.MIGRATIONS}
 
     assert configured == expected
