@@ -1,15 +1,15 @@
 # Web dashboard
 
-`GET /ui` serves the local operator dashboard for Universal Agent Memory.
+`GET /ui` serves the local operator dashboard for Obelisk Memory.
 
 The production dashboard is a React/Vite single-page app in `web/`. The Docker
 image builds it in a Node build stage and copies the generated files into
 `/app/web/dist`; FastAPI then serves that build from `/ui`.
 
-This is still a local self-hosted control surface for one memory server, not a
-hosted SaaS admin UI. If the React build is absent during development, the
-server falls back to the legacy embedded HTML dashboard so API smoke tests and
-minimal local operation remain available.
+This is a local self-hosted control surface for one memory server, not a hosted
+SaaS admin UI. If the React build is absent during development, the server serves
+the embedded minimal dashboard so API smoke tests and local operation remain
+available.
 
 ## Main areas
 

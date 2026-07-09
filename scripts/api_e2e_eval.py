@@ -1,4 +1,4 @@
-"""HTTP end-to-end checks for a running Universal Agent Memory server."""
+"""HTTP end-to-end checks for a running Obelisk Memory server."""
 
 from __future__ import annotations
 

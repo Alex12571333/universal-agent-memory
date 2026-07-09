@@ -1,4 +1,4 @@
-"""Universal Agent Memory public package."""
+"""Obelisk Memory public package."""
 
 from memory_plane.bootstrap import (
     Container,

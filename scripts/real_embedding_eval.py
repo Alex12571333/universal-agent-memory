@@ -30,7 +30,7 @@ class MemoryDoc:
 DOCS = (
     MemoryDoc(
         "storage-postgres",
-        "Universal Agent Memory хранит долговременную память в PostgreSQL ledger; "
+        "Obelisk Memory хранит долговременную память в PostgreSQL ledger; "
         "Qdrant используется как векторный индекс для semantic recall.",
     ),
     MemoryDoc(

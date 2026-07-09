@@ -1,4 +1,4 @@
-"""Hermes MemoryProvider for Universal Agent Memory.
+"""Hermes MemoryProvider for Obelisk Memory.
 
 Install by copying this directory to ``$HERMES_HOME/plugins/universal_agent_memory``
 and setting ``memory.provider: universal_agent_memory`` in Hermes config.
@@ -92,7 +92,7 @@ class UniversalAgentMemoryProvider(MemoryProvider):
 
     def system_prompt_block(self) -> str:
         return (
-            "# Universal Agent Memory\n"
+            "# Obelisk Memory\n"
             "Active. Relevant long-term memory is injected before turns. "
             "Use the universal_agent_memory_* tools for explicit memory inspection or writes."
         )
@@ -114,7 +114,7 @@ class UniversalAgentMemoryProvider(MemoryProvider):
         except RuntimeError:
             return ""
         markdown = str(data.get("context", {}).get("markdown", "")).strip()
-        return f"## Universal Agent Memory\n{markdown}" if markdown else ""
+        return f"## Obelisk Memory\n{markdown}" if markdown else ""
 
     def sync_turn(
         self,
@@ -294,7 +294,7 @@ def _summarize_messages(messages: list[dict[str, Any]]) -> str:
 
 SEARCH_SCHEMA = {
     "name": "universal_agent_memory_search",
-    "description": "Search Universal Agent Memory for relevant cross-agent context.",
+    "description": "Search Obelisk Memory for relevant cross-agent context.",
     "parameters": {
         "type": "object",
         "properties": {"query": {"type": "string"}, "top_k": {"type": "integer"}},
@@ -304,7 +304,7 @@ SEARCH_SCHEMA = {
 
 ADD_SCHEMA = {
     "name": "universal_agent_memory_add",
-    "description": "Submit an explicit durable fact proposal to Universal Agent Memory.",
+    "description": "Submit an explicit durable fact proposal to Obelisk Memory.",
     "parameters": {
         "type": "object",
         "properties": {"content": {"type": "string"}, "evidence": {"type": "string"}},

@@ -1,6 +1,6 @@
 # Архитектура standalone memory server
 
-Universal Agent Memory — один self-hosted HTTP-сервер в Docker. Он обслуживает
+Obelisk Memory — один self-hosted HTTP-сервер в Docker. Он обслуживает
 агентов пользователя или команды и не содержит SaaS control plane, billing,
 customer onboarding или облачной оркестрации.
 
@@ -16,8 +16,8 @@ customer onboarding или облачной оркестрации.
 5. **Контекст компилируется.** Агент получает не «всё найденное», а бюджетный
    пакет под `chat_reply`, `planner`, `coder`, `critic` или `tool_call`.
 6. **Project boundary в каждом слое.** Один deployment может хранить несколько
-   локальных проектов. Существующее поле `tenant_id` является внутренним
-   `server_id`, а не SaaS-клиентом; `workspace_id` является `project_id`.
+   локальных проектов. `tenant_id` является внутренним `server_id`, а
+   `workspace_id` является `project_id`.
 
 ## Направление зависимостей
 

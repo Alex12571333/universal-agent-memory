@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "type": "module",
   "private": true,
-  "description": "Native OpenClaw lifecycle integration for Universal Agent Memory",
+  "description": "Native OpenClaw lifecycle integration for Obelisk Memory",
   "main": "./index.js",
   "openclaw": {
     "extensions": [

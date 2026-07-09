@@ -1,6 +1,6 @@
 # Hermes native integration
 
-Goal: integrate Universal Agent Memory as a Hermes runtime/plugin extension,
+Goal: integrate Obelisk Memory as a Hermes runtime/plugin extension,
 not as a skill and not only as an MCP tool.
 
 The installable provider lives in `universal_agent_memory/` and matches the

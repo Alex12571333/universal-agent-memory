@@ -1,7 +1,7 @@
 # Phase 2 roadmap: production-grade eternal memory
 
 Этот документ описывает следующий этап после foundation work packages. Цель —
-довести Universal Agent Memory до уровня условно вечной памяти для разных
+довести Obelisk Memory до уровня условно вечной памяти для разных
 агентов: устойчивой, проверяемой человеком, глубоко интегрируемой в agent
 runtimes и не завязанной на один UI или один LLM provider.
 
@@ -198,7 +198,7 @@ Current operator console:
 ## WP-15 Native OpenClaw/Hermes integrations — complete
 
 Goal: integrate as a plugin/runtime extension, not merely as a skill or MCP
-server. MCP remains useful as compatibility, but deep integration should hook
+server. MCP remains useful as an optional bridge, but deep integration should hook
 into the agent lifecycle.
 
 ### Why plugin-level integration
@@ -265,10 +265,10 @@ Acceptance:
   call or planning step; ✅ `agent_turn_prepare`
 - Hermes plugin does the same for its runtime lifecycle; ✅ `prefetch`
 - both plugins retain run summaries and tool/error memories after execution; ✅
-- both use the same Universal Agent Memory server and HTTP API; ✅
+- both use the same Obelisk Memory server and HTTP API; ✅
 - each plugin can be disabled with one env/config flag; ✅ `UAM_MEMORY_ENABLED`
 - plugins never require a hosted SaaS service; ✅
-- MCP bridge remains optional compatibility, not the primary integration. ✅
+- MCP bridge remains optional, not the primary integration. ✅
 
 Runtime APIs verified against `.14`:
 

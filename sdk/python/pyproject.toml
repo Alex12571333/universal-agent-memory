@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "uam-client"
 version = "0.1.0"
-description = "Typed Python client for Universal Agent Memory Server"
+description = "Typed Python client for Obelisk Memory Server"
 requires-python = ">=3.11"
 license = { text = "Apache-2.0" }
 dependencies = []

@@ -1,7 +1,7 @@
 # Shared lifecycle contract
 
 The shared integration contract describes *when* native agent plugins should
-interact with Universal Agent Memory. It does not assume a particular agent
+interact with Obelisk Memory. It does not assume a particular agent
 framework.
 
 Suggested hooks:

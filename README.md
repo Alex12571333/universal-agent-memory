@@ -2,12 +2,9 @@
 
 ![Obelisk Memory hero](docs/assets/obelisk-memory-hero.png)
 
-**Obelisk Memory** is a self-hosted, production-oriented memory plane for AI
+**Obelisk Memory** is a self-hosted, production-shaped memory plane for AI
 agents. It gives OpenClaw, Hermes, custom workers, and future agent runtimes a
 shared long-lived memory layer without turning the system into a SaaS dependency.
-
-The repository/package name remains `universal-agent-memory` for compatibility,
-but the product name is now **Obelisk Memory**.
 
 ## What it is
 
@@ -28,7 +25,7 @@ This is intentionally not a hosted SaaS architecture.
 
 ## Production status
 
-Current verified baseline, July 9, 2026:
+Current verified baseline, July 10, 2026:
 
 | Area | Status |
 |---|---|
@@ -43,6 +40,14 @@ Current verified baseline, July 9, 2026:
 | Agent integration | Native OpenClaw plugin and Hermes memory provider adapters |
 | Tests | Unit/integration contracts, Docker config checks, live benchmark suite |
 
+This means the repository is ready for a trusted local/team pilot. It is not yet
+“full production” in the strong sense. Full production still requires branch
+protection/PR-only releases, tested restore drills, alerting, audit export,
+scoped key rotation metadata, security review, and real OpenClaw/Hermes soak
+tests on the target machines.
+
+Honest gap audit:
+[docs/PRODUCTION_GAP_AUDIT_2026_07_10.md](docs/PRODUCTION_GAP_AUDIT_2026_07_10.md).
 Latest benchmark report: [docs/BENCHMARK_RESULTS_2026_07_09.md](docs/BENCHMARK_RESULTS_2026_07_09.md).
 
 ## Architecture
@@ -255,7 +260,8 @@ python scripts/enterprise_readiness_check.py
 The benchmark suite covers config contracts, API memory contracts, Qwen memory
 LLM wiring, in-memory vector recall, 128k context compilation, agent integration
 defaults, web build, Docker state, live HTTP API, live memory LLM, and live
-embeddings when the local endpoints are reachable.
+embeddings when the local endpoints are reachable. Passing these checks is not a
+substitute for the production gates in the gap audit.
 
 ## Documentation map
 
@@ -263,6 +269,7 @@ embeddings when the local endpoints are reachable.
 - [docs/CONTRACTS.md](docs/CONTRACTS.md) — API/data contracts.
 - [docs/FUNCTION_CATALOG.md](docs/FUNCTION_CATALOG.md) — function ownership map.
 - [docs/PRODUCTION_READINESS_TESTING.md](docs/PRODUCTION_READINESS_TESTING.md) — test plan.
+- [docs/PRODUCTION_GAP_AUDIT_2026_07_10.md](docs/PRODUCTION_GAP_AUDIT_2026_07_10.md) — honest production gaps.
 - [docs/OPERATIONS_RUNBOOK.md](docs/OPERATIONS_RUNBOOK.md) — production operations.
 - [docs/ENTERPRISE_READINESS.md](docs/ENTERPRISE_READINESS.md) — readiness checklist.
 - [docs/ROADMAP_PHASE_4_ARCHIVAL_MEMORY.md](docs/ROADMAP_PHASE_4_ARCHIVAL_MEMORY.md) — archival memory roadmap.

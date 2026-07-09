@@ -1,6 +1,6 @@
 # Phase 4 roadmap: archival-grade eternal memory
 
-This phase turns Universal Agent Memory from a strong self-hosted memory server
+This phase turns Obelisk Memory from a strong self-hosted memory server
 into an archival memory plane for long-running agents and agent swarms.
 
 The ideas below were informed by the public `ArchiveOfHeresy` architecture in
@@ -9,7 +9,7 @@ Docker-first deployment, Postgres/Qdrant/NATS, explicit permissions, revisions,
 human-readable vault projections and deep OpenClaw/Hermes integrations.
 
 We should not copy ArchiveOfHeresy names or file-based implementation. The
-Universal Agent Memory roles are:
+Obelisk Memory roles are:
 
 - **Навигатор памяти** (`Memory Navigator`) — pre-answer recall planner. It
   reads candidate memory layers and returns a compact, grounded context bundle.

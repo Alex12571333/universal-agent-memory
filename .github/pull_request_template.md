@@ -14,4 +14,4 @@ Closes #
 
 ## Compatibility
 
-<!-- Contract, migration, event, or API compatibility notes. -->
+<!-- Contract, migration, event, or API impact notes. -->

@@ -1,4 +1,4 @@
-"""OpenClaw-facing factory for Universal Agent Memory native plugin hooks."""
+"""OpenClaw-facing factory for Obelisk Memory native plugin hooks."""
 
 from __future__ import annotations
 

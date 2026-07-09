@@ -37,16 +37,16 @@ def migrate(dsn: str) -> tuple[str, ...]:
             for row in connection.execute("select name from schema_migrations").fetchall()
         }
         if not applied:
-            legacy_schema = connection.execute(
+            existing_schema = connection.execute(
                 "select to_regclass('memory_items') is not null"
             ).fetchone()[0]
-            legacy_app_role = connection.execute(
+            existing_app_role = connection.execute(
                 "select to_regrole('memory_app') is not null"
             ).fetchone()[0]
-            if legacy_schema:
+            if existing_schema:
                 _record(connection, MIGRATIONS[0].name)
                 applied.add(MIGRATIONS[0].name)
-            if legacy_app_role:
+            if existing_app_role:
                 _record(connection, MIGRATIONS[1].name)
                 applied.add(MIGRATIONS[1].name)
 

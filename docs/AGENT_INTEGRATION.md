@@ -1,6 +1,6 @@
 # Agent integration guide
 
-Universal Agent Memory is designed to be embedded into an agent runtime, not
+Obelisk Memory is designed to be embedded into an agent runtime, not
 used as a sidecar chat tool. The intended integration point is the agent
 lifecycle.
 

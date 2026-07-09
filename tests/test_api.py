@@ -116,6 +116,25 @@ def test_api_key_protects_memory_routes_but_not_health() -> None:
     assert valid.status_code == 201
 
 
+def test_api_responses_include_security_headers() -> None:
+    client = TestClient(create_app(build_in_memory_container(), api_key="secret"))
+
+    public = client.get("/health")
+    denied = client.post("/v1/memory/recall", json={"query": "protected"})
+    allowed = client.post(
+        "/v1/memory/recall",
+        json={"query": "protected"},
+        headers={"Authorization": "Bearer secret"},
+    )
+
+    for response in (public, denied, allowed):
+        assert response.headers["x-content-type-options"] == "nosniff"
+        assert response.headers["x-frame-options"] == "DENY"
+        assert response.headers["referrer-policy"] == "no-referrer"
+        assert "frame-ancestors 'none'" in response.headers["content-security-policy"]
+        assert "camera=()" in response.headers["permissions-policy"]
+
+
 def test_scoped_api_keys_limit_agent_and_operator_access(monkeypatch) -> None:
     monkeypatch.setenv(
         "UAM_API_KEYS",
@@ -799,7 +818,7 @@ def test_vault_endpoint_exports_markdown_files() -> None:
             "layer": "core",
             "scope": "workspace",
             "kind": "decision",
-            "text": "Universal Agent Memory exposes an Obsidian vault.",
+            "text": "Obelisk Memory exposes an Obsidian vault.",
         },
     )
 
@@ -813,7 +832,7 @@ def test_vault_endpoint_exports_markdown_files() -> None:
     assert "README.md" in files
     memory_path = next(path for path in files if path.startswith("core/"))
     assert "type: \"memory\"" in files[memory_path]
-    assert "Universal Agent Memory exposes an Obsidian vault." in files[memory_path]
+    assert "Obelisk Memory exposes an Obsidian vault." in files[memory_path]
 
 
 def test_vault_import_endpoint_plans_and_applies_supersede() -> None:

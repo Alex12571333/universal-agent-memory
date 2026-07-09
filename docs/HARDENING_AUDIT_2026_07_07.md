@@ -1,6 +1,6 @@
 # Hardening audit — 2026-07-07
 
-Goal: make Universal Agent Memory safer as a production-grade, Docker-first,
+Goal: make Obelisk Memory safer as a production-grade, Docker-first,
 long-lived memory server and verify the native OpenClaw/Hermes integrations
 against the real `.14` agent host.
 
@@ -68,7 +68,7 @@ drills, observability budgets, and chaos/load testing.
 2. Add `scripts/install_hermes_provider.sh` with dry-run and rollback mode.
 3. Add `.14`-style smoke docs: install into a test profile, run one agent turn,
    assert a memory is retained and recall context is injected on the next turn.
-4. Add plugin compatibility checks for future OpenClaw SDK changes: import
+4. Add plugin contract checks for future OpenClaw SDK changes: import
    plugin, inspect exported entry, fake-register hooks.
 
 ### P1 — eternal memory quality
@@ -109,4 +109,3 @@ drills, observability budgets, and chaos/load testing.
 3. Add rolling migration tests against realistic old schemas.
 4. Add multi-node deployment notes for Postgres, Qdrant, NATS, and server
    replicas.
-

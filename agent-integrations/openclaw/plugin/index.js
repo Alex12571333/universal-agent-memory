@@ -143,7 +143,7 @@ async function appendConversationTurn(config, base, messages, ctx) {
 
 export default {
   id: "universal-agent-memory",
-  name: "Universal Agent Memory",
+  name: "Obelisk Memory",
   description: "Native OpenClaw lifecycle hooks for shared long-term agent memory.",
   configSchema: {
     validate(value) {
@@ -180,7 +180,7 @@ export default {
         const markdown = data?.context?.markdown || "";
         if (!markdown.trim()) return undefined;
         return {
-          prependContext: `# Universal Agent Memory\n${markdown}`,
+          prependContext: `# Obelisk Memory\n${markdown}`,
         };
       } catch (error) {
         api.logger.warn(`UAM recall failed: ${error.message}`);

@@ -187,7 +187,7 @@ class MemoryProposalService:
                     {
                         "role": "system",
                         "content": (
-                            "You are Memory Gateway for Universal Agent Memory. "
+                            "You are Memory Gateway for Obelisk Memory. "
                             "Classify a proposed memory update conservatively. "
                             "Return JSON only. target must be one of: fact, "
                             "preference, decision, task, graph, procedure. "

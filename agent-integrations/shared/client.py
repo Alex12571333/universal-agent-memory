@@ -75,7 +75,7 @@ class MemoryClient(Protocol):
 
 
 class MemoryServerClient:
-    """Minimal Universal Agent Memory HTTP client for plugin runtimes."""
+    """Minimal Obelisk Memory HTTP client for plugin runtimes."""
 
     def __init__(self, config: AgentMemoryConfig) -> None:
         """Bind the client to one memory server."""

@@ -239,7 +239,7 @@ class ConversationCurator:
                     {
                         "role": "system",
                         "content": (
-                            "You are Memory Curator for Universal Agent Memory. "
+                            "You are Memory Curator for Obelisk Memory. "
                             "Extract only durable, evidence-backed information. "
                             "Do not invent facts. Return JSON object only."
                         ),

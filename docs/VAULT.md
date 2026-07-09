@@ -1,6 +1,6 @@
 # Obsidian vault export/import
 
-Universal Agent Memory keeps PostgreSQL as the source of truth, but exposes a
+Obelisk Memory keeps PostgreSQL as the source of truth, but exposes a
 human-readable vault projection for review, backup and Obsidian-style browsing.
 
 The vault is a human-readable projection of canonical memory. Export is

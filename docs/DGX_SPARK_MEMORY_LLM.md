@@ -1,6 +1,6 @@
 # DGX Spark memory LLM
 
-Universal Agent Memory uses two different model runtimes:
+Obelisk Memory uses two different model runtimes:
 
 - **Embeddings** — Jina embeddings v4 Q8 on DGX Spark `.10`, documented in
   [DGX_SPARK_EMBEDDINGS.md](DGX_SPARK_EMBEDDINGS.md).

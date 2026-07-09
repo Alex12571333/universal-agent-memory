@@ -1,1 +1,1 @@
-"""Shared native integration primitives for Universal Agent Memory."""
+"""Shared native integration primitives for Obelisk Memory."""

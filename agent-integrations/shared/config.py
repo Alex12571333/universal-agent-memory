@@ -1,4 +1,4 @@
-"""Configuration for native Universal Agent Memory plugins."""
+"""Configuration for native Obelisk Memory plugins."""
 
 from __future__ import annotations
 

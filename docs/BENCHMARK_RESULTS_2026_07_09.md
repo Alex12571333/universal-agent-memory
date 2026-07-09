@@ -1,4 +1,4 @@
-# Universal Agent Memory benchmark results
+# Obelisk Memory benchmark results
 
 Generated: 2026-07-09 21:13:07 KST
 

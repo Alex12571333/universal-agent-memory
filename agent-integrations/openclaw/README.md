@@ -1,6 +1,6 @@
 # OpenClaw native integration
 
-Goal: integrate Universal Agent Memory as an OpenClaw runtime/plugin extension,
+Goal: integrate Obelisk Memory as an OpenClaw runtime/plugin extension,
 not as a skill and not only as an MCP tool.
 
 The installable plugin lives in `plugin/` and matches the OpenClaw extension

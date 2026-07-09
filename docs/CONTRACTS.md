@@ -1,12 +1,12 @@
-# Контракты совместимости
+# Контракты API и данных
 
 ## Server/project identity и scope
 
-В текущей версии wire-поля `tenant_id` и `workspace_id` сохранены для
-совместимости с foundation. В standalone deployment они означают соответственно
-`server_id` и `project_id`, а не SaaS customer/account. API подставляет fixed
-defaults, поэтому обычный клиент их не передаёт. `agent_id` и `thread_id`
-разделяют память агентов внутри проекта.
+Wire-поля `tenant_id` и `workspace_id` используются как стабильные идентификаторы
+локального deployment и проекта: `tenant_id` означает `server_id`, а
+`workspace_id` означает `project_id`. API подставляет fixed defaults, поэтому
+обычный standalone-клиент их не передаёт. `agent_id` и `thread_id` разделяют
+память агентов внутри проекта.
 
 ## Event envelope
 

@@ -1,6 +1,6 @@
 name: universal_agent_memory
 version: 0.1.0
-description: "Universal Agent Memory — Docker memory server provider with semantic recall, sync_turn ingest, and cross-agent workspace scope."
+description: "Obelisk Memory — Docker memory server provider with semantic recall, sync_turn ingest, and cross-agent workspace scope."
 requires_env:
   - UAM_URL
 hooks:

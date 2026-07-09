@@ -1,7 +1,7 @@
 {
   "name": "@uam/client",
   "version": "0.1.0",
-  "description": "Typed TypeScript client for Universal Agent Memory Server",
+  "description": "Typed TypeScript client for Obelisk Memory Server",
   "type": "module",
   "main": "dist/src/index.js",
   "types": "dist/src/index.d.ts",

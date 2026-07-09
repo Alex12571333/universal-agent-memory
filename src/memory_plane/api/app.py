@@ -651,6 +651,29 @@ def _scope_allowed(principal: ApiPrincipal, required_scope: str) -> bool:
     return False
 
 
+def _apply_security_headers(response: Any) -> Any:
+    """Add safe default browser/API security headers."""
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    response.headers.setdefault(
+        "Permissions-Policy",
+        "camera=(), microphone=(), geolocation=(), payment=()",
+    )
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'self'; "
+        "img-src 'self' data:; "
+        "style-src 'self' 'unsafe-inline'; "
+        "script-src 'self' 'unsafe-inline'; "
+        "connect-src 'self'; "
+        "frame-ancestors 'none'; "
+        "base-uri 'self'; "
+        "form-action 'self'",
+    )
+    return response
+
+
 def create_app(
     container: Container | None = None,
     *,
@@ -663,7 +686,7 @@ def create_app(
     configured_scoped_keys = _parse_scoped_api_keys(os.getenv("UAM_API_KEYS"))
     model_settings = _load_model_settings()
     app = FastAPI(
-        title="Universal Agent Memory Server",
+        title="Obelisk Memory Server",
         version="0.1.0",
         description="Self-hosted memory API for local and team AI agents.",
     )
@@ -681,9 +704,9 @@ def create_app(
         """Protect every endpoint except liveness when API keys are configured."""
         required_scope = _required_scope_for_request(request.url.path, request.method.upper())
         if required_scope == "public":
-            return await call_next(request)
+            return _apply_security_headers(await call_next(request))
         if not configured_key and not configured_scoped_keys:
-            return await call_next(request)
+            return _apply_security_headers(await call_next(request))
         authorization = request.headers.get("Authorization", "")
         scheme, _, credential = authorization.partition(" ")
         principal: ApiPrincipal | None = None
@@ -696,21 +719,21 @@ def create_app(
                         principal = ApiPrincipal(name=name, scopes=scopes)
                         break
         if principal is None:
-            return JSONResponse(
+            return _apply_security_headers(JSONResponse(
                 status_code=401,
                 content={"detail": "invalid or missing API key"},
                 headers={"WWW-Authenticate": "Bearer"},
-            )
+            ))
         if not _scope_allowed(principal, required_scope):
-            return JSONResponse(
+            return _apply_security_headers(JSONResponse(
                 status_code=403,
                 content={
                     "detail": "API key scope is insufficient",
                     "required_scope": required_scope,
                 },
-            )
+            ))
         request.state.api_principal = principal
-        return await call_next(request)
+        return _apply_security_headers(await call_next(request))
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -2564,7 +2587,7 @@ _OPERATOR_UI_HTML = """
     <header class="hero">
       <div>
         <div class="brand"><span class="orb"></span> Self-hosted</div>
-        <h1>Universal Agent Memory</h1>
+        <h1>Obelisk Memory</h1>
         <p class="lede">
           Единый слой долговременной памяти для OpenClaw, Hermes и других агентов.
         </p>

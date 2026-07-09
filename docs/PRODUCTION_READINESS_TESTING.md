@@ -11,7 +11,7 @@ PYTHONPATH=src .venv/bin/pytest -q
 ```
 
 This covers the core domain, API boundaries, vault import/export, Qdrant adapter
-compatibility, embeddings, privacy redaction, checkpoints, and agent integration
+API contracts, embeddings, privacy redaction, checkpoints, and agent integration
 helpers.
 
 ## 2. In-process production-readiness eval

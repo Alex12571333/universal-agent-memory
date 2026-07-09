@@ -1,4 +1,4 @@
-"""Universal Agent Memory benchmark and readiness report.
+"""Obelisk Memory benchmark and readiness report.
 
 The suite combines deterministic in-process checks with optional live endpoint
 smoke tests. It writes a Markdown report so agents and operators can compare
@@ -556,7 +556,7 @@ def write_report(path: Path, results: list[BenchResult]) -> None:
     failed = sum(result.status == "FAIL" for result in results)
     skipped = sum(result.status == "SKIP" for result in results)
     lines = [
-        "# Universal Agent Memory benchmark results",
+        "# Obelisk Memory benchmark results",
         "",
         f"Generated: {time.strftime('%Y-%m-%d %H:%M:%S %Z')}",
         "",

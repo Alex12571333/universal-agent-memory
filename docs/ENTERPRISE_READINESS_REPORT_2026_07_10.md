@@ -1,6 +1,6 @@
-# Enterprise readiness report — 2026-07-09
+# Production envelope report — 2026-07-10
 
-Passed: 31
+Passed: 39
 Failed: 0
 
 | Check | Status | Detail |
@@ -13,12 +13,15 @@ Failed: 0
 | `file:docs/assets/obelisk-memory-hero.png` | PASS | required production artifact |
 | `file:docs/OPERATIONS_RUNBOOK.md` | PASS | required production artifact |
 | `file:docs/ENTERPRISE_READINESS.md` | PASS | required production artifact |
+| `file:docs/PRODUCTION_GAP_AUDIT_2026_07_10.md` | PASS | required production artifact |
 | `file:docs/RELEASE_CHECKLIST.md` | PASS | required production artifact |
 | `file:docs/DGX_SPARK_MEMORY_LLM.md` | PASS | required production artifact |
 | `file:docs/BENCHMARK_RESULTS_2026_07_09.md` | PASS | required production artifact |
 | `readme:brand` | PASS | README uses product name |
 | `readme:hero` | PASS | README references generated hero asset |
 | `readme:production` | PASS | prod path documented |
+| `readme:honest-status` | PASS | README does not over-claim full production readiness |
+| `readme:gap-audit` | PASS | README links the honest production gap audit |
 | `readme:agents` | PASS | agent adapters documented |
 | `readme:128k` | PASS | 128k context budget documented |
 | `readme:dgx` | PASS | DGX Spark .10 endpoint documented |
@@ -29,14 +32,19 @@ Failed: 0
 | `ci:ruff` | PASS | CI runs ruff |
 | `ci:pytest` | PASS | CI runs pytest |
 | `ci:web-build` | PASS | CI builds web UI |
+| `ci:production-readiness-eval` | PASS | CI runs in-process production readiness eval |
 | `ci:prod-compose` | PASS | CI validates production compose |
 | `env:memory-llm` | PASS | Qwen memory LLM endpoint |
 | `env:embeddings` | PASS | embedding endpoint |
 | `env:privacy` | PASS | privacy defaults |
 | `env:scoped-keys` | PASS | scoped API keys documented |
+| `api:security-headers` | PASS | API applies baseline security headers |
+| `tests:security-headers` | PASS | security headers are covered by API tests |
+| `gap-audit:no-overclaim` | PASS | gap audit explicitly forbids readiness over-claims |
+| `gap-audit:full-production-gates` | PASS | gap audit defines full-production gates |
 | `benchmark:passed` | PASS | latest benchmark pass count |
 | `benchmark:no-failures` | PASS | latest benchmark failure count |
 
 ## Verdict
 
-Obelisk Memory passes the repository-level enterprise readiness gate.
+Obelisk Memory passes the repository-level trusted self-hosted pilot gate. This is not a full-production certification; see the production gap audit.

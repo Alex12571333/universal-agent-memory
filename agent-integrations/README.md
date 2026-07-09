@@ -15,7 +15,7 @@ checkpoint        → save working state
 run complete      → retain summary and optionally trigger reflection/reindex
 ```
 
-MCP can remain as a compatibility bridge, but it should not be the primary
+MCP can remain as an optional bridge, but it should not be the primary
 memory integration for agents that support plugins/runtime hooks.
 
 ## Layout

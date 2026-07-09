@@ -54,9 +54,9 @@ returns pooled and normalized OpenAI-compatible vectors.
 
 Do not point UAM directly at bare `llama-server` for this model: the server can
 load the Q8 GGUF, but its public embedding endpoint expects token-level output.
-The wrapper is the compatibility layer that returns one vector per input.
+The wrapper is the API adapter that returns one vector per input.
 
-## Configure Universal Agent Memory
+## Configure Obelisk Memory
 
 ```text
 UAM_EMBEDDING_PROVIDER=tei

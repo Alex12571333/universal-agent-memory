@@ -21,6 +21,8 @@ jobs:
         run: ruff check src tests scripts agent-integrations
       - name: Tests
         run: pytest -q
+      - name: Production readiness eval
+        run: PYTHONPATH=src python scripts/production_readiness_eval.py
       - name: Docker compose config
         run: |
           docker compose --profile advanced config

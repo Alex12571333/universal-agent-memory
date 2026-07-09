@@ -197,8 +197,8 @@ class QdrantCandidateSource:
                 if not self._matches_filter(item, query):
                     continue
                 # Cosine similarity against the real query vector when an
-                # embedding client is wired; otherwise preserve the legacy
-                # deterministic fallback used by older unit tests.
+                # embedding client is wired; otherwise use the deterministic
+                # fallback required by unit tests.
                 if query_vector is not None:
                     semantic = self._bounded_cosine(query_vector, vec)
                 else:

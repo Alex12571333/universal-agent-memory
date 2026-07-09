@@ -1,8 +1,11 @@
-"""Static enterprise-readiness gate for Obelisk Memory.
+"""Static production-envelope gate for Obelisk Memory.
 
 The benchmark suite validates runtime behavior. This script validates the
 production envelope: docs, compose hardening, CI, generated assets, and the
 latest benchmark report. It intentionally has no third-party dependencies.
+
+Passing this gate means "ready for a trusted self-hosted pilot", not "fully
+production-complete". The full gap list lives in the production gap audit.
 """
 
 from __future__ import annotations
@@ -12,7 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-REPORT_PATH = ROOT / "docs" / "ENTERPRISE_READINESS_REPORT_2026_07_09.md"
+REPORT_PATH = ROOT / "docs" / "ENTERPRISE_READINESS_REPORT_2026_07_10.md"
 
 
 @dataclass(frozen=True)
@@ -45,6 +48,7 @@ def run_checks(*, static_only: bool) -> list[Check]:
         "docs/assets/obelisk-memory-hero.png",
         "docs/OPERATIONS_RUNBOOK.md",
         "docs/ENTERPRISE_READINESS.md",
+        "docs/PRODUCTION_GAP_AUDIT_2026_07_10.md",
         "docs/RELEASE_CHECKLIST.md",
         "docs/DGX_SPARK_MEMORY_LLM.md",
         "docs/BENCHMARK_RESULTS_2026_07_09.md",
@@ -61,6 +65,17 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 "README references generated hero asset",
             ),
             Check("readme:production", "Production deployment" in readme, "prod path documented"),
+            Check(
+                "readme:honest-status",
+                "trusted local/team pilot" in readme
+                and "Full production still requires" in readme,
+                "README does not over-claim full production readiness",
+            ),
+            Check(
+                "readme:gap-audit",
+                "PRODUCTION_GAP_AUDIT_2026_07_10.md" in readme,
+                "README links the honest production gap audit",
+            ),
             Check(
                 "readme:agents",
                 "OpenClaw" in readme and "Hermes" in readme,
@@ -106,6 +121,11 @@ def run_checks(*, static_only: bool) -> list[Check]:
             Check("ci:pytest", "pytest -q" in ci, "CI runs pytest"),
             Check("ci:web-build", "npm run build" in ci, "CI builds web UI"),
             Check(
+                "ci:production-readiness-eval",
+                "scripts/production_readiness_eval.py" in ci,
+                "CI runs in-process production readiness eval",
+            ),
+            Check(
                 "ci:prod-compose",
                 "docker-compose.prod.yml" in ci,
                 "CI validates production compose",
@@ -128,6 +148,43 @@ def run_checks(*, static_only: bool) -> list[Check]:
             ),
             Check("env:privacy", "UAM_PRIVACY_ACTION=redact" in env, "privacy defaults"),
             Check("env:scoped-keys", "UAM_API_KEYS=" in env, "scoped API keys documented"),
+        ]
+    )
+
+    api = read("src/memory_plane/api/app.py")
+    tests = read("tests/test_api.py")
+    checks.extend(
+        [
+            Check(
+                "api:security-headers",
+                "Content-Security-Policy" in api
+                and "X-Frame-Options" in api
+                and "X-Content-Type-Options" in api,
+                "API applies baseline security headers",
+            ),
+            Check(
+                "tests:security-headers",
+                "test_api_responses_include_security_headers" in tests,
+                "security headers are covered by API tests",
+            ),
+        ]
+    )
+
+    gap_audit = read("docs/PRODUCTION_GAP_AUDIT_2026_07_10.md")
+    checks.extend(
+        [
+            Check(
+                "gap-audit:no-overclaim",
+                "Things that must not be claimed yet" in gap_audit,
+                "gap audit explicitly forbids readiness over-claims",
+            ),
+            Check(
+                "gap-audit:full-production-gates",
+                "Security gate" in gap_audit
+                and "Reliability gate" in gap_audit
+                and "Agent-integration gate" in gap_audit,
+                "gap audit defines full-production gates",
+            ),
         ]
     )
 
@@ -155,7 +212,7 @@ def render_report(checks: list[Check]) -> str:
     passed = sum(1 for check in checks if check.passed)
     failed = len(checks) - passed
     lines = [
-        "# Enterprise readiness report — 2026-07-09",
+        "# Production envelope report — 2026-07-10",
         "",
         f"Passed: {passed}",
         f"Failed: {failed}",
@@ -172,9 +229,13 @@ def render_report(checks: list[Check]) -> str:
             "## Verdict",
             "",
             (
-                "Obelisk Memory passes the repository-level enterprise readiness gate."
+                "Obelisk Memory passes the repository-level trusted self-hosted pilot gate. "
+                "This is not a full-production certification; see the production gap audit."
                 if failed == 0
-                else "Obelisk Memory is not enterprise-ready until failed checks are fixed."
+                else (
+                    "Obelisk Memory is not ready for the trusted self-hosted "
+                    "pilot gate until failed checks are fixed."
+                )
             ),
             "",
         ]

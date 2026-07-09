@@ -5,6 +5,7 @@ Use this before tagging or pushing a production release.
 ```bash
 ruff check src tests scripts agent-integrations
 pytest -q
+PYTHONPATH=src python scripts/production_readiness_eval.py
 docker compose --profile advanced config
 docker compose -f docker-compose.prod.yml --env-file .env.production config
 python scripts/benchmark_suite.py
@@ -21,6 +22,8 @@ Manual checks:
 - Confirm embedding endpoint returns the configured dimension.
 - Confirm worker logs do not show repeated NATS/Qdrant connection failures.
 - Confirm `.env.production` is not staged.
+- Confirm the release was merged through PR with green CI, not pushed directly
+  to `main`.
 
 Do not release if:
 
@@ -28,3 +31,5 @@ Do not release if:
 - `benchmark_suite.py` reports any failed gate;
 - production compose exposes internal infrastructure ports;
 - generated context contains rejected/archived/superseded memory as active truth.
+- branch protection or PR-only merge policy is disabled for a shared production
+  repository.

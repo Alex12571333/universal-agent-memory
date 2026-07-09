@@ -408,7 +408,7 @@ class VaultExporter:
                 }
             ),
             "",
-            "# Universal Agent Memory Vault",
+            "# Obelisk Memory Vault",
             "",
             f"- tenant: `{tenant_id}`",
             f"- workspace: `{workspace_id}`",
