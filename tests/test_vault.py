@@ -6,7 +6,11 @@ from uuid import uuid4
 from memory_plane.bootstrap import build_in_memory_container
 from memory_plane.contracts.dto import RetainCommand, SupersedeMemoryCommand
 from memory_plane.domain.models import MemoryLayer, MemoryScope, Provenance
-from memory_plane.services.vault import VaultImportSource, VaultWriteResult
+from memory_plane.services.vault import (
+    VaultImportSource,
+    VaultWriteResult,
+    editable_vault_content,
+)
 
 
 def test_vault_export_renders_memory_frontmatter_and_reflection_links() -> None:
@@ -265,6 +269,43 @@ def test_vault_import_strips_multiline_vector_array_from_editable_body() -> None
         for row in memories
     )
     assert all("0.11" not in row.text for row in memories)
+
+
+def test_editable_vault_content_hides_qdrant_and_fenced_vector_payloads() -> None:
+    note = """---
+id: "mem-demo"
+type: "memory"
+status: "active"
+revision: 4
+---
+
+Пользователь хочет редактировать только обычный текст.
+
+payload: {
+  "qdrant": true,
+  "vector": [0.1, 0.2, 0.3, 0.4],
+  "model_name": "jina-embeddings-v4"
+}
+
+```json
+{"embedding": [0.5, 0.6, 0.7, 0.8], "dimension": 2048}
+```
+
+dimension: 2048
+score: 0.91
+Понятная строка после служебных данных.
+
+## Provenance
+- source: api
+"""
+
+    editable = editable_vault_content(note)
+
+    assert "Пользователь хочет редактировать только обычный текст." in editable
+    assert "Понятная строка после служебных данных." in editable
+    assert "qdrant" not in editable
+    assert "embedding" not in editable
+    assert "2048" not in editable
 
 
 def test_vault_import_apply_creates_superseding_revision_without_overwrite() -> None:

@@ -1253,12 +1253,18 @@ function sanitizeVaultEditableBody(value: string) {
   const lines = String(value ?? "").split(/\r?\n/);
   const kept: string[] = [];
   let droppingJsonBlock = false;
+  let droppingFence = false;
 
   for (const line of lines) {
     const trimmed = line.trim();
 
+    if (droppingFence) {
+      if (trimmed.startsWith("```")) droppingFence = false;
+      continue;
+    }
+
     if (droppingJsonBlock) {
-      if (trimmed === "}" || trimmed === "]," || trimmed === "]") droppingJsonBlock = false;
+      if (/[}\]]\s*,?$/.test(trimmed)) droppingJsonBlock = false;
       continue;
     }
 
@@ -1267,8 +1273,17 @@ function sanitizeVaultEditableBody(value: string) {
       continue;
     }
 
-    if (isVaultSystemHeading(line) || looksLikeVaultSystemField(trimmed) || looksLikeVectorPayload(trimmed)) {
-      if (trimmed.endsWith("{") || trimmed.endsWith("[") || trimmed === "{" || trimmed === "[") droppingJsonBlock = true;
+    if (
+      isVaultSystemHeading(line)
+      || looksLikeVaultSystemField(trimmed)
+      || looksLikeVectorPayload(trimmed)
+      || looksLikeStructuredPayloadStart(trimmed)
+    ) {
+      if (trimmed.startsWith("```")) {
+        droppingFence = true;
+        continue;
+      }
+      if (trimmed.endsWith("{") || trimmed.endsWith("[") || trimmed === "{" || trimmed === "[" || /^[{[]/.test(trimmed)) droppingJsonBlock = true;
       continue;
     }
 
@@ -1279,9 +1294,9 @@ function sanitizeVaultEditableBody(value: string) {
 }
 
 function looksLikeVaultSystemField(line: string) {
-  return /^(embedding|embeddings|vector|vectors|metadata|provenance|revision|revisions|checksum_sha256|checksum|source|origin|object|supersedes|superseded_by|tenant_id|workspace_id|item_id|id|created_at|updated_at|valid_from|valid_to|observed_at|labels|confidence|importance|status|type)\s*[:=]/i.test(line)
-    || /^(эмбеддинг|эмбеддинги|вектор|векторы|метаданные|ревизия|ревизии|источник|контрольная сумма|служебные данные)\s*[:=]/i.test(line)
-    || /^["']?(embedding|embeddings|vector|vectors|metadata|provenance|revision|checksum_sha256)["']?\s*:/i.test(line);
+  return /^(embedding|embeddings|vector|vectors|metadata|provenance|revision|revisions|checksum_sha256|checksum|source|origin|object|supersedes|superseded_by|tenant_id|workspace_id|item_id|id|payload|point|points|qdrant|dense|sparse|values|dimension|dimensions|dim|model|model_name|provider|score|distance|created_at|updated_at|valid_from|valid_to|observed_at|labels|confidence|importance|status|type)\s*[:=]/i.test(line)
+    || /^(эмбеддинг|эмбеддинги|вектор|векторы|метаданные|ревизия|ревизии|источник|контрольная сумма|служебные данные|размерность|модель|провайдер)\s*[:=]/i.test(line)
+    || /^["']?(embedding|embeddings|vector|vectors|metadata|provenance|revision|checksum_sha256|payload|qdrant|dimension|model_name)["']?\s*:/i.test(line);
 }
 
 function looksLikeVectorPayload(line: string) {
@@ -1289,4 +1304,11 @@ function looksLikeVectorPayload(line: string) {
   if (/^[-+]?\d+(\.\d+)?([eE][+-]?\d+)?(\s*,\s*[-+]?\d+(\.\d+)?([eE][+-]?\d+)?){5,}$/.test(line)) return true;
   if (/^[-+]?\d+(\.\d+)?([eE][+-]?\d+)?(\s+[-+]?\d+(\.\d+)?([eE][+-]?\d+)?){8,}$/.test(line)) return true;
   return false;
+}
+
+function looksLikeStructuredPayloadStart(line: string) {
+  const lowered = line.toLowerCase();
+  if (lowered.startsWith("```") && /(json|yaml|yml|embedding|vector|qdrant)/.test(lowered)) return true;
+  if (!/^[{[]/.test(lowered)) return false;
+  return /(embedding|embeddings|vector|vectors|payload|qdrant|metadata|provenance|dimension|model_name)/.test(lowered);
 }
