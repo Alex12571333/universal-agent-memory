@@ -42,9 +42,9 @@ Current verified baseline, July 10, 2026:
 
 This means the repository is ready for a trusted local/team pilot. It is not yet
 “full production” in the strong sense. Full production still requires
-environment-level backup scheduling, external secret/key custody, security
-review, and saved OpenClaw/Hermes plus live memory LLM reports from the target
-deployment.
+target-environment preflight reports for schedules, secret custody, network
+boundary, OpenClaw/Hermes soak, live model endpoints and release evidence
+preservation.
 
 Honest gap audit:
 [docs/PRODUCTION_GAP_AUDIT_2026_07_10.md](docs/PRODUCTION_GAP_AUDIT_2026_07_10.md).
@@ -147,6 +147,13 @@ PostgreSQL, Qdrant, NATS, and MinIO internal.
      --report ./ops/deployment-preflight.json
    python scripts/secret_files_preflight.py .env.production \
      --report ./ops/secret-files.json
+   python scripts/ops_schedule_preflight.py .env.production \
+     --backup-schedule-file ./deploy/schedules/backup.timer \
+     --audit-retention-schedule-file ./deploy/schedules/audit-retention.timer \
+     --metrics-schedule-file ./deploy/schedules/metrics-health.timer \
+     --backup-artifact-root s3://obelisk-memory/backups \
+     --audit-artifact-root s3://obelisk-memory/audit \
+     --report ./ops/ops-schedule.json
    UAM_VAULT_SIGNING_KEY=... python scripts/export_vault.py ./vault-review
    UAM_VAULT_SIGNING_KEY=... python scripts/import_vault.py ./vault-review \
      --require-signature \
@@ -361,6 +368,13 @@ UAM_API_KEY=... python scripts/deployment_preflight.py \
   --report ./ops/deployment-preflight.json
 python scripts/secret_files_preflight.py .env.production \
   --report ./ops/secret-files.json
+python scripts/ops_schedule_preflight.py .env.production \
+  --backup-schedule-file ./deploy/schedules/backup.timer \
+  --audit-retention-schedule-file ./deploy/schedules/audit-retention.timer \
+  --metrics-schedule-file ./deploy/schedules/metrics-health.timer \
+  --backup-artifact-root s3://obelisk-memory/backups \
+  --audit-artifact-root s3://obelisk-memory/audit \
+  --report ./ops/ops-schedule.json
 UAM_VAULT_SIGNING_KEY=... python scripts/export_vault.py ./vault-review
 UAM_VAULT_SIGNING_KEY=... python scripts/import_vault.py ./vault-review \
   --require-signature \

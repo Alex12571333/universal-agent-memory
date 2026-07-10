@@ -48,6 +48,9 @@ remaining hard requirements.
 - [x] Restore-drill script verifies backups in an isolated PostgreSQL container.
 - [x] Scheduler-ready backup runner writes JSON reports and can alert on
       failures.
+- [x] Ops schedule preflight runner writes JSON evidence for installed backup,
+      audit-retention and metrics schedules, alert routing and durable artifact
+      roots.
 - [x] Vault export/import uses safe dry-run and CAS supersede.
 - [x] Vault CLI export/import supports manifest checksums and HMAC signatures.
 - [x] Operator UI can accept, override or dismiss conflict cases through the
@@ -82,12 +85,11 @@ remaining hard requirements.
 - [ ] Run secret-files preflight against the target environment, verify
       production secrets are mounted through `*_FILE` paths instead of raw env
       values, and preserve the generated report.
-- [ ] Install the audit retention schedule in the target environment and store
-      signed export bundles in immutable storage with external signing-key
-      custody for regulated environments.
-- [ ] Install environment-level backup schedule and immutable artifact storage.
-- [ ] Install the provided metrics dashboard/alert rules and scheduled-backup
-      report routing in the target deployment.
+- [ ] Run ops schedule preflight against the target environment, verify backup,
+      audit-retention and metrics schedules, alert routing and durable artifact
+      roots, and preserve the generated report.
+- [ ] Install the provided metrics dashboard/alert rules in the target
+      monitoring stack.
 - [x] Require signed vault import manifests in production operating procedure
       and release evidence.
 - [x] Enforce GitHub branch protection and PR-only merges to `main`.

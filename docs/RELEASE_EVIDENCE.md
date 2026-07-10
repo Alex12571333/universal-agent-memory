@@ -17,6 +17,7 @@ Create `release-evidence.json` next to the referenced reports:
     "memory_llm": "ops/memory-llm.json",
     "load_smoke": "ops/load-smoke.json",
     "metrics_health": "ops/metrics-health.json",
+    "ops_schedule": "ops/ops-schedule.json",
     "scheduled_backup": "backups/latest-backup-report.json",
     "audit_retention": "ops/audit-retention.json",
     "deployment_preflight": "ops/deployment-preflight.json",
@@ -36,6 +37,14 @@ Paths are resolved relative to the manifest location unless absolute.
 UAM_API_KEY=... PYTHONPATH=src python scripts/check_metrics_health.py \
   --metrics-url http://localhost:6798/metrics \
   --report ./ops/metrics-health.json
+
+PYTHONPATH=src python scripts/ops_schedule_preflight.py .env.production \
+  --backup-schedule-file ./deploy/schedules/backup.timer \
+  --audit-retention-schedule-file ./deploy/schedules/audit-retention.timer \
+  --metrics-schedule-file ./deploy/schedules/metrics-health.timer \
+  --backup-artifact-root s3://obelisk-memory/backups \
+  --audit-artifact-root s3://obelisk-memory/audit \
+  --report ./ops/ops-schedule.json
 
 PYTHONPATH=src python scripts/scheduled_backup.py \
   --backup-dir ./backups \
@@ -111,6 +120,9 @@ The verifier requires:
   retain/recall correctness, error-rate, p95 latency and metrics-backlog checks;
 - metrics health report format `obelisk-metrics-health-v1`, `ok: true`, outbox
   pending/dead-letter/lag and inflight checks;
+- ops schedule report format `obelisk-ops-schedule-preflight-v1`, `ok: true`,
+  installed backup/audit-retention/metrics schedule evidence, alert routing and
+  durable artifact roots;
 - scheduled backup report format `obelisk-scheduled-backup-report-v1`,
   `ok: true`, restore drill not skipped and audit export not skipped;
 - audit retention report format `obelisk-audit-retention-v1`, `ok: true`,

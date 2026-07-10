@@ -15,6 +15,7 @@ REQUIRED_ARTIFACTS = {
     "memory_llm",
     "load_smoke",
     "metrics_health",
+    "ops_schedule",
     "scheduled_backup",
     "audit_retention",
     "deployment_preflight",
@@ -110,6 +111,7 @@ def verify_manifest(path: Path) -> list[EvidenceCheck]:
         "memory_llm": _verify_memory_llm,
         "load_smoke": _verify_load_smoke,
         "metrics_health": _verify_metrics_health,
+        "ops_schedule": _verify_ops_schedule,
         "scheduled_backup": _verify_scheduled_backup,
         "audit_retention": _verify_audit_retention,
         "deployment_preflight": _verify_deployment_preflight,
@@ -214,6 +216,32 @@ def _verify_metrics_health(payload: dict[str, Any]) -> list[EvidenceCheck]:
         _ok_check("metrics_health", payload),
         EvidenceCheck(
             "metrics_health:required-checks",
+            not missing,
+            "required checks present" if not missing else "missing: " + ", ".join(missing),
+        ),
+    ]
+
+
+def _verify_ops_schedule(payload: dict[str, Any]) -> list[EvidenceCheck]:
+    names = _check_names(payload)
+    required = {
+        "backup-schedule:file-exists",
+        "backup-schedule:required-command",
+        "audit-retention-schedule:file-exists",
+        "audit-retention-schedule:required-command",
+        "metrics-schedule:file-exists",
+        "metrics-schedule:required-command",
+        "UAM_BACKUP_ALERT_WEBHOOK:configured",
+        "UAM_METRICS_ALERT_WEBHOOK:configured",
+        "backup-artifact-root:durable-prefix",
+        "audit-artifact-root:durable-prefix",
+    }
+    missing = sorted(required - names)
+    return [
+        _format_check("ops_schedule", payload, "obelisk-ops-schedule-preflight-v1"),
+        _ok_check("ops_schedule", payload),
+        EvidenceCheck(
+            "ops_schedule:required-checks",
             not missing,
             "required checks present" if not missing else "missing: " + ", ".join(missing),
         ),

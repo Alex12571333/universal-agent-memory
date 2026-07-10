@@ -10,6 +10,13 @@ python scripts/validate_production_env.py .env.production \
   --require-public-tls \
   --require-signed-artifacts \
   --require-real-embeddings
+PYTHONPATH=src python scripts/ops_schedule_preflight.py .env.production \
+  --backup-schedule-file ./deploy/schedules/backup.timer \
+  --audit-retention-schedule-file ./deploy/schedules/audit-retention.timer \
+  --metrics-schedule-file ./deploy/schedules/metrics-health.timer \
+  --backup-artifact-root s3://obelisk-memory/backups \
+  --audit-artifact-root s3://obelisk-memory/audit \
+  --report ./ops/ops-schedule.json
 PYTHONPATH=src python scripts/scheduled_backup.py \
   --backup-dir ./backups \
   --audit-dir ./audit-export \
@@ -102,6 +109,9 @@ Manual checks:
   `"verified_export": true` and `"signed_export": true` before any audit prune.
 - Confirm `backups/latest-backup-report.json` reports `"ok": true`.
 - Confirm `ops/metrics-health.json` reports `"ok": true`.
+- Confirm `ops/ops-schedule.json` reports `"ok": true`, with installed
+  backup/audit-retention/metrics schedules, alert routes and durable artifact
+  roots.
 - Confirm `deploy/observability/grafana-dashboard.json` is imported into the
   target dashboard stack and `deploy/observability/prometheus-alerts.yml` is
   loaded into the target alerting stack.

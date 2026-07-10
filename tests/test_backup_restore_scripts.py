@@ -40,6 +40,7 @@ export_vault = _load_script("export_vault")
 import_vault = _load_script("import_vault")
 migrate = _load_script("migrate")
 validate_production_env = _load_script("validate_production_env")
+ops_schedule_preflight = _load_script("ops_schedule_preflight")
 secret_files_preflight = _load_script("secret_files_preflight")
 verify_release_evidence = _load_script("verify_release_evidence")
 
@@ -937,6 +938,7 @@ def test_verify_release_evidence_accepts_complete_manifest(tmp_path: Path) -> No
         "scheduled_backup:restore-drill",
         "audit_retention:verified-export",
         "deployment_preflight:backend-not-public",
+        "ops_schedule:required-checks",
         "secret_files:all-required-secrets-checked",
         "vault_import:verified-signed-manifest",
         "branch_protection:passed",
@@ -1022,6 +1024,24 @@ def test_verify_release_evidence_rejects_raw_secret_env(tmp_path: Path) -> None:
     assert not all(check.passed for check in checks)
 
 
+def test_verify_release_evidence_rejects_missing_ops_alert_route(tmp_path: Path) -> None:
+    manifest = _write_release_evidence_bundle(tmp_path)
+    ops_path = tmp_path / "ops-schedule.json"
+    payload = json.loads(ops_path.read_text(encoding="utf-8"))
+    payload["ok"] = False
+    for check in payload["checks"]:
+        if check["name"] == "UAM_BACKUP_ALERT_WEBHOOK:configured":
+            check["ok"] = False
+            check["detail"] = "UAM_BACKUP_ALERT_WEBHOOK missing"
+    ops_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    checks = verify_release_evidence.verify_manifest(manifest)
+
+    ok_check = next(check for check in checks if check.name == "ops_schedule:ok")
+    assert ok_check.passed is False
+    assert not all(check.passed for check in checks)
+
+
 def test_verify_release_evidence_json_cli_output(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -1075,6 +1095,27 @@ def _write_release_evidence_bundle(tmp_path: Path) -> Path:
                 {"name": "outbox_dead_letter_total", "ok": True},
                 {"name": "outbox_lag_seconds", "ok": True},
                 {"name": "processed_events_inflight_total", "ok": True},
+            ],
+        },
+    )
+    _write_json(
+        tmp_path / "ops-schedule.json",
+        {
+            "format": "obelisk-ops-schedule-preflight-v1",
+            "ok": True,
+            "backup_artifact_root": "s3://obelisk-memory/backups",
+            "audit_artifact_root": "s3://obelisk-memory/audit",
+            "checks": [
+                {"name": "backup-schedule:file-exists", "ok": True},
+                {"name": "backup-schedule:required-command", "ok": True},
+                {"name": "audit-retention-schedule:file-exists", "ok": True},
+                {"name": "audit-retention-schedule:required-command", "ok": True},
+                {"name": "metrics-schedule:file-exists", "ok": True},
+                {"name": "metrics-schedule:required-command", "ok": True},
+                {"name": "UAM_BACKUP_ALERT_WEBHOOK:configured", "ok": True},
+                {"name": "UAM_METRICS_ALERT_WEBHOOK:configured", "ok": True},
+                {"name": "backup-artifact-root:durable-prefix", "ok": True},
+                {"name": "audit-artifact-root:durable-prefix", "ok": True},
             ],
         },
     )
@@ -1214,6 +1255,7 @@ def _write_release_evidence_bundle(tmp_path: Path) -> Path:
                 "memory_llm": "memory-llm.json",
                 "load_smoke": "load-smoke.json",
                 "metrics_health": "metrics-health.json",
+                "ops_schedule": "ops-schedule.json",
                 "scheduled_backup": "scheduled-backup.json",
                 "audit_retention": "audit-retention.json",
                 "deployment_preflight": "deployment-preflight.json",
@@ -1225,6 +1267,78 @@ def _write_release_evidence_bundle(tmp_path: Path) -> Path:
         },
     )
     return manifest
+
+
+def test_ops_schedule_preflight_accepts_installed_schedules(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env.production"
+    env_file.write_text(
+        "\n".join(
+            [
+                "UAM_BACKUP_ALERT_WEBHOOK=https://alerts.example/backup",
+                "UAM_METRICS_ALERT_WEBHOOK=https://alerts.example/metrics",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    backup_schedule = tmp_path / "backup.timer"
+    backup_schedule.write_text("python scripts/scheduled_backup.py --report /reports/backup.json")
+    audit_schedule = tmp_path / "audit.timer"
+    audit_schedule.write_text(
+        "python scripts/audit_retention.py --json-report /reports/audit.json --apply"
+    )
+    metrics_schedule = tmp_path / "metrics.timer"
+    metrics_schedule.write_text(
+        "python scripts/check_metrics_health.py --report /reports/metrics.json"
+    )
+
+    report = ops_schedule_preflight.run_preflight(
+        env_file=env_file,
+        backup_schedule_file=backup_schedule,
+        audit_retention_schedule_file=audit_schedule,
+        metrics_schedule_file=metrics_schedule,
+        backup_artifact_root="s3://obelisk-memory/backups",
+        audit_artifact_root="s3://obelisk-memory/audit",
+    )
+
+    assert report["ok"] is True
+
+
+def test_ops_schedule_preflight_rejects_local_artifact_storage(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env.production"
+    env_file.write_text(
+        "\n".join(
+            [
+                "UAM_BACKUP_ALERT_WEBHOOK=https://alerts.example/backup",
+                "UAM_METRICS_ALERT_WEBHOOK=https://alerts.example/metrics",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    backup_schedule = tmp_path / "backup.timer"
+    backup_schedule.write_text("python scripts/scheduled_backup.py --report /reports/backup.json")
+    audit_schedule = tmp_path / "audit.timer"
+    audit_schedule.write_text(
+        "python scripts/audit_retention.py --json-report /reports/audit.json --apply"
+    )
+    metrics_schedule = tmp_path / "metrics.timer"
+    metrics_schedule.write_text(
+        "python scripts/check_metrics_health.py --report /reports/metrics.json"
+    )
+
+    report = ops_schedule_preflight.run_preflight(
+        env_file=env_file,
+        backup_schedule_file=backup_schedule,
+        audit_retention_schedule_file=audit_schedule,
+        metrics_schedule_file=metrics_schedule,
+        backup_artifact_root="./backups",
+        audit_artifact_root="s3://obelisk-memory/audit",
+    )
+
+    assert report["ok"] is False
+    assert any(
+        check["name"] == "backup-artifact-root:durable-prefix" and check["ok"] is False
+        for check in report["checks"]
+    )
 
 
 def test_secret_files_preflight_accepts_file_backed_secrets(tmp_path: Path) -> None:
