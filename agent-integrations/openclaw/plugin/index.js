@@ -39,10 +39,6 @@ function cfg(pluginConfig = {}) {
       pluginConfig.contextBudgetTokens || process.env.UAM_CONTEXT_BUDGET_TOKENS || 131072,
     ),
     retainToolTraces: envBool("UAM_RETAIN_TOOL_TRACES", pluginConfig.retainToolTraces ?? true),
-    reflectOnRunComplete: envBool(
-      "UAM_REFLECT_ON_RUN_COMPLETE",
-      pluginConfig.reflectOnRunComplete ?? false,
-    ),
   };
 }
 
@@ -227,13 +223,6 @@ export default {
             text: summary,
             idempotency_key: idempotency("openclaw-run-summary", summary, ctx),
           });
-        }
-        if (config.reflectOnRunComplete) {
-          await postJson(
-            config,
-            `/v1/workspaces/${config.workspaceId}/reflect?tenant_id=${config.tenantId}`,
-            {},
-          );
         }
       } catch (error) {
         api.logger.warn(`UAM run retention failed: ${error.message}`);

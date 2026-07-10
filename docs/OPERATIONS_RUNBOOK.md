@@ -3,8 +3,8 @@
 > **Engineering preview:** the production-shaped Compose topology is available,
 > but a fresh production rollout is currently blocked by the P0 runtime issues in
 > [PRODUCTION_GAP_AUDIT_2026_07_10.md](PRODUCTION_GAP_AUDIT_2026_07_10.md),
-> including identity-bound authorization and recall correctness. Database-role
-> and operator identity provisioning exist but need target evidence. The
+> including fail-soft recall, safe reindex and encryption breadth. Database-role,
+> operator identity provisioning and principal binding exist but need target evidence. The
 > commands below are reference operating procedures; do not use
 > them to claim or run a production deployment until those blockers are resolved
 > and the target release gates pass.
@@ -131,7 +131,16 @@ normal integrations:
 
 ```dotenv
 UAM_API_KEYS=openclaw:...:agent,hermes:...:agent,operator:...:operator
+UAM_API_PRINCIPAL_BINDINGS_JSON={"openclaw":{"tenant_id":"<server-uuid>","workspace_id":"<project-uuid>","agent_id":"<openclaw-uuid>"},"hermes":{"tenant_id":"<server-uuid>","workspace_id":"<project-uuid>","agent_id":"<hermes-uuid>"}}
+UAM_REQUIRE_IDENTITY_BINDINGS=true
 ```
+
+Provision the referenced agent and thread UUIDs with the operator key before
+starting native integrations. Prefer
+`UAM_API_PRINCIPAL_BINDINGS_JSON_FILE=/run/secrets/uam_principal_bindings` when
+deployment configuration is mounted from files. Although the binding document
+contains IDs rather than credentials, mounting it keeps identity policy changes
+auditable and avoids shell-quoting mistakes.
 
 For production, verify that required secrets are mounted from the secret manager
 through `*_FILE` paths and that raw secret env values are empty:

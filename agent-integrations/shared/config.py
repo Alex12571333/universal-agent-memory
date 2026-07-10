@@ -19,7 +19,6 @@ class AgentMemoryConfig:
     retain_tool_traces: bool = True
     retain_messages: bool = True
     retain_errors: bool = True
-    trigger_reflection_on_complete: bool = False
 
     @classmethod
     def from_env(cls, *, integration_name: str = "native") -> AgentMemoryConfig:
@@ -34,10 +33,6 @@ class AgentMemoryConfig:
             retain_tool_traces=_env_bool("UAM_RETAIN_TOOL_TRACES", default=True),
             retain_messages=_env_bool("UAM_RETAIN_MESSAGES", default=True),
             retain_errors=_env_bool("UAM_RETAIN_ERRORS", default=True),
-            trigger_reflection_on_complete=_env_bool(
-                "UAM_REFLECT_ON_RUN_COMPLETE",
-                default=False,
-            ),
         )
 
 

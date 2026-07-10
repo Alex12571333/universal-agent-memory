@@ -42,8 +42,8 @@ Repository capability baseline:
 
 The repository is an engineering preview with production-shaped components. It
 must not be used for a trusted production pilot until the remaining P0 runtime
-blockers in the production audit are fixed—especially identity-bound
-authorization, fail-soft dependencies and safe reindex. Supersede/archive and
+blockers in the production audit are fixed—especially fail-soft dependencies,
+safe reindex and broader encryption coverage. Supersede/archive and
 operator conflict-winner precedence are enforced through atomic PostgreSQL
 revisions and Qdrant head validation.
 Database-role and operator-controlled agent/thread provisioning are implemented
@@ -99,9 +99,9 @@ Local host ports are intentionally non-standard:
 
 The local compose file is convenient for debugging. The production compose is a
 reference topology that exposes only API/UI and keeps PostgreSQL, Qdrant, NATS,
-and MinIO internal. It is not an approved production deployment until the P0
-authorization, conflict precedence, dependency isolation and reindex blockers
-are fixed and the target credential/identity evidence passes.
+and MinIO internal. It is not an approved production deployment until the
+remaining P0 dependency-isolation, reindex and encryption blockers are fixed
+and the target credential/identity evidence passes.
 
 ## Production reference deployment
 
@@ -165,6 +165,9 @@ Production notes:
 - set `UAM_API_KEY` to a long random secret;
 - prefer scoped `UAM_API_KEYS` for agents and UI operators:
   `openclaw:<secret>:agent,hermes:<secret>:agent,operator:<secret>:operator`;
+- set `UAM_REQUIRE_IDENTITY_BINDINGS=true` and bind every agent principal to
+  its provisioned tenant/workspace/agent UUID in
+  `UAM_API_PRINCIPAL_BINDINGS_JSON` (or the matching `*_FILE` variable);
 - keep backups outside Docker volumes;
 - pin and test embedding/model dimensions before changing providers.
 
@@ -214,9 +217,19 @@ curl -X POST http://localhost:6798/v1/identities/provision \
   }'
 ```
 
-The endpoint is idempotent, audited and rejects cross-scope ID reuse. Native
-installers still need an operator bootstrap step until bearer keys are bound to
-specific tenant/workspace/agent identities.
+The endpoint is idempotent, audited and rejects cross-scope ID reuse. After
+provisioning, configure the authorization boundary using the same principal
+name as `UAM_API_KEYS`:
+
+```dotenv
+UAM_API_PRINCIPAL_BINDINGS_JSON={"openclaw":{"tenant_id":"00000000-0000-0000-0000-000000000001","workspace_id":"00000000-0000-0000-0000-000000000002","agent_id":"00000000-0000-0000-0000-000000000010"}}
+UAM_REQUIRE_IDENTITY_BINDINGS=true
+```
+
+In strict mode startup fails if an `agent` key is unbound. The API rejects
+forged tenant/workspace/agent IDs and foreign threads; private recall is filtered
+again in PostgreSQL, Qdrant and the retrieval service. Operator routes remain
+unavailable to agent-only keys.
 
 OpenAPI docs are available at `http://localhost:6798/docs` when authorized.
 
@@ -271,6 +284,7 @@ environment variables. For example:
 ```dotenv
 UAM_API_KEY_FILE=/run/secrets/uam_api_key
 UAM_API_KEYS_FILE=/run/secrets/uam_scoped_api_keys
+UAM_API_PRINCIPAL_BINDINGS_JSON_FILE=/run/secrets/uam_principal_bindings
 UAM_MEMORY_LLM_API_KEY_FILE=/run/secrets/model_gateway_key
 UAM_EMBEDDING_API_KEY_FILE=/run/secrets/embedding_gateway_key
 UAM_MEMORY_TEXT_ENCRYPTION_KEY_FILE=/run/secrets/memory_text_key
@@ -312,7 +326,7 @@ MCP-only:
 - before model call: inject a compact context package;
 - after tool call/message: retain observations, traces, and errors;
 - checkpoint: save working state for resume;
-- run complete: retain summary and trigger reflection/curation.
+- run complete: retain summary; an operator worker performs reflection/curation.
 
 Adapters live in [agent-integrations/](agent-integrations/):
 

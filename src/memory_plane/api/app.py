@@ -3,11 +3,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import binascii
 import hashlib
 import json
 import os
+import re
 import secrets
 import shutil
 import sys
@@ -648,9 +650,48 @@ class ApiPrincipal:
     name: str
     scopes: frozenset[str]
     secret_fingerprint: str | None = None
+    tenant_id: UUID | None = None
+    workspace_id: UUID | None = None
+    agent_id: UUID | None = None
 
     def has_scope(self, scope: str) -> bool:
         return "admin" in self.scopes or "operator" in self.scopes or scope in self.scopes
+
+
+@dataclass(frozen=True, slots=True)
+class PrincipalBinding:
+    """Stable authorization boundary attached to one configured principal."""
+
+    tenant_id: UUID
+    workspace_id: UUID
+    agent_id: UUID
+
+
+def _parse_principal_bindings(raw: str | None) -> dict[str, PrincipalBinding]:
+    """Parse non-secret identity bindings keyed by configured API principal name."""
+    if not raw:
+        return {}
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError("UAM_API_PRINCIPAL_BINDINGS_JSON must be valid JSON") from exc
+    if not isinstance(payload, dict):
+        raise ValueError("UAM_API_PRINCIPAL_BINDINGS_JSON must be a JSON object")
+    bindings: dict[str, PrincipalBinding] = {}
+    for name, value in payload.items():
+        if not isinstance(name, str) or not name.strip() or not isinstance(value, dict):
+            raise ValueError("each API principal binding must be a named JSON object")
+        try:
+            bindings[name.strip()] = PrincipalBinding(
+                tenant_id=UUID(str(value["tenant_id"])),
+                workspace_id=UUID(str(value["workspace_id"])),
+                agent_id=UUID(str(value["agent_id"])),
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(
+                f"binding for {name!r} requires tenant_id, workspace_id and agent_id UUIDs"
+            ) from exc
+    return bindings
 
 
 def _parse_scoped_api_keys(raw: str | None) -> tuple[tuple[str, str, frozenset[str]], ...]:
@@ -696,6 +737,28 @@ def _required_scope_for_request(path: str, method: str) -> str:
         return "operator"
     if path.startswith("/v1/identities"):
         return "operator"
+    if path.startswith("/v1/graph"):
+        return "operator"
+    if path.startswith("/v1/workspaces/"):
+        if path.endswith("/reflect") and method == "POST":
+            return "write"
+        return "operator"
+    if path.startswith("/v1/memory/") and path.endswith("/supersede"):
+        return "operator"
+    if path.startswith("/v1/memory/") and path.endswith("/neighbors"):
+        return "operator"
+    if path.startswith("/v1/memory/proposals"):
+        if path == "/v1/memory/proposals" and method == "POST":
+            return "write"
+        return "operator"
+    if path.startswith("/v1/conversations"):
+        if path == "/v1/conversations/turns" and method == "POST":
+            return "write"
+        return "operator"
+    if path == "/v1/checkpoints" and method == "GET":
+        return "operator"
+    if path.startswith("/v1/checkpoints/") and path.endswith("/compact"):
+        return "operator"
     if path.startswith(("/ui", "/docs", "/redoc", "/openapi.json", "/metrics")):
         return "operator"
     if path.startswith(("/v1/system", "/v1/settings")):
@@ -717,6 +780,88 @@ def _scope_allowed(principal: ApiPrincipal, required_scope: str) -> bool:
     return False
 
 
+def _uuid_value(value: object) -> UUID | None:
+    try:
+        return UUID(str(value)) if value not in (None, "") else None
+    except ValueError:
+        return None
+
+
+async def _agent_binding_error(
+    request: Request,
+    principal: ApiPrincipal,
+    store: object,
+    *,
+    require_binding: bool,
+) -> str | None:
+    """Return a denial reason when an agent request crosses its bound identity."""
+    if "agent" not in principal.scopes:
+        return None
+    if principal.tenant_id is None or principal.workspace_id is None or principal.agent_id is None:
+        return "agent API key has no identity binding" if require_binding else None
+
+    payload: dict[str, Any] = {}
+    if request.method.upper() not in {"GET", "HEAD", "OPTIONS"} and "json" in request.headers.get(
+        "content-type", ""
+    ).lower():
+        try:
+            decoded = json.loads((await request.body()) or b"{}")
+            if isinstance(decoded, dict):
+                payload = decoded
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return None
+
+    def supplied(name: str) -> object | None:
+        return payload.get(name, request.query_params.get(name))
+
+    tenant_id = _uuid_value(supplied("tenant_id")) or DEFAULT_SERVER_ID
+    workspace_id = _uuid_value(supplied("workspace_id")) or DEFAULT_PROJECT_ID
+    workspace_match = re.match(r"^/v1/workspaces/([0-9a-fA-F-]{36})(?:/|$)", request.url.path)
+    if workspace_match:
+        path_workspace_id = _uuid_value(workspace_match.group(1))
+        if path_workspace_id is None:
+            return "workspace path contains an invalid UUID"
+        workspace_id = path_workspace_id
+    if tenant_id != principal.tenant_id:
+        return "tenant_id is outside the API principal binding"
+    if workspace_id != principal.workspace_id:
+        return "workspace_id is outside the API principal binding"
+
+    supplied_agent = _uuid_value(supplied("agent_id"))
+    if supplied_agent is not None and supplied_agent != principal.agent_id:
+        return "agent_id is outside the API principal binding"
+    attributed_write = request.method.upper() == "POST" and (
+        request.url.path == "/v1/memory/retain"
+        or request.url.path == "/v1/conversations/turns"
+        or request.url.path == "/v1/memory/proposals"
+        or request.url.path.startswith("/v1/ingest/")
+    )
+    if attributed_write and supplied_agent is None:
+        return "agent_id is required for an agent-authenticated write"
+
+    thread_id = _uuid_value(supplied("thread_id"))
+    checkpoint_match = re.match(r"^/v1/checkpoints/([0-9a-fA-F-]{36})(?:/|$)", request.url.path)
+    if checkpoint_match:
+        thread_id = _uuid_value(checkpoint_match.group(1))
+        if thread_id is None:
+            return "checkpoint path contains an invalid thread UUID"
+    if thread_id is not None:
+        checker = getattr(store, "thread_belongs_to_agent", None)
+        owned = bool(
+            callable(checker)
+            and await asyncio.to_thread(
+                checker,
+                principal.tenant_id,
+                principal.workspace_id,
+                principal.agent_id,
+                thread_id,
+            )
+        )
+        if not owned:
+            return "thread_id is not owned by the API principal"
+    return None
+
+
 def _principal_from_request(request: Request) -> ApiPrincipal:
     """Return the authenticated principal, or an explicit local-dev actor."""
     principal = getattr(request.state, "api_principal", None)
@@ -727,7 +872,7 @@ def _principal_from_request(request: Request) -> ApiPrincipal:
 
 def _audit_actor_type(principal: ApiPrincipal) -> str:
     """Classify the principal for operator review."""
-    if principal.has_scope("agent"):
+    if "agent" in principal.scopes:
         return "agent"
     if principal.has_scope("operator") or principal.has_scope("admin"):
         return "operator"
@@ -767,6 +912,24 @@ def create_app(
     documents = DocumentIngestor(services.ingestion)
     configured_key = api_key if api_key is not None else read_secret_env("UAM_API_KEY")
     configured_scoped_keys = _parse_scoped_api_keys(read_secret_env("UAM_API_KEYS"))
+    principal_bindings = _parse_principal_bindings(
+        read_secret_env("UAM_API_PRINCIPAL_BINDINGS_JSON")
+    )
+    require_identity_bindings = os.getenv(
+        "UAM_REQUIRE_IDENTITY_BINDINGS",
+        "false",
+    ).strip().lower() in {"1", "true", "yes", "on"}
+    if require_identity_bindings:
+        missing_bindings = sorted(
+            name
+            for name, _secret, scopes in configured_scoped_keys
+            if "agent" in scopes and name not in principal_bindings
+        )
+        if missing_bindings:
+            raise RuntimeError(
+                "agent API principals require identity bindings: "
+                + ", ".join(missing_bindings)
+            )
     auth_tenant_id = _registry_tenant_id()
     model_settings = _load_model_settings()
     build_info = BuildInfo.from_env()
@@ -824,10 +987,14 @@ def create_app(
             else:
                 for name, secret, scopes in configured_scoped_keys:
                     if secrets.compare_digest(credential, secret):
+                        binding = principal_bindings.get(name)
                         principal = ApiPrincipal(
                             name=name,
                             scopes=scopes,
                             secret_fingerprint=_secret_fingerprint(credential),
+                            tenant_id=binding.tenant_id if binding else None,
+                            workspace_id=binding.workspace_id if binding else None,
+                            agent_id=binding.agent_id if binding else None,
                         )
                         break
         if principal is None:
@@ -858,6 +1025,22 @@ def create_app(
                     content={
                         "detail": "API key scope is insufficient",
                         "required_scope": required_scope,
+                    },
+                )
+            )
+        binding_error = await _agent_binding_error(
+            request,
+            principal,
+            services.store,
+            require_binding=require_identity_bindings,
+        )
+        if binding_error is not None:
+            return _apply_security_headers(
+                JSONResponse(
+                    status_code=403,
+                    content={
+                        "detail": binding_error,
+                        "error": "identity_boundary_violation",
                     },
                 )
             )

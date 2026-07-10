@@ -152,6 +152,15 @@ def test_validate_production_env_accepts_strict_real_config(tmp_path: Path) -> N
                 "openclaw:oc_" + "b" * 32 + ":agent,"
                 "hermes:hm_" + "c" * 32 + ":agent,"
                 "operator:op_" + "d" * 32 + ":operator",
+                'UAM_API_PRINCIPAL_BINDINGS_JSON={"openclaw":'
+                '{"tenant_id":"00000000-0000-0000-0000-000000000001",'
+                '"workspace_id":"00000000-0000-0000-0000-000000000002",'
+                '"agent_id":"00000000-0000-0000-0000-000000000010"},'
+                '"hermes":'
+                '{"tenant_id":"00000000-0000-0000-0000-000000000001",'
+                '"workspace_id":"00000000-0000-0000-0000-000000000002",'
+                '"agent_id":"00000000-0000-0000-0000-000000000020"}}',
+                "UAM_REQUIRE_IDENTITY_BINDINGS=true",
                 "UAM_SERVER_ID=00000000-0000-0000-0000-000000000001",
                 "UAM_PROJECT_ID=00000000-0000-0000-0000-000000000002",
                 "UAM_PUBLIC_HOST=memory.example.com",
@@ -207,6 +216,20 @@ def test_validate_production_env_accepts_secret_files(tmp_path: Path) -> None:
         "UAM_AUDIT_SIGNING_KEY": "audit_" + "b" * 40,
         "UAM_VAULT_SIGNING_KEY": "vault_" + "c" * 40,
         "UAM_RELEASE_SIGNING_KEY": "release_" + "d" * 40,
+        "UAM_API_PRINCIPAL_BINDINGS_JSON": json.dumps(
+            {
+                "openclaw": {
+                    "tenant_id": "00000000-0000-0000-0000-000000000001",
+                    "workspace_id": "00000000-0000-0000-0000-000000000002",
+                    "agent_id": "00000000-0000-0000-0000-000000000010",
+                },
+                "hermes": {
+                    "tenant_id": "00000000-0000-0000-0000-000000000001",
+                    "workspace_id": "00000000-0000-0000-0000-000000000002",
+                    "agent_id": "00000000-0000-0000-0000-000000000020",
+                },
+            }
+        ),
     }
     secret_lines: list[str] = []
     for key, value in secret_values.items():
@@ -219,6 +242,7 @@ def test_validate_production_env_accepts_secret_files(tmp_path: Path) -> None:
         "\n".join(
             [
                 *secret_lines,
+                "UAM_REQUIRE_IDENTITY_BINDINGS=true",
                 "UAM_SERVER_ID=00000000-0000-0000-0000-000000000001",
                 "UAM_PROJECT_ID=00000000-0000-0000-0000-000000000002",
                 "UAM_PUBLIC_HOST=memory.example.com",
@@ -369,6 +393,11 @@ def test_production_compose_wires_memory_text_encryption() -> None:
     assert compose.count("UAM_MEMORY_TEXT_ENCRYPTION_KEY_FILE: ") >= 2
     assert "UAM_API_KEY_FILE: ${UAM_API_KEY_FILE:-}" in compose
     assert "UAM_API_KEYS_FILE: ${UAM_API_KEYS_FILE:-}" in compose
+    assert (
+        "UAM_API_PRINCIPAL_BINDINGS_JSON_FILE: "
+        "${UAM_API_PRINCIPAL_BINDINGS_JSON_FILE:-}"
+    ) in compose
+    assert "UAM_REQUIRE_IDENTITY_BINDINGS: ${UAM_REQUIRE_IDENTITY_BINDINGS:-true}" in compose
     assert compose.count("UAM_QDRANT_PAYLOAD_TEXT: ${UAM_QDRANT_PAYLOAD_TEXT:-false}") >= 2
 
 

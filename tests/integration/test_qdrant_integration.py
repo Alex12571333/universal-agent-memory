@@ -172,6 +172,43 @@ class QdrantIntegrationTest(unittest.TestCase):
 
         self.assertEqual((), results)
 
+    def test_live_search_keeps_private_vectors_agent_isolated(self) -> None:
+        from memory_plane.adapters.qdrant import QdrantCandidateSource
+
+        agent_a = uuid4()
+        agent_b = uuid4()
+        source = QdrantCandidateSource(
+            url=QDRANT_URL,  # type: ignore[arg-type]
+            collection=self.collection,
+            dense_dim=4,
+            query_embedding_client=_StaticEmbeddingClient(),
+        )
+        source.connect()
+        private_a = _item(
+            "private vector alpha",
+            scope=MemoryScope.PRIVATE,
+            agent_id=agent_a,
+        )
+        private_b = _item(
+            "private vector beta",
+            scope=MemoryScope.PRIVATE,
+            agent_id=agent_b,
+        )
+        source.upsert(private_a, dense_vector=[1.0, 0.0, 0.0, 0.0])
+        source.upsert(private_b, dense_vector=[1.0, 0.0, 0.0, 0.0])
+
+        results = source.search(
+            RecallQuery(
+                tenant_id=_T,
+                workspace_id=_W,
+                agent_id=agent_a,
+                text="private vector",
+                top_k=10,
+            )
+        )
+
+        self.assertEqual((private_a.id,), tuple(row.item.id for row in results))
+
 
 if __name__ == "__main__":
     unittest.main()

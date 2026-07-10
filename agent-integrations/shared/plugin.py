@@ -82,7 +82,7 @@ class UniversalAgentMemoryPlugin(AgentMemoryPlugin):
         return (retained.id,)
 
     def on_run_complete(self, context: AgentRunContext, summary: str) -> tuple[UUID, ...]:
-        """Persist a run summary and optionally trigger reflection."""
+        """Persist a run summary."""
         if not self._config.enabled or not summary.strip():
             return ()
         retained = self._client.retain(
@@ -100,11 +100,6 @@ class UniversalAgentMemoryPlugin(AgentMemoryPlugin):
                 f"{_stable_digest(summary)}"
             ),
         )
-        if self._config.trigger_reflection_on_complete:
-            self._client.reflect(
-                tenant_id=context.tenant_id,
-                workspace_id=context.workspace_id,
-            )
         return (retained.id,)
 
     def save_checkpoint(self, context: AgentRunContext, state: dict[str, object]) -> UUID | None:

@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from memory_plane.contracts.dto import Candidate, RecallQuery, RecallResult
-from memory_plane.domain.models import MemoryStatus
+from memory_plane.domain.models import MemoryScope, MemoryStatus
 from memory_plane.ports.repositories import CandidateSource
 
 DEFAULT_WEIGHTS = {
@@ -52,6 +52,16 @@ class RetrievalService:
                 if query.valid_at and not candidate.item.is_valid_at(query.valid_at):
                     continue
                 if candidate.item.status in (MemoryStatus.REJECTED, MemoryStatus.ARCHIVED):
+                    continue
+                if (
+                    candidate.item.scope == MemoryScope.PRIVATE
+                    and candidate.item.agent_id != query.agent_id
+                ):
+                    continue
+                if (
+                    candidate.item.scope == MemoryScope.THREAD
+                    and candidate.item.thread_id != query.thread_id
+                ):
                     continue
                 grouped[candidate.item.id].append(candidate)
 

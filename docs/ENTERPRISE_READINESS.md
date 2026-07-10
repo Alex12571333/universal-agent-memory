@@ -18,8 +18,9 @@ remaining hard requirements.
       security headers and direct backend exposure checks.
 - [x] API key auth can protect API, docs, metrics, and UI.
 - [x] Scoped API keys gate operator, agent, read, and write route classes.
-- [ ] Bind every API principal to allowed tenant, workspace and agent identities,
-      then enforce memory visibility scopes as authorization policy.
+- [x] Production can require every agent API principal to be bound to one
+      tenant/workspace/agent identity; forged IDs and foreign threads are
+      rejected and private recall is owner-filtered across all candidate layers.
 - [x] Application secrets support `*_FILE` reads for API keys, model gateway
       keys, signing keys, database URLs and memory text encryption keys.
 - [ ] Mount those secret files in the production topology and construct every

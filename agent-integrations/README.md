@@ -12,7 +12,7 @@ before model call → inject a budgeted ContextPackage
 after message     → retain useful observations
 after tool call   → retain tool trace or error memory
 checkpoint        → save working state
-run complete      → retain summary and optionally trigger reflection/reindex
+run complete      → retain summary; operator worker handles reflection/reindex
 ```
 
 MCP can remain as an optional bridge, but it should not be the primary
@@ -45,8 +45,10 @@ UAM_MEMORY_ENABLED=true
 UAM_MEMORY_RECALL_TOP_K=8
 UAM_CONTEXT_BUDGET_TOKENS=131072
 UAM_CONTEXT_PER_LAYER_LIMIT=1000
-UAM_REFLECT_ON_RUN_COMPLETE=false
 ```
 
 If IDs are omitted, adapters derive stable UUIDv5-style IDs from the runtime
 name/session/workspace so local testing works without SaaS-style onboarding.
+Production must provision those exact IDs and bind the agent key before startup.
+Reflection and reindex are deliberately absent from agent credentials; run them
+from an operator-controlled scheduler or the UI.

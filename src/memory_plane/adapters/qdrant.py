@@ -450,6 +450,8 @@ class QdrantCandidateSource:
             return False
         if item.scope == MemoryScope.THREAD and item.thread_id != query.thread_id:
             return False
+        if item.scope == MemoryScope.PRIVATE and item.agent_id != query.agent_id:
+            return False
         if item.status in (MemoryStatus.REJECTED, MemoryStatus.ARCHIVED):
             return False
         return True

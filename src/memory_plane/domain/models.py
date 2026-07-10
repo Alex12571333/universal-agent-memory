@@ -116,6 +116,8 @@ class MemoryItem:
             raise ValueError("valid_to must be after valid_from")
         if self.scope == MemoryScope.THREAD and self.thread_id is None:
             raise ValueError("thread-scoped memory requires thread_id")
+        if self.scope == MemoryScope.PRIVATE and self.agent_id is None:
+            raise ValueError("private memory requires agent_id")
         if self.status == MemoryStatus.PINNED and self.layer != MemoryLayer.CORE:
             raise ValueError("pinned memory must live in the core layer")
 

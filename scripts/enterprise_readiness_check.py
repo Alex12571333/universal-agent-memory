@@ -185,6 +185,13 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 "prod-compose:secret-files",
                 "UAM_API_KEY_FILE: ${UAM_API_KEY_FILE:-}" in prod_compose
                 and "UAM_API_KEYS_FILE: ${UAM_API_KEYS_FILE:-}" in prod_compose
+                and (
+                    "UAM_API_PRINCIPAL_BINDINGS_JSON_FILE: "
+                    "${UAM_API_PRINCIPAL_BINDINGS_JSON_FILE:-}"
+                )
+                in prod_compose
+                and "UAM_REQUIRE_IDENTITY_BINDINGS: ${UAM_REQUIRE_IDENTITY_BINDINGS:-true}"
+                in prod_compose
                 and "UAM_MEMORY_LLM_API_KEY_FILE: ${UAM_MEMORY_LLM_API_KEY_FILE:-}" in prod_compose
                 and "UAM_EMBEDDING_API_KEY_FILE: ${UAM_EMBEDDING_API_KEY_FILE:-}" in prod_compose
                 and "UAM_DATABASE_PASSWORD_FILE: /run/secrets/app_db_password" in prod_compose
@@ -313,11 +320,18 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 "env:secret-files",
                 "UAM_API_KEY_FILE=" in env
                 and "UAM_API_KEYS_FILE=" in env
+                and "UAM_API_PRINCIPAL_BINDINGS_JSON_FILE=" in env
                 and "UAM_MEMORY_TEXT_ENCRYPTION_KEY_FILE=" in env
                 and "UAM_MEMORY_LLM_API_KEY_FILE=" in env
                 and "UAM_EMBEDDING_API_KEY_FILE=" in env
                 and "UAM_RELEASE_SIGNING_KEY_FILE=" in env,
                 "mounted secret-file env alternatives are documented",
+            ),
+            Check(
+                "env:identity-bindings",
+                "UAM_API_PRINCIPAL_BINDINGS_JSON=" in env
+                and "UAM_REQUIRE_IDENTITY_BINDINGS=true" in env,
+                "strict agent principal bindings are documented",
             ),
             Check(
                 "env:text-encryption-scopes",

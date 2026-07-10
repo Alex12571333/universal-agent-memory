@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import base64
+import json
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 
 from memory_plane.adapters.in_memory import InMemoryMemoryStore
@@ -217,6 +219,172 @@ def test_identity_provisioning_is_operator_only_idempotent_and_scope_safe(monkey
     assert updated.status_code == 200
     assert updated.json()["agent"]["name"] == "OpenClaw production"
     assert collision.status_code == 409
+
+
+def test_bound_agent_keys_enforce_identity_private_memory_and_thread_ownership(
+    monkeypatch,
+) -> None:
+    agent_a = uuid4()
+    agent_b = uuid4()
+    thread_a = uuid4()
+    thread_b = uuid4()
+    monkeypatch.setenv(
+        "UAM_API_KEYS",
+        "agent-a:key-a:agent,agent-b:key-b:agent,operator:operator-key:operator",
+    )
+    monkeypatch.setenv(
+        "UAM_API_PRINCIPAL_BINDINGS_JSON",
+        json.dumps(
+            {
+                "agent-a": {
+                    "tenant_id": str(DEFAULT_SERVER_ID),
+                    "workspace_id": str(DEFAULT_PROJECT_ID),
+                    "agent_id": str(agent_a),
+                },
+                "agent-b": {
+                    "tenant_id": str(DEFAULT_SERVER_ID),
+                    "workspace_id": str(DEFAULT_PROJECT_ID),
+                    "agent_id": str(agent_b),
+                },
+            }
+        ),
+    )
+    monkeypatch.setenv("UAM_REQUIRE_IDENTITY_BINDINGS", "true")
+    client = TestClient(create_app(build_in_memory_container()))
+    operator = {"Authorization": "Bearer operator-key"}
+    headers_a = {"Authorization": "Bearer key-a"}
+    headers_b = {"Authorization": "Bearer key-b"}
+    for agent_id, thread_id, name in (
+        (agent_a, thread_a, "Agent A"),
+        (agent_b, thread_b, "Agent B"),
+    ):
+        provisioned = client.post(
+            "/v1/identities/provision",
+            headers=operator,
+            json={
+                "agent_id": str(agent_id),
+                "agent_name": name,
+                "agent_role": "test-agent",
+                "thread_id": str(thread_id),
+            },
+        )
+        assert provisioned.status_code == 200
+
+    def retain_private(agent_id, text, headers):  # type: ignore[no-untyped-def]
+        return client.post(
+            "/v1/memory/retain",
+            headers=headers,
+            json={
+                "tenant_id": str(DEFAULT_SERVER_ID),
+                "workspace_id": str(DEFAULT_PROJECT_ID),
+                "agent_id": str(agent_id),
+                "layer": "semantic",
+                "scope": "private",
+                "kind": "preference",
+                "text": text,
+            },
+        )
+
+    assert retain_private(agent_a, "Agent A private marker", headers_a).status_code == 201
+    assert retain_private(agent_b, "Agent B private marker", headers_b).status_code == 201
+    recalled_a = client.post(
+        "/v1/memory/recall",
+        headers=headers_a,
+        json={
+            "tenant_id": str(DEFAULT_SERVER_ID),
+            "workspace_id": str(DEFAULT_PROJECT_ID),
+            "agent_id": str(agent_a),
+            "query": "private marker",
+            "top_k": 20,
+        },
+    )
+    forged_agent = retain_private(agent_b, "forged", headers_a)
+    forged_workspace = client.post(
+        "/v1/memory/recall",
+        headers=headers_a,
+        json={
+            "tenant_id": str(DEFAULT_SERVER_ID),
+            "workspace_id": str(uuid4()),
+            "agent_id": str(agent_a),
+            "query": "anything",
+        },
+    )
+    foreign_thread = client.get(
+        f"/v1/checkpoints/{thread_b}?tenant_id={DEFAULT_SERVER_ID}",
+        headers=headers_a,
+    )
+    operator_route = client.get(
+        f"/v1/workspaces/{DEFAULT_PROJECT_ID}/conflicts",
+        headers=headers_a,
+    )
+
+    assert recalled_a.status_code == 200
+    assert [row["text"] for row in recalled_a.json()["results"]] == [
+        "Agent A private marker"
+    ]
+    assert forged_agent.status_code == 403
+    assert forged_workspace.status_code == 403
+    assert foreign_thread.status_code == 403
+    assert operator_route.status_code == 403
+
+
+def test_strict_binding_mode_rejects_unbound_agent_key(monkeypatch) -> None:
+    monkeypatch.setenv("UAM_API_KEYS", "agent:agent-secret:agent")
+    monkeypatch.setenv("UAM_REQUIRE_IDENTITY_BINDINGS", "true")
+    monkeypatch.delenv("UAM_API_PRINCIPAL_BINDINGS_JSON", raising=False)
+
+    with pytest.raises(RuntimeError, match="require identity bindings"):
+        create_app(build_in_memory_container())
+
+
+@pytest.mark.parametrize(
+    ("method", "path"),
+    (
+        ("GET", "/v1/graph"),
+        ("GET", f"/v1/workspaces/{DEFAULT_PROJECT_ID}/memories"),
+        ("GET", f"/v1/memory/{uuid4()}/neighbors"),
+        ("POST", f"/v1/memory/{uuid4()}/supersede"),
+        ("GET", "/v1/memory/proposals"),
+        ("POST", f"/v1/memory/proposals/{uuid4()}/accept"),
+        ("GET", "/v1/conversations"),
+        ("POST", "/v1/conversations/curate"),
+        ("GET", "/v1/checkpoints"),
+        ("POST", f"/v1/checkpoints/{uuid4()}/compact"),
+        ("GET", "/v1/audit/events"),
+        ("GET", "/v1/settings/models"),
+    ),
+)
+def test_bound_agent_key_cannot_access_operator_control_plane(
+    monkeypatch,
+    method: str,
+    path: str,
+) -> None:
+    agent_id = uuid4()
+    monkeypatch.setenv("UAM_API_KEYS", "agent:agent-secret:agent")
+    monkeypatch.setenv(
+        "UAM_API_PRINCIPAL_BINDINGS_JSON",
+        json.dumps(
+            {
+                "agent": {
+                    "tenant_id": str(DEFAULT_SERVER_ID),
+                    "workspace_id": str(DEFAULT_PROJECT_ID),
+                    "agent_id": str(agent_id),
+                }
+            }
+        ),
+    )
+    monkeypatch.setenv("UAM_REQUIRE_IDENTITY_BINDINGS", "true")
+    client = TestClient(create_app(build_in_memory_container()))
+
+    response = client.request(
+        method,
+        path,
+        headers={"Authorization": "Bearer agent-secret"},
+        json={} if method == "POST" else None,
+    )
+
+    assert response.status_code == 403
+    assert response.json()["required_scope"] == "operator"
 
 
 def test_api_auth_reads_master_and_scoped_keys_from_files(monkeypatch, tmp_path) -> None:
