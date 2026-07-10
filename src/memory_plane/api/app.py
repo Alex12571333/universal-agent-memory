@@ -3565,7 +3565,7 @@ Build a universal memory layer for AI agents that is:
         return;
       }
       const note = parseVaultNote(file.content);
-      $("vaultEditor").value = note.body;
+      $("vaultEditor").value = sanitizeVaultEditableBody(file.editable_content ?? note.body);
       $("vaultMeta").innerHTML = `
         <span class="pill">${escapeHtml(file.path)}</span>
         <span class="pill">${escapeHtml(note.frontmatter.id || "без id")}</span>
@@ -3729,18 +3729,27 @@ Build a universal memory layer for AI agents that is:
       const lines = String(value || "").split(/\\r?\\n/);
       const kept = [];
       let droppingJsonBlock = false;
+      let droppingFence = false;
       for (const line of lines) {
         const trimmed = line.trim();
+        if (droppingFence) {
+          if (trimmed.startsWith("```")) droppingFence = false;
+          continue;
+        }
         if (droppingJsonBlock) {
-          if (trimmed === "}" || trimmed === "]," || trimmed === "]") droppingJsonBlock = false;
+          if (/[}\\]]\\s*,?$/.test(trimmed)) droppingJsonBlock = false;
           continue;
         }
         if (!trimmed) {
           kept.push("");
           continue;
         }
-        if (isVaultSystemHeading(line) || looksLikeVaultSystemField(trimmed) || looksLikeVectorPayload(trimmed)) {
-          if (trimmed.endsWith("{") || trimmed.endsWith("[") || trimmed === "{" || trimmed === "[") droppingJsonBlock = true;
+        if (isVaultSystemHeading(line) || looksLikeVaultSystemField(trimmed) || looksLikeVectorPayload(trimmed) || looksLikeStructuredPayloadStart(trimmed)) {
+          if (trimmed.startsWith("```")) {
+            droppingFence = true;
+            continue;
+          }
+          if (trimmed.endsWith("{") || trimmed.endsWith("[") || trimmed === "{" || trimmed === "[" || /^[{[]/.test(trimmed)) droppingJsonBlock = true;
           continue;
         }
         kept.push(line);
@@ -3749,9 +3758,9 @@ Build a universal memory layer for AI agents that is:
     }
 
     function looksLikeVaultSystemField(line) {
-      return /^(embedding|embeddings|vector|vectors|metadata|provenance|revision|revisions|checksum_sha256|checksum|source|origin|object|supersedes|superseded_by|tenant_id|workspace_id|item_id|id|created_at|updated_at|valid_from|valid_to|observed_at|labels|confidence|importance|status|type)\\s*[:=]/i.test(line)
-        || /^(эмбеддинг|эмбеддинги|вектор|векторы|метаданные|ревизия|ревизии|источник|контрольная сумма|служебные данные)\\s*[:=]/i.test(line)
-        || /^["']?(embedding|embeddings|vector|vectors|metadata|provenance|revision|checksum_sha256)["']?\\s*:/i.test(line);
+      return /^(embedding|embeddings|vector|vectors|metadata|provenance|revision|revisions|checksum_sha256|checksum|source|origin|object|supersedes|superseded_by|tenant_id|workspace_id|item_id|id|payload|point|points|qdrant|dense|sparse|values|dimension|dimensions|dim|model|model_name|provider|score|distance|created_at|updated_at|valid_from|valid_to|observed_at|labels|confidence|importance|status|type)\\s*[:=]/i.test(line)
+        || /^(эмбеддинг|эмбеддинги|вектор|векторы|метаданные|ревизия|ревизии|источник|контрольная сумма|служебные данные|размерность|модель|провайдер)\\s*[:=]/i.test(line)
+        || /^["']?(embedding|embeddings|vector|vectors|metadata|provenance|revision|checksum_sha256|payload|qdrant|dimension|model_name)["']?\\s*:/i.test(line);
     }
 
     function looksLikeVectorPayload(line) {
@@ -3759,6 +3768,13 @@ Build a universal memory layer for AI agents that is:
       if (/^[-+]?\\d+(\\.\\d+)?([eE][+-]?\\d+)?(\\s*,\\s*[-+]?\\d+(\\.\\d+)?([eE][+-]?\\d+)?){5,}$/.test(line)) return true;
       if (/^[-+]?\\d+(\\.\\d+)?([eE][+-]?\\d+)?(\\s+[-+]?\\d+(\\.\\d+)?([eE][+-]?\\d+)?){8,}$/.test(line)) return true;
       return false;
+    }
+
+    function looksLikeStructuredPayloadStart(line) {
+      const lowered = line.toLowerCase();
+      if (lowered.startsWith("```") && /(json|yaml|yml|embedding|vector|qdrant)/.test(lowered)) return true;
+      if (!/^[{[]/.test(lowered)) return false;
+      return /(embedding|embeddings|vector|vectors|payload|qdrant|metadata|provenance|dimension|model_name)/.test(lowered);
     }
 
     function parseFrontmatter(lines) {

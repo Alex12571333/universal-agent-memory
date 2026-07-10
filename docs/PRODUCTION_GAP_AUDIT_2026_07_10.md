@@ -22,7 +22,7 @@ it is not enough.
 | OpenClaw/Hermes | Native adapter scaffolds, tests and live soak runner exist | Needs saved real runtime soak evidence from `.14` |
 | UI | React dashboard exists and is improving | Operator-grade, not yet admin-console complete |
 | Testing | Unit, integration-style, benchmark scripts, web build | Needs load/chaos/restore/security tests |
-| Release process | `AGENTS.md` describes issue/PR workflow | Main branch protection and PR-only enforcement are not proven |
+| Release process | `main` branch protection requires PR flow, strict `python`/`web` checks, conversation resolution, and admin enforcement | Release gate baseline is now proven by `scripts/check_branch_protection.py`; keep verifying before releases |
 | Operations | Runbook, backup/restore scripts, isolated restore-drill script, scheduler-ready backup runner, signed vault manifests, metrics health evaluator with JSON report/webhook, release checklist | Needs environment scheduler, durable/immutable storage and dashboard wiring |
 
 ## What “full production level” means for this project
@@ -106,9 +106,9 @@ Required gates:
 
 ## Things that must not be claimed yet
 
-- “Fully enterprise production-ready” — not until branch protection, automated
-  restore drills, alerting, signed audit retention, and real `.14` agent soak
-  reports are proven.
+- “Fully enterprise production-ready” — not until automated restore drills,
+  alerting, signed audit retention, and real `.14` agent soak reports are
+  proven.
 - “Remembers all conversations automatically” — the raw ledger can store full
   turns, but automatic capture depends on agent/plugin hooks being installed.
 - “Semantic recall is production quality” — only true when a real embedding
@@ -127,5 +127,5 @@ Required gates:
 4. Wire metrics and scheduled-backup health reports into the deployment
    dashboard/alerting stack.
 5. Add UI conflict-resolution flow with accept/supersede/reject actions.
-6. Add branch-protection/PR-only release policy in GitHub settings.
+6. Preserve branch-protection evidence in every release bundle.
 7. Add optional external secret-manager integration.

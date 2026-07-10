@@ -728,8 +728,13 @@ def _sanitize_editable_body(value: str) -> str:
     """Drop technical vector/provenance payloads that leaked into editable text."""
     kept: list[str] = []
     dropping_structured_block = 0
+    dropping_fence = False
     for line in value.splitlines():
         stripped = line.strip()
+        if dropping_fence:
+            if stripped.startswith("```"):
+                dropping_fence = False
+            continue
         if dropping_structured_block:
             if "{" in stripped or "[" in stripped:
                 dropping_structured_block += stripped.count("{") + stripped.count("[")
@@ -749,7 +754,11 @@ def _sanitize_editable_body(value: str) -> str:
             or _looks_like_system_field(stripped)
             or _looks_like_vector_payload(stripped)
             or _looks_like_vector_block_start(stripped)
+            or _looks_like_structured_payload_start(stripped)
         ):
+            if stripped.startswith("```"):
+                dropping_fence = True
+                continue
             if stripped.endswith(("{", "[")) or stripped in {"{", "["}:
                 dropping_structured_block = 1
             continue
@@ -779,6 +788,21 @@ def _looks_like_system_field(line: str) -> bool:
         "workspace_id",
         "item_id",
         "id",
+        "payload",
+        "point",
+        "points",
+        "qdrant",
+        "dense",
+        "sparse",
+        "values",
+        "dimension",
+        "dimensions",
+        "dim",
+        "model",
+        "model_name",
+        "provider",
+        "score",
+        "distance",
         "created_at",
         "updated_at",
         "valid_from",
@@ -799,6 +823,9 @@ def _looks_like_system_field(line: str) -> bool:
         "источник",
         "контрольная сумма",
         "служебные данные",
+        "размерность",
+        "модель",
+        "провайдер",
     )
     normalized = lowered.lstrip("\"'")
     return any(
@@ -829,6 +856,32 @@ def _looks_like_vector_block_start(line: str) -> bool:
         return False
     remainder = stripped[1:].strip().rstrip(",")
     return bool(remainder) and _is_float_like(remainder)
+
+
+def _looks_like_structured_payload_start(line: str) -> bool:
+    lowered = line.lower()
+    if lowered.startswith("```") and any(
+        token in lowered
+        for token in ("json", "yaml", "yml", "embedding", "vector", "qdrant")
+    ):
+        return True
+    if not lowered.startswith(("{", "[")):
+        return False
+    return any(
+        token in lowered
+        for token in (
+            "embedding",
+            "embeddings",
+            "vector",
+            "vectors",
+            "payload",
+            "qdrant",
+            "metadata",
+            "provenance",
+            "dimension",
+            "model_name",
+        )
+    )
 
 
 def _is_float_like(value: str) -> bool:

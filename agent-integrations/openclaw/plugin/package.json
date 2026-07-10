@@ -13,6 +13,11 @@
   "peerDependencies": {
     "openclaw": "*"
   },
+  "peerDependenciesMeta": {
+    "openclaw": {
+      "optional": true
+    }
+  },
   "scripts": {
     "check": "node --check index.js"
   }
