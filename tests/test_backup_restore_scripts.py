@@ -149,6 +149,28 @@ def test_validate_production_env_rejects_plaintext_memory_storage() -> None:
     assert "UAM_MEMORY_TEXT_ENCRYPTION" in failed
 
 
+def test_production_compose_wires_memory_text_encryption() -> None:
+    compose = (ROOT / "docker-compose.prod.yml").read_text(encoding="utf-8")
+
+    assert (
+        compose.count(
+            "UAM_MEMORY_TEXT_ENCRYPTION: ${UAM_MEMORY_TEXT_ENCRYPTION:-pgcrypto}"
+        )
+        >= 2
+    )
+    assert (
+        compose.count(
+            "UAM_MEMORY_TEXT_ENCRYPTION_KEY: "
+            "${UAM_MEMORY_TEXT_ENCRYPTION_KEY:?set UAM_MEMORY_TEXT_ENCRYPTION_KEY"
+        )
+        >= 2
+    )
+    assert (
+        compose.count("UAM_QDRANT_PAYLOAD_TEXT: ${UAM_QDRANT_PAYLOAD_TEXT:-false}")
+        >= 2
+    )
+
+
 def test_validate_production_env_rejects_qdrant_text_payloads(tmp_path: Path) -> None:
     env_file = tmp_path / ".env.production"
     env_file.write_text(

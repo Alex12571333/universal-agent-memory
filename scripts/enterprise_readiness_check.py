@@ -145,6 +145,27 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 "production API key is required",
             ),
             Check(
+                "prod-compose:text-encryption",
+                prod_compose.count(
+                    "UAM_MEMORY_TEXT_ENCRYPTION: ${UAM_MEMORY_TEXT_ENCRYPTION:-pgcrypto}"
+                )
+                >= 2
+                and prod_compose.count(
+                    "UAM_MEMORY_TEXT_ENCRYPTION_KEY: "
+                    "${UAM_MEMORY_TEXT_ENCRYPTION_KEY:?set UAM_MEMORY_TEXT_ENCRYPTION_KEY"
+                )
+                >= 2,
+                "production API and embedding worker receive canonical text encryption settings",
+            ),
+            Check(
+                "prod-compose:qdrant-redacted-payload",
+                prod_compose.count(
+                    "UAM_QDRANT_PAYLOAD_TEXT: ${UAM_QDRANT_PAYLOAD_TEXT:-false}"
+                )
+                >= 2,
+                "production API and embedding worker keep raw text out of Qdrant payloads",
+            ),
+            Check(
                 "reverse-proxy:caddy-overlay",
                 "caddy:2.8-alpine" in read("deploy/reverse-proxy/docker-compose.caddy.yml")
                 and '"443:443"' in read("deploy/reverse-proxy/docker-compose.caddy.yml")

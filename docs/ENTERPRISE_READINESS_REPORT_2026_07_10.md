@@ -1,6 +1,6 @@
 # Production envelope report — 2026-07-10
 
-Passed: 92
+Passed: 94
 Failed: 0
 
 | Check | Status | Detail |
@@ -47,6 +47,8 @@ Failed: 0
 | `prod-compose:internal-qdrant` | PASS | Qdrant is internal in production |
 | `prod-compose:nats-health` | PASS | NATS JetStream has monitoring healthcheck |
 | `prod-compose:required-api-key` | PASS | production API key is required |
+| `prod-compose:text-encryption` | PASS | production API and embedding worker receive canonical text encryption settings |
+| `prod-compose:qdrant-redacted-payload` | PASS | production API and embedding worker keep raw text out of Qdrant payloads |
 | `reverse-proxy:caddy-overlay` | PASS | Caddy TLS reverse proxy example exists |
 | `docs:tls-reverse-proxy` | PASS | TLS reverse proxy guide documents backend exposure limits |
 | `ci:ruff` | PASS | CI runs ruff |

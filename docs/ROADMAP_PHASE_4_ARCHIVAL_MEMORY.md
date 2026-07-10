@@ -123,7 +123,7 @@ Proposal schema:
   "agent_id": "openclaw-01",
   "target": "auto",
   "proposal": "User prefers Russian interface labels.",
-  "evidence": "User explicitly complained that the UI was not in Russian.",
+  "evidence": "Operator selected Russian as the preferred UI language.",
   "confidence": 0.91,
   "importance": 4
 }
