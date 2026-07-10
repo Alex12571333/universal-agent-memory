@@ -14,7 +14,7 @@ from memory_plane.adapters.embeddings import (
     build_embedding_client,
 )
 from memory_plane.bootstrap import build_in_memory_container
-from memory_plane.contracts.dto import RecallQuery, RetainCommand
+from memory_plane.contracts.dto import RecallQuery, RetainCommand, SupersedeMemoryCommand
 from memory_plane.domain.models import MemoryLayer, MemoryScope, Provenance
 
 
@@ -495,6 +495,40 @@ class EmbeddingServiceTest(unittest.TestCase):
         metrics = self.container.embedding.collect_metrics()
         self.assertEqual(1, metrics["embedding_operations_total"])
         self.assertEqual(1, metrics["embedding_failures_total"])
+
+    def test_processing_replacement_deletes_superseded_vector_after_upsert(self) -> None:
+        first = self.container.retention.retain(
+            RetainCommand(
+                tenant_id=self.tenant,
+                workspace_id=self.workspace,
+                layer=MemoryLayer.SEMANTIC,
+                scope=MemoryScope.WORKSPACE,
+                kind="fact",
+                text="Alpha releases on July 15",
+                provenance=Provenance(source_kind="test"),
+            )
+        )
+        replacement = self.container.retention.supersede(
+            SupersedeMemoryCommand(
+                tenant_id=self.tenant,
+                item_id=first.item.id,
+                replacement_text="Alpha releases on July 16",
+                expected_revision=1,
+            )
+        )
+        qdrant = self.container.embedding._qdrant
+
+        with (
+            patch.object(qdrant, "upsert", wraps=qdrant.upsert) as upsert,
+            patch.object(qdrant, "delete", wraps=qdrant.delete) as delete,
+        ):
+            self.container.embedding.process_memory_retained(
+                self.tenant,
+                replacement.item.id,
+            )
+
+        upsert.assert_called_once()
+        delete.assert_called_once_with(first.item.id)
 
     def test_process_memory_retained_missing_raises(self) -> None:
         """Processing a non-existent memory ID raises ValueError for worker retries."""

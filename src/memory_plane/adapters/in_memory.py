@@ -156,6 +156,26 @@ class InMemoryMemoryStore:
         item = self._items.get(item_id)
         return item if item is not None and item.tenant_id == tenant_id else None
 
+    def is_recallable_head(self, tenant_id: UUID, item_id: UUID) -> bool:
+        """Reject tombstones and every item with a newer revision child."""
+        item = self.get(tenant_id, item_id)
+        if item is None or item.status in (MemoryStatus.REJECTED, MemoryStatus.ARCHIVED):
+            return False
+        return not any(
+            candidate.tenant_id == tenant_id and candidate.supersedes_id == item_id
+            for candidate in self._items.values()
+        )
+
+    def filter_recallable_heads(
+        self,
+        tenant_id: UUID,
+        item_ids: tuple[UUID, ...],
+    ) -> frozenset[UUID]:
+        """Return active heads from a bounded ID batch."""
+        return frozenset(
+            item_id for item_id in item_ids if self.is_recallable_head(tenant_id, item_id)
+        )
+
     def _latest_descendant(self, item: MemoryItem) -> MemoryItem:
         """Follow the append-only supersedes chain to its latest known head."""
         head = item
@@ -197,15 +217,10 @@ class InMemoryMemoryStore:
         all_items = self.list_for_workspace(
             query.tenant_id, query.workspace_id, layers=query.layers
         )
-        superseded_ids = {
-            item.supersedes_id for item in all_items if item.supersedes_id is not None
-        }
         for item in all_items:
-            if item.id in superseded_ids:
+            if not self.is_recallable_head(query.tenant_id, item.id):
                 continue
             if item.scope == MemoryScope.THREAD and item.thread_id != query.thread_id:
-                continue
-            if item.status in (MemoryStatus.REJECTED, MemoryStatus.ARCHIVED):
                 continue
             if query.labels and not set(query.labels).issubset(item.labels):
                 continue

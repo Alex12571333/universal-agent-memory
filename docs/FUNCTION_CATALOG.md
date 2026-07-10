@@ -150,6 +150,7 @@
 | `NatsPullWorker.run_once()` | Pull → decode → handler → ack/nak | Busy/error delivery не подтверждается |
 | `migrate(dsn, app_user, app_password)` | Применяет forward-only SQL migrations и runtime-role grants | Advisory lock; повторный запуск и password rotation безопасны |
 | `read_database_dsn(...)` | URL/`*_URL_FILE` или DB-компоненты + password file → escaped DSN | Не требует secret interpolation в Compose |
+| `filter_recallable_heads(tenant_id, ids)` | Batch canonical head validation | Отсекает superseded/rejected/archived до vector fusion |
 
 ## Metrics/ops — `services/metrics.py`, `scripts/backup.py`, `scripts/restore.py`
 

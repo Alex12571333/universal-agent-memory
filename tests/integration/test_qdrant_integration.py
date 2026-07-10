@@ -10,6 +10,7 @@ import os
 import unittest
 from uuid import uuid4
 
+from memory_plane.contracts.dto import RecallQuery
 from memory_plane.domain.models import MemoryItem, MemoryLayer, MemoryScope, Provenance
 
 QDRANT_URL = os.getenv("UAM_TEST_QDRANT_URL")
@@ -18,6 +19,25 @@ SKIP_REASON = "UAM_TEST_QDRANT_URL not set"
 _T = uuid4()
 _W = uuid4()
 _PROV = Provenance(source_kind="integration-test")
+
+
+class _StaticEmbeddingClient:
+    model_name = "integration-static"
+    dimension = 4
+
+    def embed(self, _text: str) -> list[float]:
+        return [1.0, 0.0, 0.0, 0.0]
+
+    def embed_query(self, _text: str) -> list[float]:
+        return [1.0, 0.0, 0.0, 0.0]
+
+
+class _RejectingHeadLedger:
+    def is_recallable_head(self, _tenant_id, _item_id) -> bool:  # type: ignore[no-untyped-def]
+        return False
+
+    def filter_recallable_heads(self, _tenant_id, _item_ids) -> frozenset:  # type: ignore[no-untyped-def]
+        return frozenset()
 
 
 def _item(text: str, **kw) -> MemoryItem:  # type: ignore[no-untyped-def]
@@ -67,11 +87,12 @@ class QdrantIntegrationTest(unittest.TestCase):
         from qdrant_client import QdrantClient  # type: ignore[import-untyped]
 
         client = QdrantClient(url=QDRANT_URL)
-        result = client.search(
+        result = client.query_points(
             collection_name=self.collection,
-            query_vector=("dense", [0.9, 0.1, 0.0, 0.0]),
+            query=[0.9, 0.1, 0.0, 0.0],
+            using="dense",
             limit=5,
-        )
+        ).points
         self.assertEqual(1, len(result))
         self.assertEqual(str(item.id), result[0].id)
 
@@ -83,11 +104,12 @@ class QdrantIntegrationTest(unittest.TestCase):
         from qdrant_client import QdrantClient  # type: ignore[import-untyped]
 
         client = QdrantClient(url=QDRANT_URL)
-        result = client.search(
+        result = client.query_points(
             collection_name=self.collection,
-            query_vector=("dense", [0.5, 0.5, 0.0, 0.0]),
+            query=[0.5, 0.5, 0.0, 0.0],
+            using="dense",
             limit=5,
-        )
+        ).points
         self.assertEqual(0, len(result))
 
     def test_reindex_replaces_points(self) -> None:
@@ -100,11 +122,12 @@ class QdrantIntegrationTest(unittest.TestCase):
         from qdrant_client import QdrantClient  # type: ignore[import-untyped]
 
         client = QdrantClient(url=QDRANT_URL)
-        result = client.search(
+        result = client.query_points(
             collection_name=self.collection,
-            query_vector=("dense", [0.9, 0.9, 0.0, 0.0]),
+            query=[0.9, 0.9, 0.0, 0.0],
+            using="dense",
             limit=10,
-        )
+        ).points
         ids = {r.id for r in result}
         self.assertIn(str(new.id), ids)
         self.assertNotIn(str(old.id), ids)
@@ -128,6 +151,26 @@ class QdrantIntegrationTest(unittest.TestCase):
         payload = points[0].payload
         self.assertEqual(str(item.tenant_id), payload["tenant_id"])
         self.assertEqual(["alpha"], payload["labels"])
+
+    def test_live_search_rejects_vector_when_canonical_head_is_stale(self) -> None:
+        from memory_plane.adapters.qdrant import QdrantCandidateSource
+
+        source = QdrantCandidateSource(
+            url=QDRANT_URL,  # type: ignore[arg-type]
+            collection=self.collection,
+            dense_dim=4,
+            query_embedding_client=_StaticEmbeddingClient(),
+            ledger=_RejectingHeadLedger(),  # type: ignore[arg-type]
+        )
+        source.connect()
+        item = _item("stale indexed value")
+        source.upsert(item, dense_vector=[1.0, 0.0, 0.0, 0.0])
+
+        results = source.search(
+            RecallQuery(tenant_id=_T, workspace_id=_W, text="stale value")
+        )
+
+        self.assertEqual((), results)
 
 
 if __name__ == "__main__":

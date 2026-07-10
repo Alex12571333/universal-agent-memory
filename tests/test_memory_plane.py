@@ -82,6 +82,17 @@ class MemoryPlaneTest(unittest.TestCase):
         self.assertEqual(2, len(self.container.store.events))
         self.assertEqual("memory.retained.v1", self.container.store.events[-1].name)
 
+        recalled = self.container.retrieval.recall(
+            RecallQuery(
+                tenant_id=self.tenant,
+                workspace_id=self.workspace,
+                text="Alpha release July",
+            )
+        )
+        self.assertEqual((updated.item.id,), tuple(row.item.id for row in recalled.candidates))
+        self.assertFalse(self.container.store.is_recallable_head(self.tenant, first.item.id))
+        self.assertTrue(self.container.store.is_recallable_head(self.tenant, updated.item.id))
+
     def test_supersede_rejects_stale_revision(self) -> None:
         first = self.retain("Alpha release is July 15")
         self.container.retention.supersede(

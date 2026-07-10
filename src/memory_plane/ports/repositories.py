@@ -29,6 +29,18 @@ class MemoryLedger(Protocol):
         """Load one item while enforcing the tenant boundary."""
         ...
 
+    def is_recallable_head(self, tenant_id: UUID, item_id: UUID) -> bool:
+        """Return whether an item is the non-tombstoned head of its revision chain."""
+        ...
+
+    def filter_recallable_heads(
+        self,
+        tenant_id: UUID,
+        item_ids: tuple[UUID, ...],
+    ) -> frozenset[UUID]:
+        """Return recallable IDs in one storage round trip."""
+        ...
+
     def list_for_workspace(
         self,
         tenant_id: UUID,
