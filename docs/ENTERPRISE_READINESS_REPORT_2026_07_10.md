@@ -1,6 +1,6 @@
 # Production envelope report — 2026-07-10
 
-Passed: 133
+Passed: 136
 Failed: 0
 
 | Check | Status | Detail |
@@ -28,6 +28,7 @@ Failed: 0
 | `file:scripts/ui_walkthrough_eval.py` | PASS | required production artifact |
 | `file:scripts/real_memory_llm_eval.py` | PASS | required production artifact |
 | `file:scripts/generate_release_evidence_manifest.py` | PASS | required production artifact |
+| `file:scripts/generate_release_notes.py` | PASS | required production artifact |
 | `file:scripts/vault_manifest.py` | PASS | required production artifact |
 | `file:scripts/restore_drill.py` | PASS | required production artifact |
 | `file:scripts/scheduled_backup.py` | PASS | required production artifact |
@@ -108,8 +109,10 @@ Failed: 0
 | `tests:scheduled-backup` | PASS | scheduled backup success/failure reporting is covered |
 | `release:evidence-verifier` | PASS | release evidence verifier checks saved production reports |
 | `release:evidence-generator` | PASS | release evidence manifest generator is documented and verifier-bound |
+| `release:notes-generator` | PASS | release notes generator writes changelog and rollback evidence |
 | `tests:release-evidence-verifier` | PASS | release evidence verifier behavior is covered |
 | `tests:release-evidence-generator` | PASS | release evidence manifest generator behavior is covered |
+| `tests:release-notes-generator` | PASS | release notes generator behavior is covered |
 | `ops:observability-preflight-runner` | PASS | observability preflight validates dashboard and alert coverage |
 | `tests:observability-preflight-runner` | PASS | observability preflight behavior is covered |
 | `ops:schedule-preflight-runner` | PASS | ops schedule preflight validates schedules, alerts and artifact roots |

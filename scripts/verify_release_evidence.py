@@ -17,6 +17,7 @@ REQUIRED_ARTIFACTS = {
     "metrics_health",
     "ops_schedule",
     "observability",
+    "release_notes",
     "scheduled_backup",
     "audit_retention",
     "deployment_preflight",
@@ -114,6 +115,7 @@ def verify_manifest(path: Path) -> list[EvidenceCheck]:
         "metrics_health": _verify_metrics_health,
         "ops_schedule": _verify_ops_schedule,
         "observability": _verify_observability,
+        "release_notes": _verify_release_notes,
         "scheduled_backup": _verify_scheduled_backup,
         "audit_retention": _verify_audit_retention,
         "deployment_preflight": _verify_deployment_preflight,
@@ -295,6 +297,29 @@ def _verify_load_smoke(payload: dict[str, Any]) -> list[EvidenceCheck]:
             int(payload.get("agents") or 0) >= 2
             and int(payload.get("total_operations") or 0) >= 4,
             "parallel load evidence present",
+        ),
+    ]
+
+
+def _verify_release_notes(payload: dict[str, Any]) -> list[EvidenceCheck]:
+    rollback = payload.get("rollback")
+    changelog = payload.get("changelog")
+    rollback_text = " ".join(str(item).lower() for item in rollback or [])
+    return [
+        _format_check("release_notes", payload, "obelisk-release-notes-v1"),
+        _ok_check("release_notes", payload),
+        EvidenceCheck(
+            "release_notes:changelog",
+            isinstance(changelog, list) and bool(changelog),
+            "versioned changelog present",
+        ),
+        EvidenceCheck(
+            "release_notes:rollback",
+            isinstance(rollback, list)
+            and len(rollback) >= 4
+            and "restore" in rollback_text
+            and "previous" in rollback_text,
+            "rollback instructions include previous ref and restore guidance",
         ),
     ]
 

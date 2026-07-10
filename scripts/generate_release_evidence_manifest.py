@@ -15,6 +15,7 @@ DEFAULT_ARTIFACT_PATHS = {
     "metrics_health": "ops/metrics-health.json",
     "ops_schedule": "ops/ops-schedule.json",
     "observability": "ops/observability-preflight.json",
+    "release_notes": "ops/release-notes.json",
     "scheduled_backup": "backups/latest-backup-report.json",
     "audit_retention": "ops/audit-retention.json",
     "deployment_preflight": "ops/deployment-preflight.json",
