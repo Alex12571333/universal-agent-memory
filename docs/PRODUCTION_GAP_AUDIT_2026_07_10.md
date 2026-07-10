@@ -154,12 +154,13 @@ static readiness script are green.
     needs an installed schedule, alerting and target evidence that a backlog or
     worker failure cannot retain staging transcripts indefinitely.
 
-12. **Proposal accept still needs one transaction.**
+12. **Proposal/LLM boundary needs target failure evidence.**
     `ConversationCurator` now emits an evidence-linked proposal and never makes
-    LLM output recallable by itself. Proposal acceptance still performs the
-    retention write and proposal-status update separately; a failure can leave
-    durable memory while the proposal remains pending. PostgreSQL needs a
-    single atomic accept boundary before this gate is closed.
+    LLM output recallable by itself. PostgreSQL proposal acceptance now locks
+    the proposal and writes canonical memory, idempotency, outbox and accepted
+    status in one transaction. Target PostgreSQL failure-injection and
+    concurrent-accept evidence are still required before the release gate is
+    closed.
 
 ### P1 — reliability, scale and operations
 

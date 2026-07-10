@@ -878,6 +878,12 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 "curated-only staging has bounded TTL and operator purge coverage",
             ),
             Check(
+                "proposals:atomic-accept",
+                "accept_proposal_with_memory" in read("src/memory_plane/adapters/postgres.py")
+                and "accept_proposal_with_memory" in read("src/memory_plane/services/proposals.py"),
+                "proposal acceptance has one PostgreSQL memory/outbox/status transaction",
+            ),
+            Check(
                 "tests:conversation-pipeline-runner",
                 "test_conversation_pipeline_eval_passes_full_pipeline"
                 in read("tests/test_conversation_pipeline_eval.py")

@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from dataclasses import replace
+from datetime import UTC, datetime
 from threading import RLock
 from uuid import UUID
 
@@ -407,6 +408,47 @@ class InMemoryMemoryStore:
                 raise KeyError("memory proposal not found")
             self._proposals[proposal.id] = proposal
             return proposal
+
+    def accept_proposal_with_memory(
+        self,
+        proposal: MemoryProposal,
+        item: MemoryItem,
+        event: IntegrationEvent,
+        *,
+        reviewer: str,
+        reason: str,
+        idempotency_key: str,
+    ) -> tuple[MemoryProposal, MemoryItem, bool]:
+        """Atomically transition an open proposal and append its memory/event."""
+        with self._lock:
+            current = self.get_proposal(proposal.tenant_id, proposal.id)
+            if current is None:
+                raise KeyError("memory proposal not found")
+            if current.status == MemoryProposalStatus.REJECTED:
+                raise ValueError("rejected proposal cannot be accepted")
+            existing_id = self._idempotency.get((item.tenant_id, idempotency_key))
+            if existing_id is not None:
+                return current, self._items[existing_id], False
+            if current.status == MemoryProposalStatus.ACCEPTED:
+                accepted_id = current.metadata.get("accepted_memory_id")
+                if isinstance(accepted_id, str):
+                    for memory_id, memory in self._items.items():
+                        if str(memory_id) == accepted_id:
+                            return current, memory, False
+                raise RuntimeError("accepted proposal is missing its durable memory")
+            self._items[item.id] = item
+            self._idempotency[(item.tenant_id, idempotency_key)] = item.id
+            self.publish(event)
+            reviewed = replace(
+                current,
+                status=MemoryProposalStatus.ACCEPTED,
+                reviewed_at=datetime.now(UTC),
+                reviewer=reviewer.strip()[:120] or "operator",
+                review_reason=reason.strip()[:1000],
+                metadata={**current.metadata, "accepted_memory_id": str(item.id)},
+            )
+            self._proposals[current.id] = reviewed
+            return reviewed, item, True
 
     def list_proposals(
         self,

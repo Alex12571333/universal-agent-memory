@@ -113,8 +113,10 @@ append-only memory.
 
 `MemoryProposalService.accept` создаёт `MemoryItem` через обычный
 `RetentionService` с provenance `proposal://{proposal_id}` и идемпотентным ключом
-`accept-proposal:{proposal_id}`. Повторный accept не создаёт дубль. Reject
-обновляет только proposal status и никогда не создаёт recallable memory.
+`accept-proposal:{proposal_id}`. PostgreSQL блокирует proposal и пишет canonical
+memory, idempotency record, outbox event и `accepted_memory_id` в одной
+транзакции. Повторный accept не создаёт дубль. Reject обновляет только proposal
+status и никогда не создаёт recallable memory.
 
 `AuditLogService.record` пишет append-only `AuditEvent` для operator/agent
 действий: retain, supersede, proposal review, conflict decision, vault import,
