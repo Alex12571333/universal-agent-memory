@@ -4,7 +4,12 @@ from uuid import uuid4
 
 import pytest
 
-from memory_plane.adapters.postgres import _CONVERSATION_CONTENT_SQL, PostgresMemoryLedger
+from memory_plane.adapters.postgres import (
+    _CONVERSATION_CONTENT_SQL,
+    _PROPOSAL_EVIDENCE_SQL,
+    _PROPOSAL_TEXT_SQL,
+    PostgresMemoryLedger,
+)
 from memory_plane.domain.models import MemoryItem, MemoryLayer, MemoryScope, Provenance
 
 
@@ -129,3 +134,10 @@ def test_postgres_encrypts_and_decrypts_raw_conversation_content(
     assert connection.calls[0][1][1] == "raw agent conversation"
     assert "pgp_sym_decrypt" in _CONVERSATION_CONTENT_SQL
     assert "m.content" in _CONVERSATION_CONTENT_SQL
+
+
+def test_postgres_decrypt_queries_cover_proposal_and_evidence_columns() -> None:
+    assert "p.proposal" in _PROPOSAL_TEXT_SQL
+    assert "p.evidence" in _PROPOSAL_EVIDENCE_SQL
+    assert "pgp_sym_decrypt" in _PROPOSAL_TEXT_SQL
+    assert "pgp_sym_decrypt" in _PROPOSAL_EVIDENCE_SQL
