@@ -567,6 +567,50 @@ class InMemoryMemoryStore:
             self._conflict_reviews[(decision.tenant_id, decision.case_id)] = decision
             return decision
 
+    def apply_conflict_resolution(
+        self,
+        decision: ConflictReviewDecision,
+        writes: tuple[tuple[MemoryItem, IntegrationEvent, int], ...],
+    ) -> ConflictReviewDecision:
+        """Atomically validate then apply resolution revisions/events and review."""
+        with self._lock:
+            key = (decision.tenant_id, decision.case_id)
+            existing = self._conflict_reviews.get(key)
+            if (
+                existing is not None
+                and existing.status == decision.status
+                and existing.winner_value == decision.winner_value
+                and existing.applied_memory_id is not None
+            ):
+                return existing
+            if existing is not None and existing.applied_memory_id is not None:
+                raise ValueError("conflict resolution is already applied and immutable")
+            for item, _event, expected_revision in writes:
+                if (
+                    item.tenant_id != decision.tenant_id
+                    or item.workspace_id != decision.workspace_id
+                ):
+                    raise ValueError("conflict resolution write crosses decision scope")
+                if item.supersedes_id is None:
+                    raise ValueError(
+                        "conflict resolution replacement must declare supersedes_id"
+                    )
+                parent = self.get(item.tenant_id, item.supersedes_id)
+                if parent is None:
+                    raise KeyError("conflict evidence memory not found")
+                head = self._latest_descendant(parent)
+                if head.id != parent.id or parent.revision != expected_revision:
+                    raise MemoryRevisionConflictError(
+                        parent.id,
+                        expected_revision,
+                        head.revision,
+                    )
+            for item, event, _expected_revision in writes:
+                self._items[item.id] = item
+                self.events.append(event)
+            self._conflict_reviews[key] = decision
+            return decision
+
     def list_conflict_reviews(
         self, tenant_id: UUID, workspace_id: UUID
     ) -> tuple[ConflictReviewDecision, ...]:
@@ -636,6 +680,14 @@ class InMemoryConflictReviewRepository:
     def save(self, decision: ConflictReviewDecision) -> ConflictReviewDecision:
         """Delegate decision persistence."""
         return self._store.save_conflict_review(decision)
+
+    def apply_resolution(
+        self,
+        decision: ConflictReviewDecision,
+        writes: tuple[tuple[MemoryItem, IntegrationEvent, int], ...],
+    ) -> ConflictReviewDecision:
+        """Delegate atomic canonical conflict resolution."""
+        return self._store.apply_conflict_resolution(decision, writes)
 
     def list_for_workspace(
         self, tenant_id: UUID, workspace_id: UUID

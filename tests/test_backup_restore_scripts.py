@@ -64,6 +64,7 @@ def test_migration_runner_includes_every_versioned_sql_file() -> None:
         "007_memory_proposals.sql",
         "008_audit_events.sql",
         "009_api_key_registry.sql",
+        "010_conflict_resolution_memory.sql",
     }
     configured = {path.name for path in migrate.MIGRATIONS}
 

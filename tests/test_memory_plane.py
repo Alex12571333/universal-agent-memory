@@ -341,8 +341,8 @@ class MemoryPlaneTest(unittest.TestCase):
         self.assertEqual((new.item.id,), by_value["july 16"].evidence_ids)
 
     def test_conflict_review_decision_is_persisted_and_filters_resolved(self) -> None:
-        self.retain("Ivan owns Alpha release.")
-        self.retain("Alex owns Alpha release.")
+        old = self.retain("Ivan owns Alpha release.")
+        newest = self.retain("Alex owns Alpha release.")
         case = self.container.conflicts.list_cases(self.tenant, self.workspace)[0]
 
         decision = self.container.conflicts.decide(
@@ -355,6 +355,16 @@ class MemoryPlaneTest(unittest.TestCase):
         )
 
         self.assertEqual(ConflictReviewStatus.ACCEPTED, decision.status)
+        self.assertEqual(newest.item.id, decision.applied_memory_id)
+        recalled = self.container.retrieval.recall(
+            RecallQuery(
+                tenant_id=self.tenant,
+                workspace_id=self.workspace,
+                text="owner Alpha release",
+            )
+        )
+        self.assertEqual((newest.item.id,), tuple(row.item.id for row in recalled.candidates))
+        self.assertFalse(self.container.store.is_recallable_head(self.tenant, old.item.id))
         self.assertEqual((), self.container.conflicts.list_cases(self.tenant, self.workspace))
         with_resolved = self.container.conflicts.list_cases(
             self.tenant,
@@ -362,6 +372,43 @@ class MemoryPlaneTest(unittest.TestCase):
             include_resolved=True,
         )
         self.assertEqual("accepted", with_resolved[0].review_status)
+
+        event_count = len(self.container.store.events)
+        retry = self.container.conflicts.decide(
+            self.tenant,
+            self.workspace,
+            case.id,
+            status=ConflictReviewStatus.ACCEPTED,
+            winner_value=case.suggested_winner_value,
+            reason="idempotent retry",
+        )
+        self.assertEqual(decision.applied_memory_id, retry.applied_memory_id)
+        self.assertEqual(event_count, len(self.container.store.events))
+
+    def test_conflict_override_archives_newer_loser_and_keeps_selected_winner(self) -> None:
+        selected = self.retain("Release Alpha is July 15.")
+        newer = self.retain("Release Alpha is July 16.")
+        case = self.container.conflicts.list_cases(self.tenant, self.workspace)[0]
+
+        decision = self.container.conflicts.decide(
+            self.tenant,
+            self.workspace,
+            case.id,
+            status=ConflictReviewStatus.OVERRIDDEN,
+            winner_value="july 15",
+            reason="Operator verified the signed release plan.",
+        )
+
+        recalled = self.container.retrieval.recall(
+            RecallQuery(
+                tenant_id=self.tenant,
+                workspace_id=self.workspace,
+                text="Release Alpha July",
+            )
+        )
+        self.assertEqual(selected.item.id, decision.applied_memory_id)
+        self.assertEqual((selected.item.id,), tuple(row.item.id for row in recalled.candidates))
+        self.assertFalse(self.container.store.is_recallable_head(self.tenant, newer.item.id))
 
     def test_reflection_is_idempotent_across_repeated_runs(self) -> None:
         self.retain("Release Alpha is July 15.")

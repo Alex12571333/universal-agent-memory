@@ -209,6 +209,14 @@ class ConflictReviewRepository(Protocol):
         """Create or replace one review decision."""
         ...
 
+    def apply_resolution(
+        self,
+        decision: ConflictReviewDecision,
+        writes: tuple[tuple[MemoryItem, IntegrationEvent, int], ...],
+    ) -> ConflictReviewDecision:
+        """Atomically append resolution revisions/events and persist the review."""
+        ...
+
     def list_for_workspace(
         self, tenant_id: UUID, workspace_id: UUID
     ) -> tuple[ConflictReviewDecision, ...]:

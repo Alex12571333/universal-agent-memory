@@ -56,6 +56,13 @@ retrieval adapters: rejected/archived tombstone и любая revision с доч
 `supersedes_id` не recallable. Qdrant проверяет найденные IDs этим методом до
 fusion, поэтому eventual lag удаления vector не возвращает старый текст.
 
+`ConflictReviewRepository.apply_resolution` — единая transaction boundary для
+accepted/overridden review. Она CAS-проверяет все независимые recallable loser
+roots, добавляет archived tombstone revisions, при необходимости восстанавливает
+выбранный historical winner как active revision, пишет outbox events и review с
+`applied_memory_id`. Любой stale parent откатывает всю группу. Применённое
+решение immutable; идентичный retry возвращает прежний результат.
+
 `CheckpointStore.save_if_head` использует expected head `0` для первой
 ревизии. PostgreSQL сериализует writers transaction advisory lock по
 tenant/thread, затем читает ordered head и вставляет следующую revision. Это

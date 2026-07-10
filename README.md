@@ -43,9 +43,9 @@ Repository capability baseline:
 The repository is an engineering preview with production-shaped components. It
 must not be used for a trusted production pilot until the remaining P0 runtime
 blockers in the production audit are fixed—especially identity-bound
-authorization, atomic conflict-winner precedence, fail-soft dependencies and
-safe reindex. Supersede/archive active-head recall is enforced in PostgreSQL
-and Qdrant.
+authorization, fail-soft dependencies and safe reindex. Supersede/archive and
+operator conflict-winner precedence are enforced through atomic PostgreSQL
+revisions and Qdrant head validation.
 Database-role and operator-controlled agent/thread provisioning are implemented
 but still require target-deployment evidence and native installer wiring. Full
 production additionally requires target-environment operations and signed

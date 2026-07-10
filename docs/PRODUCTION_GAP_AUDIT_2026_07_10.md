@@ -15,7 +15,7 @@ under failure.
 | API auth | Bearer keys, coarse scopes, env validator and non-secret key registry exist; `/health` is public | Basic authentication only; tenant/workspace/agent authorization is a P0 blocker |
 | Audit trail | `audit_events`, export/signing and retention tools exist | Coverage is incomplete and most audit writes are not atomic with the operation they describe |
 | Browser/API hardening | Security headers are enforced by middleware and tests | Baseline present |
-| Data model | Append-only memory, CAS supersede, canonical active-head recall, provenance, statuses and optional ciphertext for `memory_items.text` exist | Conflict-decision precedence and sensitive-table encryption are incomplete |
+| Data model | Append-only memory, CAS supersede, atomic conflict-winner revisions, canonical active-head recall, provenance, statuses and optional ciphertext for `memory_items.text` exist | Sensitive-table encryption remains incomplete |
 | Conversation capture | Raw ledger, explicit curation endpoint and live pipeline runner exist | Retention policy semantics, identity provisioning and installed agent hooks are incomplete |
 | Embeddings | Provider-neutral endpoints, async worker and Qdrant hydration exist | Dependency isolation, collection identity and multi-workspace reindex are P0 blockers |
 | Memory LLM | Provider-neutral OpenAI-compatible contract, deterministic fallback and live runner exist | LLM output currently bypasses proposal/review and cannot be autonomous in production |
@@ -39,7 +39,7 @@ static readiness script are green.
    reapplies runtime grants. Production Compose mounts separate administrator
    and application password files, while API/workers/backup assemble escaped
    DSNs from explicit components. Unit and Compose-config tests cover this
-   contract. An isolated local PostgreSQL 17 clean boot passed all 11 ledger
+   contract. An isolated local PostgreSQL 17 clean boot passed all 13 ledger
    integration scenarios, migration rerun and password rotation (old rejected,
    new accepted). A separate production-Compose smoke also initialized a fresh
    volume and completed all migrations through the two mounted Docker secrets.
@@ -60,15 +60,18 @@ static readiness script are green.
    request. `private`, `team` and `organization` visibility is not enforced as
    an authorization policy, so agent keys do not yet provide memory isolation.
 
-4. **Conflict review does not yet control canonical recall.**
+4. **Conflict-winner transactions need target evidence.**
    Supersede/archive active-head semantics are now enforced in PostgreSQL and
    in-memory recall. Qdrant batches candidate IDs through the PostgreSQL
    active-head check, so an old vector cannot leak during worker lag; after a
    successful replacement upsert the worker deletes the superseded point. The
-   policy has unit coverage plus clean PostgreSQL 17 (11/11) and live Qdrant
-   (6/6) integration evidence. However, accepted/overridden conflict-review
-   decisions still do not atomically append a canonical winner revision, so
-   operator precedence remains a P0 correctness gap.
+   policy has unit coverage plus clean PostgreSQL 17 (13/13) and live Qdrant
+   (6/6) integration evidence. Accepted/overridden reviews now atomically
+   archive every recallable loser root, restore a historical winner when
+   necessary, append all outbox events, and persist the immutable review with
+   `applied_memory_id`; any stale CAS rolls back the entire operation. The same
+   multi-root rollback/idempotency proof must be preserved on the target
+   deployment before closing the release gate.
 
 5. **Encryption-at-rest coverage is incomplete.**
    pgcrypto protects `memory_items.text`, but provenance quotes, raw
@@ -185,7 +188,7 @@ static readiness script are green.
 - fresh production boot with generated application credentials;
 - real PostgreSQL agent/thread retain and concurrent checkpoint CAS;
 - cross-agent private/workspace authorization and vault/conflict permissions;
-- atomic conflict-review winner application and precedence in PostgreSQL/Qdrant recall;
+- target evidence for atomic multi-root conflict winner application and rollback;
 - Qdrant/embedding outage fallback and separate `/ready` dependency checks;
 - multi-workspace, failure-safe reindex;
 - encrypted-data and encrypted-backup inspection;
@@ -316,9 +319,9 @@ Required gates:
    into OpenClaw/Hermes installation; then add real checkpoint concurrency
    coverage.
 3. Bind API principals to tenant/workspace/agent visibility policy.
-4. Atomically apply accepted/overridden conflict winners as canonical revisions;
-   supersede/archive active-head filtering is already enforced in PostgreSQL and
-   Qdrant.
+4. Preserve target evidence for atomic accepted/overridden conflict winners,
+   stale-CAS rollback and Qdrant precedence; the implementation and local live
+   coverage are complete.
 5. Implement source-isolated fail-soft recall, dependency readiness and safe
    multi-workspace reindex.
 6. Complete encryption/backup coverage and close the authenticated UI/SSRF

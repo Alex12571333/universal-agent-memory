@@ -516,6 +516,9 @@ def _conflict_decision_response(
         "status": decision.status.value,
         "winner_value": decision.winner_value,
         "reason": decision.reason,
+        "applied_memory_id": str(decision.applied_memory_id)
+        if decision.applied_memory_id
+        else None,
         "updated_at": decision.updated_at.isoformat(),
     }
 
@@ -1644,6 +1647,9 @@ def create_app(
             metadata={
                 "status": decision.status.value,
                 "winner_value": decision.winner_value,
+                "applied_memory_id": str(decision.applied_memory_id)
+                if decision.applied_memory_id
+                else None,
             },
         )
         return _conflict_decision_response(decision) or {}

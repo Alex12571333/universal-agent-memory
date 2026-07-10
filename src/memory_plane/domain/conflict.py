@@ -38,6 +38,7 @@ class ConflictReviewDecision:
     status: ConflictReviewStatus
     winner_value: str | None = None
     reason: str = ""
+    applied_memory_id: UUID | None = None
     updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 

@@ -6,6 +6,7 @@ import os
 import re
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import replace
 from datetime import datetime
 from typing import Any
 from uuid import UUID
@@ -1265,28 +1266,52 @@ class PostgresMemoryLedger:
         """Create or replace a persisted human decision for one conflict case."""
         with self._connection() as connection:
             self._set_tenant(connection, decision.tenant_id)
+            self._upsert_conflict_review(connection, decision)
+        return decision
+
+    def apply_conflict_resolution(
+        self,
+        decision: ConflictReviewDecision,
+        writes: tuple[tuple[MemoryItem, IntegrationEvent, int], ...],
+    ) -> ConflictReviewDecision:
+        """Atomically apply all winner/loser revisions, outbox events and review."""
+        with self._connection() as connection:
+            self._set_tenant(connection, decision.tenant_id)
             connection.execute(
-                """
-                insert into conflict_reviews (
-                  tenant_id, workspace_id, case_id, status, winner_value, reason, updated_at
-                ) values (%s, %s, %s, %s, %s, %s, %s)
-                on conflict (tenant_id, case_id) do update set
-                  workspace_id = excluded.workspace_id,
-                  status = excluded.status,
-                  winner_value = excluded.winner_value,
-                  reason = excluded.reason,
-                  updated_at = excluded.updated_at
-                """,
-                (
-                    decision.tenant_id,
-                    decision.workspace_id,
-                    decision.case_id,
-                    decision.status.value,
-                    decision.winner_value,
-                    decision.reason,
-                    decision.updated_at,
-                ),
+                "select pg_advisory_xact_lock(hashtextextended(%s, 0))",
+                (f"{decision.tenant_id}:conflict:{decision.case_id}",),
             )
+            existing = connection.execute(
+                """
+                select status, winner_value, applied_memory_id
+                from conflict_reviews
+                where case_id = %s
+                for update
+                """,
+                (decision.case_id,),
+            ).fetchone()
+            if (
+                existing is not None
+                and existing["status"] == decision.status.value
+                and existing["winner_value"] == decision.winner_value
+                and existing["applied_memory_id"] is not None
+            ):
+                return replace(decision, applied_memory_id=existing["applied_memory_id"])
+            if existing is not None and existing["applied_memory_id"] is not None:
+                raise ValueError("conflict resolution is already applied and immutable")
+            for item, event, expected_revision in writes:
+                if (
+                    item.tenant_id != decision.tenant_id
+                    or item.workspace_id != decision.workspace_id
+                ):
+                    raise ValueError("conflict resolution write crosses decision scope")
+                self._append_conflict_resolution_write(
+                    connection,
+                    item,
+                    event,
+                    expected_revision,
+                )
+            self._upsert_conflict_review(connection, decision)
         return decision
 
     def list_conflict_reviews(
@@ -1297,7 +1322,8 @@ class PostgresMemoryLedger:
             self._set_tenant(connection, tenant_id)
             rows = connection.execute(
                 """
-                select tenant_id, workspace_id, case_id, status, winner_value, reason, updated_at
+                select tenant_id, workspace_id, case_id, status, winner_value, reason,
+                       applied_memory_id, updated_at
                 from conflict_reviews
                 where workspace_id = %s
                 order by updated_at, case_id
@@ -1312,6 +1338,7 @@ class PostgresMemoryLedger:
                 status=ConflictReviewStatus(row["status"]),
                 winner_value=row["winner_value"],
                 reason=row["reason"],
+                applied_memory_id=row["applied_memory_id"],
                 updated_at=row["updated_at"],
             )
             for row in rows
@@ -1526,6 +1553,89 @@ class PostgresMemoryLedger:
             (tenant_id, key),
         ).fetchone()
         return None if row is None else self._to_proposal(row)
+
+    def _upsert_conflict_review(
+        self,
+        connection: Any,
+        decision: ConflictReviewDecision,
+    ) -> None:
+        connection.execute(
+            """
+            insert into conflict_reviews (
+              tenant_id, workspace_id, case_id, status, winner_value, reason,
+              applied_memory_id, updated_at
+            ) values (%s, %s, %s, %s, %s, %s, %s, %s)
+            on conflict (tenant_id, case_id) do update set
+              workspace_id = excluded.workspace_id,
+              status = excluded.status,
+              winner_value = excluded.winner_value,
+              reason = excluded.reason,
+              applied_memory_id = excluded.applied_memory_id,
+              updated_at = excluded.updated_at
+            """,
+            (
+                decision.tenant_id,
+                decision.workspace_id,
+                decision.case_id,
+                decision.status.value,
+                decision.winner_value,
+                decision.reason,
+                decision.applied_memory_id,
+                decision.updated_at,
+            ),
+        )
+
+    def _append_conflict_resolution_write(
+        self,
+        connection: Any,
+        item: MemoryItem,
+        event: IntegrationEvent,
+        expected_revision: int,
+    ) -> None:
+        if item.supersedes_id is None:
+            raise ValueError("conflict resolution replacement must declare supersedes_id")
+        self._validate_event(item, event)
+        parent = connection.execute(
+            """
+            select id, revision
+            from memory_items
+            where id = %s and deleted_at is null
+            for update
+            """,
+            (item.supersedes_id,),
+        ).fetchone()
+        if parent is None:
+            raise KeyError("conflict evidence memory not found")
+        head = connection.execute(
+            """
+            with recursive chain as (
+              select id, revision
+              from memory_items
+              where id = %s and deleted_at is null
+              union all
+              select child.id, child.revision
+              from memory_items child
+              join chain parent on child.supersedes_id = parent.id
+              where child.deleted_at is null
+            )
+            select id, revision
+            from chain
+            order by revision desc, id desc
+            limit 1
+            """,
+            (item.supersedes_id,),
+        ).fetchone()
+        actual = head["revision"] if head is not None else parent["revision"]
+        if head is not None and (
+            head["id"] != item.supersedes_id or parent["revision"] != expected_revision
+        ):
+            raise MemoryRevisionConflictError(
+                item.supersedes_id,
+                expected_revision,
+                actual,
+            )
+        self._insert_item(connection, item)
+        self._insert_event(connection, event)
 
     def _insert_item(self, connection: Any, item: MemoryItem) -> None:
         from psycopg.types.json import Jsonb
@@ -1859,6 +1969,14 @@ class PostgresConflictReviewRepository:
     def save(self, decision: ConflictReviewDecision) -> ConflictReviewDecision:
         """Delegate decision persistence."""
         return self._store.save_conflict_review(decision)
+
+    def apply_resolution(
+        self,
+        decision: ConflictReviewDecision,
+        writes: tuple[tuple[MemoryItem, IntegrationEvent, int], ...],
+    ) -> ConflictReviewDecision:
+        """Delegate atomic canonical conflict resolution."""
+        return self._store.apply_conflict_resolution(decision, writes)
 
     def list_for_workspace(
         self, tenant_id: UUID, workspace_id: UUID

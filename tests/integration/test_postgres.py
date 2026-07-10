@@ -6,18 +6,25 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from uuid import uuid4
 
-from memory_plane.adapters.postgres import PostgresCheckpointStore, PostgresMemoryLedger
+from memory_plane.adapters.postgres import (
+    PostgresCheckpointStore,
+    PostgresConflictReviewRepository,
+    PostgresMemoryLedger,
+)
 from memory_plane.contracts.dto import RecallQuery
 from memory_plane.contracts.events import ConsumerClaim, IntegrationEvent
 from memory_plane.domain.checkpoint import Checkpoint, StaleRevisionError
+from memory_plane.domain.conflict import ConflictReviewDecision, ConflictReviewStatus
 from memory_plane.domain.identity import AgentIdentity
 from memory_plane.domain.models import (
     MemoryItem,
     MemoryLayer,
     MemoryRevisionConflictError,
     MemoryScope,
+    MemoryStatus,
     Provenance,
 )
+from memory_plane.services.conflicts import ConflictService
 
 DATABASE_URL = os.getenv("UAM_TEST_DATABASE_URL")
 if DATABASE_URL:
@@ -178,6 +185,104 @@ class PostgresMemoryLedgerTest(unittest.TestCase):
             results = tuple(executor.map(attempt, checkpoints))
 
         self.assertEqual(["saved", "stale"], sorted(results))
+
+    def test_conflict_override_atomically_controls_canonical_recall(self) -> None:
+        selected = self._item("Release Alpha is July 15.")
+        newer = self._item("Release Alpha is July 16.")
+        self.store.retain(selected, self._event(selected))
+        self.store.retain(newer, self._event(newer))
+        conflicts = ConflictService(
+            self.store,
+            PostgresConflictReviewRepository(self.store),
+        )
+        case = conflicts.list_cases(self.tenant, self.workspace)[0]
+
+        decision = conflicts.decide(
+            self.tenant,
+            self.workspace,
+            case.id,
+            status=ConflictReviewStatus.OVERRIDDEN,
+            winner_value="july 15",
+            reason="verified release plan",
+        )
+        retry = conflicts.decide(
+            self.tenant,
+            self.workspace,
+            case.id,
+            status=ConflictReviewStatus.OVERRIDDEN,
+            winner_value="july 15",
+            reason="idempotent retry",
+        )
+
+        recalled = self.store.search(
+            RecallQuery(
+                tenant_id=self.tenant,
+                workspace_id=self.workspace,
+                text="Release Alpha July",
+            )
+        )
+        self.assertEqual(selected.id, decision.applied_memory_id)
+        self.assertEqual(decision.applied_memory_id, retry.applied_memory_id)
+        self.assertEqual((selected.id,), tuple(row.item.id for row in recalled))
+        with self.store._connection() as connection:
+            self.store._set_tenant(connection, self.tenant)
+            resolution_events = connection.execute(
+                """
+                select count(*) as count
+                from outbox_events
+                where payload ->> 'reason' = 'conflict-resolution'
+                """
+            ).fetchone()["count"]
+        self.assertEqual(1, resolution_events)
+
+        competing = ConflictReviewDecision(
+            tenant_id=self.tenant,
+            workspace_id=self.workspace,
+            case_id=case.id,
+            status=ConflictReviewStatus.OVERRIDDEN,
+            winner_value="july 16",
+            applied_memory_id=newer.id,
+        )
+        selected_tombstone = selected.supersede(
+            selected.text,
+            status=MemoryStatus.ARCHIVED,
+        )
+        with self.assertRaisesRegex(ValueError, "already applied and immutable"):
+            PostgresConflictReviewRepository(self.store).apply_resolution(
+                competing,
+                ((selected_tombstone, self._event(selected_tombstone), 1),),
+            )
+        self.assertTrue(self.store.is_recallable_head(self.tenant, selected.id))
+
+    def test_conflict_resolution_rolls_back_all_writes_on_stale_parent(self) -> None:
+        first = self._item("Rollback conflict one")
+        second = self._item("Rollback conflict two")
+        self.store.retain(first, self._event(first))
+        self.store.retain(second, self._event(second))
+        first_tombstone = first.supersede(first.text, status=MemoryStatus.ARCHIVED)
+        second_tombstone = second.supersede(second.text, status=MemoryStatus.ARCHIVED)
+        decision = ConflictReviewDecision(
+            tenant_id=self.tenant,
+            workspace_id=self.workspace,
+            case_id=uuid4(),
+            status=ConflictReviewStatus.ACCEPTED,
+            winner_value="one",
+            applied_memory_id=first.id,
+        )
+        reviews = PostgresConflictReviewRepository(self.store)
+
+        with self.assertRaises(MemoryRevisionConflictError):
+            reviews.apply_resolution(
+                decision,
+                (
+                    (first_tombstone, self._event(first_tombstone), 1),
+                    (second_tombstone, self._event(second_tombstone), 99),
+                ),
+            )
+
+        self.assertIsNone(self.store.get(self.tenant, first_tombstone.id))
+        self.assertIsNone(self.store.get(self.tenant, second_tombstone.id))
+        self.assertEqual((), reviews.list_for_workspace(self.tenant, self.workspace))
 
     def test_supersede_if_current_is_cas_and_idempotent(self) -> None:
         item = self._item("Alpha release is July 15")
