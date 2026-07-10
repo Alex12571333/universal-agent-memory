@@ -43,6 +43,6 @@ still mutate `main` without the PR path.
 
 ## Current interpretation
 
-The repo contains the verifier and release checklist hook. The actual GitHub
-setting must still be enabled and verified with a valid GitHub token before
-claiming full production readiness.
+The `main` branch is configured for the protected PR path and the verifier is
+the release-time source of truth. Preserve the verifier output with each release
+bundle so the repository state is evidence-backed rather than assumed.
