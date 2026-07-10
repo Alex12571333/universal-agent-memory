@@ -33,6 +33,7 @@ from memory_plane.bootstrap import (
     build_in_memory_container,
     build_postgres_container,
 )
+from memory_plane.config.secrets import read_secret_env
 from memory_plane.contracts.dto import (
     ContextRecipe,
     IngestDocumentCommand,
@@ -758,8 +759,8 @@ def create_app(
     """Create the standalone memory server around an injected service graph."""
     services = container or _build_runtime_container()
     documents = DocumentIngestor(services.ingestion)
-    configured_key = api_key if api_key is not None else os.getenv("UAM_API_KEY")
-    configured_scoped_keys = _parse_scoped_api_keys(os.getenv("UAM_API_KEYS"))
+    configured_key = api_key if api_key is not None else read_secret_env("UAM_API_KEY")
+    configured_scoped_keys = _parse_scoped_api_keys(read_secret_env("UAM_API_KEYS"))
     auth_tenant_id = _registry_tenant_id()
     model_settings = _load_model_settings()
     app = FastAPI(
@@ -1838,7 +1839,7 @@ def create_app(
 
 def _build_runtime_container() -> Container:
     """Select durable Docker mode when a database URL is configured."""
-    dsn = os.getenv("UAM_DATABASE_URL")
+    dsn = read_secret_env("UAM_DATABASE_URL")
     if not dsn:
         return build_in_memory_container()
     server_id = UUID(os.getenv("UAM_SERVER_ID", str(DEFAULT_SERVER_ID)))

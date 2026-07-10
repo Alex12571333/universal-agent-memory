@@ -53,3 +53,16 @@ def test_postgres_encrypts_memory_text_before_insert(monkeypatch: pytest.MonkeyP
     assert params[1] == "sensitive canonical memory"
     assert params[2] == "memtext_" + "a" * 40
 
+
+def test_postgres_reads_memory_text_encryption_key_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    secret_file = tmp_path / "memory-text-key"
+    secret_file.write_text("memtext_" + "b" * 40 + "\n", encoding="utf-8")
+    monkeypatch.setenv("UAM_MEMORY_TEXT_ENCRYPTION", "pgcrypto")
+    monkeypatch.delenv("UAM_MEMORY_TEXT_ENCRYPTION_KEY", raising=False)
+    monkeypatch.setenv("UAM_MEMORY_TEXT_ENCRYPTION_KEY_FILE", str(secret_file))
+
+    ledger = PostgresMemoryLedger("postgresql://example/memory")
+
+    assert ledger._text_encryption_key == "memtext_" + "b" * 40

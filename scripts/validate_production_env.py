@@ -59,7 +59,7 @@ def validate_env(
         _check_secret(values, "POSTGRES_PASSWORD", min_length=32),
         _check_secret(values, "UAM_APP_DB_PASSWORD", min_length=32),
         _check_secret(values, "MINIO_ROOT_PASSWORD", min_length=32),
-        _check_scoped_api_keys(values.get("UAM_API_KEYS", "")),
+        _check_scoped_api_keys(values),
         _check_uuid(values, "UAM_SERVER_ID"),
         _check_uuid(values, "UAM_PROJECT_ID"),
         _check_context_budget(values),
@@ -83,7 +83,7 @@ def validate_env(
 
 
 def _check_secret(values: dict[str, str], key: str, *, min_length: int) -> EnvCheck:
-    value = values.get(key, "")
+    value, source = _value_or_file(values, key)
     if not value:
         return EnvCheck(key, False, "missing or empty")
     if len(value) < min_length:
@@ -91,10 +91,11 @@ def _check_secret(values: dict[str, str], key: str, *, min_length: int) -> EnvCh
     lowered = value.lower()
     if any(pattern in lowered for pattern in PLACEHOLDER_PATTERNS):
         return EnvCheck(key, False, "contains placeholder-looking text")
-    return EnvCheck(key, True, "configured")
+    return EnvCheck(key, True, f"configured via {source}")
 
 
-def _check_scoped_api_keys(raw: str) -> EnvCheck:
+def _check_scoped_api_keys(values: dict[str, str]) -> EnvCheck:
+    raw, source = _value_or_file(values, "UAM_API_KEYS")
     if not raw.strip():
         return EnvCheck("UAM_API_KEYS", False, "missing scoped keys")
     names: set[str] = set()
@@ -115,7 +116,7 @@ def _check_scoped_api_keys(raw: str) -> EnvCheck:
     missing = sorted(required_names - names)
     if missing:
         return EnvCheck("UAM_API_KEYS", False, f"missing recommended scoped keys: {missing}")
-    return EnvCheck("UAM_API_KEYS", True, "scoped keys configured")
+    return EnvCheck("UAM_API_KEYS", True, f"scoped keys configured via {source}")
 
 
 def _check_uuid(values: dict[str, str], key: str) -> EnvCheck:
@@ -171,7 +172,6 @@ def _check_qdrant_payload_text(values: dict[str, str]) -> EnvCheck:
 
 def _check_memory_text_encryption(values: dict[str, str]) -> EnvCheck:
     mode = values.get("UAM_MEMORY_TEXT_ENCRYPTION", "").strip().lower()
-    key = values.get("UAM_MEMORY_TEXT_ENCRYPTION_KEY", "")
     if mode != "pgcrypto":
         return EnvCheck(
             "UAM_MEMORY_TEXT_ENCRYPTION",
@@ -179,7 +179,7 @@ def _check_memory_text_encryption(values: dict[str, str]) -> EnvCheck:
             "must be pgcrypto for production canonical memory text encryption",
         )
     secret_check = _check_secret(
-        {"UAM_MEMORY_TEXT_ENCRYPTION_KEY": key},
+        values,
         "UAM_MEMORY_TEXT_ENCRYPTION_KEY",
         min_length=32,
     )
@@ -208,6 +208,20 @@ def _check_real_embeddings(values: dict[str, str]) -> EnvCheck:
     if not base_url.startswith(("http://", "https://")):
         return EnvCheck("real-embeddings", False, "embedding base URL must be HTTP(S)")
     return EnvCheck("real-embeddings", True, f"{provider} {base_url}")
+
+
+def _value_or_file(values: dict[str, str], key: str) -> tuple[str, str]:
+    """Read `KEY` or `KEY_FILE` from parsed dotenv values."""
+    direct = values.get(key, "")
+    if direct:
+        return direct, key
+    file_value = values.get(f"{key}_FILE", "")
+    if not file_value:
+        return "", key
+    path = Path(file_value)
+    if not path.exists():
+        return "", f"{key}_FILE missing file"
+    return path.read_text(encoding="utf-8").strip(), f"{key}_FILE"
 
 
 def _strip_quotes(value: str) -> str:

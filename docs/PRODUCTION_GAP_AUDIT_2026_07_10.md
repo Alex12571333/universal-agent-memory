@@ -18,7 +18,7 @@ it is not enough.
 | Data model | Append-only memory, CAS supersede, provenance, statuses, optional pgcrypto ciphertext for canonical memory text | Strong foundation |
 | Conversation capture | Raw conversation ledger exists, but curation remains explicit/manual or hook-driven | Not “automatically remembers everything” yet |
 | Embeddings | Real provider support exists; Qdrant can redact raw text payloads and hydrate recall from PostgreSQL; fake remains available for CI/emergency | Production depends on real endpoint, `UAM_QDRANT_PAYLOAD_TEXT=false`, and reindex discipline |
-| Memory LLM | OpenAI-compatible config, fail-soft adapter and live regression runner exist | Needs saved live endpoint regression evidence before autonomy |
+| Memory LLM | Provider-neutral OpenAI-compatible contract, fail-soft adapter and live regression runner exist | Needs saved live endpoint regression evidence before autonomy |
 | OpenClaw/Hermes | Native adapter scaffolds, tests and live soak runner exist | Needs saved real runtime soak evidence from `.14` |
 | UI | React dashboard and fallback `/ui` support real memory/vault editing, actionable conflict decisions and a JSON UI walkthrough runner | Operator-grade baseline; still needs preserved live walkthrough evidence per release |
 | Testing | Unit, integration-style, benchmark scripts, web build | Needs load/chaos/restore/security tests |
@@ -39,8 +39,9 @@ Required gates:
      host to expose HTTPS/proxy only, not a public backend `6798`.
    - Long random master key plus scoped per-agent/operator keys.
    - Key rotation record: owner, scope, created time, last used, revoked time.
-     Baseline registry exists; external secret manager integration is still
-     recommended for larger deployments.
+     Baseline registry exists. Runtime supports mounted `*_FILE` secrets for
+     API/model/signing/encryption/database secrets; the target deployment still
+     needs an actual external secret manager and rotation procedure.
    - `.env.production` must pass `scripts/validate_production_env.py` with
      strict production flags before deployment.
    - Audit log export for write, supersede, conflict-decision, vault-import,
@@ -134,4 +135,5 @@ Required gates:
    the report showing conflict decision, vault editable text/archive, model
    settings probe, reindex and metrics.
 6. Preserve and verify the release evidence manifest in every release bundle.
-7. Add optional external secret-manager integration.
+7. Install and verify the target environment secret manager using the supported
+   `*_FILE` runtime secret paths.

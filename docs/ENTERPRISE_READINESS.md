@@ -15,6 +15,9 @@ remaining hard requirements.
 - [x] TLS reverse-proxy deployment example exists for non-local access.
 - [x] API key auth can protect API, docs, metrics, and UI.
 - [x] Scoped API keys can separate operator, agent, read, and write access.
+- [x] Runtime secrets can be supplied through mounted `*_FILE` secrets for
+      API keys, scoped agent keys, model gateway keys, signing keys, database
+      URLs and memory text encryption keys.
 - [x] API-key registry tracks non-secret fingerprints, scopes, last-used time
       and revocation state.
 - [x] Production env validator catches placeholders, weak secrets and local-only
@@ -63,7 +66,8 @@ remaining hard requirements.
 
 - [ ] Put the deployed API behind the real TLS reverse proxy/VPN boundary and
       verify direct backend `6798` is not externally reachable.
-- [ ] Move bearer secrets to an external secret manager for larger deployments.
+- [ ] Install the external secret manager in the target environment and mount
+      production secrets through `*_FILE` paths instead of raw env values.
 - [ ] Add audit retention schedule, immutable storage, and external signing-key
       custody for regulated environments.
 - [ ] Install environment-level backup schedule and immutable artifact storage.

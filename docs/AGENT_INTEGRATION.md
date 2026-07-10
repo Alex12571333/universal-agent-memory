@@ -69,7 +69,8 @@ its own short-term scratchpad ephemeral.
 
 ## Real embedding runtime
 
-The default production embedding target is OpenAI-compatible:
+The production embedding target is OpenAI-compatible. That means the API
+contract, not provider lock-in. The default profile targets official OpenAI:
 
 ```text
 provider=openai
@@ -119,8 +120,10 @@ UAM_MEMORY_LLM_ENABLE_THINKING=false
 ```
 
 Навигатор памяти, Куратор памяти and future graph extraction workers should use
-this OpenAI-compatible endpoint. Agents such as OpenClaw/Hermes still use their
-own runtime models; they only call UAM for memory.
+this OpenAI-compatible contract. The base URL/model can point at OpenAI,
+OpenRouter, LiteLLM, vLLM, llama.cpp, Spark/DGX, or another compatible gateway.
+Agents such as OpenClaw/Hermes still use their own runtime models; they only
+call UAM for memory.
 
 ## What gets injected into the agent
 

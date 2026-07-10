@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from memory_plane.adapters.llm import MemoryLLMClient, MemoryLLMConfig
+from memory_plane.config.secrets import read_secret_env
 
 
 @dataclass(frozen=True, slots=True)
@@ -143,7 +144,10 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base-url", default="https://api.openai.com/v1")
     parser.add_argument("--model", default="gpt-5.6-terra")
-    parser.add_argument("--api-key")
+    parser.add_argument(
+        "--api-key",
+        default=read_secret_env("UAM_MEMORY_LLM_API_KEY", "OPENAI_API_KEY", "SPARK_API_KEY"),
+    )
     parser.add_argument("--provider", default="openai-compatible")
     parser.add_argument("--timeout-seconds", type=float, default=60.0)
     parser.add_argument("--json-report", type=Path)

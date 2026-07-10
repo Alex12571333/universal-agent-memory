@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import psycopg
+
+from memory_plane.config.secrets import read_secret_env
 
 ROOT = Path(__file__).resolve().parents[1]
 MIGRATIONS = (
@@ -69,5 +70,8 @@ def _record(connection: psycopg.Connection, name: str) -> None:
 
 
 if __name__ == "__main__":
-    for migration in migrate(os.environ["UAM_ADMIN_DATABASE_URL"]):
+    dsn = read_secret_env("UAM_ADMIN_DATABASE_URL")
+    if not dsn:
+        raise SystemExit("UAM_ADMIN_DATABASE_URL or UAM_ADMIN_DATABASE_URL_FILE is required")
+    for migration in migrate(dsn):
         print(f"applied {migration}", flush=True)

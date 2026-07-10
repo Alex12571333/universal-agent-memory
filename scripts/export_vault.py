@@ -10,6 +10,7 @@ from uuid import UUID
 
 from memory_plane.api.app import DEFAULT_PROJECT_ID, DEFAULT_SERVER_ID
 from memory_plane.bootstrap import build_postgres_container
+from memory_plane.config.secrets import read_secret_env
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from vault_manifest import write_vault_manifest  # noqa: E402
@@ -21,7 +22,7 @@ def main() -> int:
     parser.add_argument("output_dir", help="Directory where Markdown files are written")
     parser.add_argument(
         "--database-url",
-        default=os.getenv("UAM_DATABASE_URL"),
+        default=read_secret_env("UAM_DATABASE_URL"),
         help="PostgreSQL app-role URL; defaults to UAM_DATABASE_URL",
     )
     parser.add_argument(
@@ -43,7 +44,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--signing-key",
-        default=os.getenv("UAM_VAULT_SIGNING_KEY"),
+        default=read_secret_env("UAM_VAULT_SIGNING_KEY"),
         help="Optional HMAC key used to write .uam-vault-manifest.sig.",
     )
     args = parser.parse_args()

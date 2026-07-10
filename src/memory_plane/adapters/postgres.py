@@ -10,6 +10,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
+from memory_plane.config.secrets import read_secret_env
 from memory_plane.contracts.dto import Candidate, RecallQuery
 from memory_plane.contracts.events import ClaimedEvent, ConsumerClaim, IntegrationEvent
 from memory_plane.domain.api_key import ApiKeyRecord
@@ -77,7 +78,7 @@ class PostgresMemoryLedger:
             raise ValueError("PostgreSQL DSN must not be empty")
         self.dsn = dsn
         self._text_encryption_mode = os.getenv("UAM_MEMORY_TEXT_ENCRYPTION", "off").lower()
-        self._text_encryption_key = os.getenv("UAM_MEMORY_TEXT_ENCRYPTION_KEY", "")
+        self._text_encryption_key = read_secret_env("UAM_MEMORY_TEXT_ENCRYPTION_KEY") or ""
         if self._text_encryption_mode not in {"off", "pgcrypto"}:
             raise ValueError("UAM_MEMORY_TEXT_ENCRYPTION must be off or pgcrypto")
         if self._text_encryption_enabled and not self._text_encryption_key:

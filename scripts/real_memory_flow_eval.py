@@ -10,7 +10,6 @@ The flow is intentionally small and deterministic:
 from __future__ import annotations
 
 import argparse
-import os
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -20,6 +19,7 @@ from memory_plane.adapters.embeddings import (
 )
 from memory_plane.adapters.in_memory import InMemoryMemoryStore
 from memory_plane.adapters.qdrant import QdrantCandidateSource
+from memory_plane.config.secrets import read_secret_env
 from memory_plane.contracts.dto import RecallQuery, RetainCommand
 from memory_plane.domain.models import MemoryLayer, MemoryScope, Provenance
 from memory_plane.services.embedding import EmbeddingService
@@ -89,7 +89,7 @@ def main() -> int:
     parser.add_argument("--dimension", type=int, default=3072)
     parser.add_argument(
         "--api-key",
-        default=os.getenv("UAM_EMBEDDING_API_KEY") or os.getenv("OPENAI_API_KEY"),
+        default=read_secret_env("UAM_EMBEDDING_API_KEY", "OPENAI_API_KEY"),
     )
     parser.add_argument("--provider", default="openai")
     args = parser.parse_args()

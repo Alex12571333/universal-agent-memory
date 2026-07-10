@@ -13,6 +13,8 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from memory_plane.config.secrets import read_secret_env
+
 
 @dataclass(frozen=True, slots=True)
 class MemoryLLMConfig:
@@ -38,10 +40,10 @@ class MemoryLLMConfig:
                 "UAM_MEMORY_LLM_BASE_URL",
                 "https://api.openai.com/v1",
             ).rstrip("/"),
-            api_key=(
-                os.getenv("UAM_MEMORY_LLM_API_KEY")
-                or os.getenv("OPENAI_API_KEY")
-                or os.getenv("SPARK_API_KEY")
+            api_key=read_secret_env(
+                "UAM_MEMORY_LLM_API_KEY",
+                "OPENAI_API_KEY",
+                "SPARK_API_KEY",
             ),
             timeout_seconds=float(os.getenv("UAM_MEMORY_LLM_TIMEOUT_SECONDS", "60")),
             temperature=float(os.getenv("UAM_MEMORY_LLM_TEMPERATURE", "0.1")),

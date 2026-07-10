@@ -10,6 +10,7 @@ from uuid import UUID
 
 from memory_plane.api.app import DEFAULT_PROJECT_ID, DEFAULT_SERVER_ID
 from memory_plane.bootstrap import build_postgres_container
+from memory_plane.config.secrets import read_secret_env
 from memory_plane.services.vault import VaultImportSource
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -27,7 +28,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--database-url",
-        default=os.getenv("UAM_DATABASE_URL"),
+        default=read_secret_env("UAM_DATABASE_URL"),
         help="PostgreSQL app-role URL; defaults to UAM_DATABASE_URL",
     )
     parser.add_argument(
@@ -54,7 +55,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--signing-key",
-        default=os.getenv("UAM_VAULT_SIGNING_KEY"),
+        default=read_secret_env("UAM_VAULT_SIGNING_KEY"),
         help="HMAC key used to verify signed vault manifests.",
     )
     args = parser.parse_args()
