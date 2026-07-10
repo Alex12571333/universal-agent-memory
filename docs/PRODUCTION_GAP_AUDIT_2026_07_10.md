@@ -23,7 +23,7 @@ it is not enough.
 | UI | React dashboard and fallback `/ui` support real memory/vault editing, actionable conflict decisions and a JSON UI walkthrough runner | Operator-grade baseline; still needs preserved live walkthrough evidence per release |
 | Testing | Unit, integration-style, benchmark scripts, web build, concurrent load smoke runner | Needs preserved live load/chaos/security evidence from the target deployment |
 | Release process | `main` branch protection requires PR flow, strict `python`/`web` checks, conversation resolution, and admin enforcement | Release gate baseline is now proven by `scripts/check_branch_protection.py`; keep verifying before releases |
-| Operations | Runbook, backup/restore scripts, isolated restore-drill script, scheduler-ready backup runner, ops schedule preflight, observability preflight, signed vault manifests with import evidence, metrics health evaluator with JSON report/webhook, Grafana/Prometheus templates, release checklist and release evidence verifier | Needs target-environment evidence for schedules, monitoring import and alert routing |
+| Operations | Runbook, backup/restore scripts, isolated restore-drill script, scheduler-ready backup runner, ops schedule preflight, observability preflight, signed vault manifests with import evidence, metrics health evaluator with JSON report/webhook, Grafana/Prometheus templates, release checklist, release evidence generator and verifier | Needs target-environment evidence for schedules, monitoring import and alert routing |
 
 ## What “full production level” means for this project
 
@@ -115,7 +115,8 @@ Required gates:
    - Release evidence manifest verifies saved deployment preflight,
      secret-files preflight, ops schedule preflight, observability preflight,
      agent, LLM, UI walkthrough, metrics, backup, signed vault import and
-     branch-protection JSON reports before a full-production claim.
+     branch-protection JSON reports before a full-production claim. The
+     generator keeps artifact keys aligned with verifier requirements.
    - Versioned changelog and rollback instructions exist.
 
 ## Things that must not be claimed yet

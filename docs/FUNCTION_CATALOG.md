@@ -164,6 +164,7 @@
 | `ops_schedule_preflight.py` | Schedule files/artifact roots/env → JSON ops gate | Requires backup/audit/metrics schedules, alert routes and durable artifact roots |
 | `secret_files_preflight.py` | `.env.production` → JSON secret-manager gate | Requires raw secret env values empty and `*_FILE` paths readable under allowed prefix |
 | `validate_production_env.py` | `.env.production` → deployment gate | Rejects placeholders, weak secrets, local TLS defaults, fake embeddings |
+| `generate_release_evidence_manifest.py` | Release id → complete `release-evidence.json` skeleton | Keeps manifest artifact keys in sync with verifier requirements |
 | `scheduled_backup.py` | Backup → restore drill → audit export → JSON report | Webhook alert при fail; подходит для cron/systemd |
 | `audit_retention.py` | Audit export → verify → optional prune → JSON report | Dry-run by default; `--apply` requires signed export |
 | `agent_soak_eval.py` | Live OpenClaw/Hermes soak gate → JSON report | Retain/recall/idempotency/leakage checks against a running server |

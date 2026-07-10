@@ -393,6 +393,9 @@ UAM_AUDIT_SIGNING_KEY=... PYTHONPATH=src python scripts/audit_retention.py \
   --retain-days 365 \
   --export-root ./audit-retention \
   --json-report ./ops/audit-retention.json
+python scripts/generate_release_evidence_manifest.py \
+  --release 2026.07.10 \
+  --output ./release-evidence.json
 python scripts/verify_release_evidence.py ./release-evidence.json
 python scripts/benchmark_suite.py
 python scripts/enterprise_readiness_check.py

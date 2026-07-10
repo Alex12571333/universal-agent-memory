@@ -62,6 +62,7 @@ def run_checks(*, static_only: bool) -> list[Check]:
         "scripts/load_smoke_eval.py",
         "scripts/ui_walkthrough_eval.py",
         "scripts/real_memory_llm_eval.py",
+        "scripts/generate_release_evidence_manifest.py",
         "scripts/vault_manifest.py",
         "scripts/restore_drill.py",
         "scripts/scheduled_backup.py",
@@ -555,6 +556,15 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 "release evidence verifier checks saved production reports",
             ),
             Check(
+                "release:evidence-generator",
+                "generate_release_evidence_manifest.py" in read("docs/RELEASE_EVIDENCE.md")
+                and "REQUIRED_ARTIFACTS"
+                in read("scripts/generate_release_evidence_manifest.py")
+                and "DEFAULT_ARTIFACT_PATHS"
+                in read("scripts/generate_release_evidence_manifest.py"),
+                "release evidence manifest generator is documented and verifier-bound",
+            ),
+            Check(
                 "tests:release-evidence-verifier",
                 "test_verify_release_evidence_accepts_complete_manifest"
                 in read("tests/test_backup_restore_scripts.py")
@@ -571,6 +581,14 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 and "test_verify_release_evidence_rejects_missing_observability_alert"
                 in read("tests/test_backup_restore_scripts.py"),
                 "release evidence verifier behavior is covered",
+            ),
+            Check(
+                "tests:release-evidence-generator",
+                "test_generate_release_evidence_manifest_contains_required_artifacts"
+                in read("tests/test_backup_restore_scripts.py")
+                and "test_generate_release_evidence_manifest_cli_writes_manifest"
+                in read("tests/test_backup_restore_scripts.py"),
+                "release evidence manifest generator behavior is covered",
             ),
             Check(
                 "ops:observability-preflight-runner",
