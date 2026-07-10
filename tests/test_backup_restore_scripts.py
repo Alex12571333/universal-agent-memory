@@ -940,6 +940,7 @@ def test_verify_release_evidence_accepts_complete_manifest(tmp_path: Path) -> No
     assert {check.name for check in checks} >= {
         "agent_soak:openclaw",
         "agent_soak:hermes",
+        "embedding:required-checks",
         "load_smoke:parallelism",
         "observability:required-checks",
         "scheduled_backup:restore-drill",
@@ -1084,6 +1085,24 @@ def test_verify_release_evidence_rejects_missing_rollback_steps(tmp_path: Path) 
     assert not all(check.passed for check in checks)
 
 
+def test_verify_release_evidence_rejects_failed_embedding_eval(tmp_path: Path) -> None:
+    manifest = _write_release_evidence_bundle(tmp_path)
+    embedding_path = tmp_path / "embedding.json"
+    payload = json.loads(embedding_path.read_text(encoding="utf-8"))
+    payload["ok"] = False
+    for check in payload["checks"]:
+        if check["name"] == "dimension":
+            check["ok"] = False
+            check["detail"] = "expected=3072 actual=2048"
+    embedding_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    checks = verify_release_evidence.verify_manifest(manifest)
+
+    ok_check = next(check for check in checks if check.name == "embedding:ok")
+    assert ok_check.passed is False
+    assert not all(check.passed for check in checks)
+
+
 def test_verify_release_evidence_json_cli_output(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -1107,6 +1126,7 @@ def test_generate_release_evidence_manifest_contains_required_artifacts() -> Non
 
     assert set(artifacts) == verify_release_evidence.REQUIRED_ARTIFACTS
     assert artifacts["observability"] == "ops/observability-preflight.json"
+    assert artifacts["embedding"] == "ops/embedding.json"
     assert artifacts["ops_schedule"] == "ops/ops-schedule.json"
     assert artifacts["release_notes"] == "ops/release-notes.json"
 
@@ -1229,6 +1249,30 @@ def _write_release_evidence_bundle(tmp_path: Path) -> Path:
             "checks": [
                 {"name": "chat-completions", "ok": True},
                 {"name": "json-memory-curation", "ok": True},
+            ],
+        },
+    )
+    _write_json(
+        tmp_path / "embedding.json",
+        {
+            "format": "obelisk-embedding-eval-v1",
+            "ok": True,
+            "provider": "openai-compatible",
+            "base_url": "https://api.openai.com/v1",
+            "model": "text-embedding-3-large",
+            "dimension": 3072,
+            "checks": [
+                {"name": "endpoint-reachable", "ok": True, "detail": "docs=6"},
+                {"name": "dimension", "ok": True, "detail": "expected=3072 actual=3072"},
+                {"name": "semantic:storage routing", "ok": True, "detail": "ok"},
+                {
+                    "name": "semantic:production embedding model",
+                    "ok": True,
+                    "detail": "ok",
+                },
+                {"name": "semantic:openclaw integration", "ok": True, "detail": "ok"},
+                {"name": "semantic:hermes integration", "ok": True, "detail": "ok"},
+                {"name": "semantic:freshness preference", "ok": True, "detail": "ok"},
             ],
         },
     )
@@ -1436,6 +1480,7 @@ def _write_release_evidence_bundle(tmp_path: Path) -> Path:
             "release": "test",
             "artifacts": {
                 "agent_soak": "agent-soak.json",
+                "embedding": "embedding.json",
                 "memory_llm": "memory-llm.json",
                 "load_smoke": "load-smoke.json",
                 "metrics_health": "metrics-health.json",

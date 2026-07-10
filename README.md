@@ -166,6 +166,12 @@ PostgreSQL, Qdrant, NATS, and MinIO internal.
      --base-url https://api.openai.com/v1 \
      --model gpt-5.6-terra \
      --json-report ./ops/memory-llm.json
+   python scripts/real_embedding_eval.py \
+     --provider openai-compatible \
+     --base-url https://api.openai.com/v1 \
+     --model text-embedding-3-large \
+     --dimension 3072 \
+     --json-report ./ops/embedding.json
    python scripts/generate_release_notes.py \
      --release 2026.07.10 \
      --previous-ref v2026.07.09 \
@@ -400,6 +406,12 @@ UAM_VAULT_SIGNING_KEY=... python scripts/import_vault.py ./vault-review \
   --require-signature \
   --json-report ./ops/vault-import.json
 python scripts/real_memory_llm_eval.py --json-report ./ops/memory-llm.json
+python scripts/real_embedding_eval.py \
+  --provider openai-compatible \
+  --base-url https://api.openai.com/v1 \
+  --model text-embedding-3-large \
+  --dimension 3072 \
+  --json-report ./ops/embedding.json
 UAM_AUDIT_SIGNING_KEY=... PYTHONPATH=src python scripts/audit_retention.py \
   --database-url "$UAM_DATABASE_URL" \
   --retain-days 365 \

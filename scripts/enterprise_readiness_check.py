@@ -61,6 +61,7 @@ def run_checks(*, static_only: bool) -> list[Check]:
         "scripts/agent_soak_eval.py",
         "scripts/load_smoke_eval.py",
         "scripts/ui_walkthrough_eval.py",
+        "scripts/real_embedding_eval.py",
         "scripts/real_memory_llm_eval.py",
         "scripts/generate_release_evidence_manifest.py",
         "scripts/generate_release_notes.py",
@@ -542,6 +543,10 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 "obelisk-release-evidence-manifest-v1"
                 in read("scripts/verify_release_evidence.py")
                 and "agent_soak" in read("scripts/verify_release_evidence.py")
+                and "embedding" in read("scripts/verify_release_evidence.py")
+                and "obelisk-embedding-eval-v1" in read(
+                    "scripts/verify_release_evidence.py"
+                )
                 and "load_smoke" in read("scripts/verify_release_evidence.py")
                 and "ops_schedule" in read("scripts/verify_release_evidence.py")
                 and "obelisk-ops-schedule-preflight-v1"
@@ -569,6 +574,7 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 and "ops/observability-preflight.json" in read(
                     "docs/RELEASE_EVIDENCE.md"
                 )
+                and "ops/embedding.json" in read("docs/RELEASE_EVIDENCE.md")
                 and "ops/release-notes.json" in read("docs/RELEASE_EVIDENCE.md")
                 and "ops/deployment-preflight.json" in read("docs/RELEASE_EVIDENCE.md")
                 and "ops/secret-files.json" in read("docs/RELEASE_EVIDENCE.md")
@@ -611,6 +617,8 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 and "test_verify_release_evidence_rejects_missing_observability_alert"
                 in read("tests/test_backup_restore_scripts.py")
                 and "test_verify_release_evidence_rejects_missing_rollback_steps"
+                in read("tests/test_backup_restore_scripts.py")
+                and "test_verify_release_evidence_rejects_failed_embedding_eval"
                 in read("tests/test_backup_restore_scripts.py"),
                 "release evidence verifier behavior is covered",
             ),
@@ -837,6 +845,23 @@ def run_checks(*, static_only: bool) -> list[Check]:
                     "tests/test_postgres_encryption.py"
                 ),
                 "PostgreSQL memory text encryption behavior is covered",
+            ),
+            Check(
+                "embedding:live-regression-runner",
+                "obelisk-embedding-eval-v1" in read("scripts/real_embedding_eval.py")
+                and "production embedding model" in read("scripts/real_embedding_eval.py")
+                and "--json-report" in read("scripts/real_embedding_eval.py"),
+                "live OpenAI-compatible embedding runner validates dimension and semantic recall",
+            ),
+            Check(
+                "tests:embedding-live-regression-runner",
+                "test_real_embedding_eval_passes_semantic_contract"
+                in read("tests/test_real_embedding_eval.py")
+                and "test_real_embedding_eval_fails_dimension_mismatch"
+                in read("tests/test_real_embedding_eval.py")
+                and "test_real_embedding_eval_fails_wrong_semantic_top"
+                in read("tests/test_real_embedding_eval.py"),
+                "embedding live regression runner behavior is covered",
             ),
             Check(
                 "llm:live-regression-runner",

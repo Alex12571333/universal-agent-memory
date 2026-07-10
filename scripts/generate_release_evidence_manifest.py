@@ -10,6 +10,7 @@ from verify_release_evidence import MANIFEST_FORMAT, REQUIRED_ARTIFACTS
 
 DEFAULT_ARTIFACT_PATHS = {
     "agent_soak": "ops/agent-soak.json",
+    "embedding": "ops/embedding.json",
     "memory_llm": "ops/memory-llm.json",
     "load_smoke": "ops/load-smoke.json",
     "metrics_health": "ops/metrics-health.json",
