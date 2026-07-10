@@ -222,6 +222,9 @@ class AuditRepository(Protocol):
         workspace_id: UUID | None = None,
         action: str | None = None,
         resource_type: str | None = None,
+        created_after: datetime | None = None,
+        created_before: datetime | None = None,
+        before_event_id: UUID | None = None,
         limit: int = 100,
     ) -> tuple[AuditEvent, ...]:
         """List recent audit events under tenant/workspace filters."""

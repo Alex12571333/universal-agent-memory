@@ -191,6 +191,8 @@ def test_export_audit_writes_jsonl_manifest_and_checksum(
         workspace_id=workspace,
         action="memory.retain",
         resource_type=None,
+        created_after=None,
+        created_before=None,
         limit=25,
     )
     assert len(events) == 1
@@ -201,6 +203,77 @@ def test_export_audit_writes_jsonl_manifest_and_checksum(
     assert manifest["filters"]["workspace_id"] == str(workspace)
     assert manifest["files"][0]["sha256"] == events_digest
     assert checksum == f"{manifest_digest}  manifest.json\n"
+
+
+def test_export_audit_can_export_all_pages_with_time_range(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    tenant = uuid4()
+    event_new = export_audit.AuditEvent(
+        tenant_id=tenant,
+        workspace_id=None,
+        action="memory.retain",
+        actor="operator",
+        actor_type="operator",
+        resource_type="memory_item",
+        created_at=datetime(2026, 7, 10, 12, 2, tzinfo=UTC),
+    )
+    event_mid = export_audit.AuditEvent(
+        tenant_id=tenant,
+        workspace_id=None,
+        action="memory.retain",
+        actor="operator",
+        actor_type="operator",
+        resource_type="memory_item",
+        created_at=datetime(2026, 7, 10, 12, 1, tzinfo=UTC),
+    )
+    event_old = export_audit.AuditEvent(
+        tenant_id=tenant,
+        workspace_id=None,
+        action="memory.retain",
+        actor="operator",
+        actor_type="operator",
+        resource_type="memory_item",
+        created_at=datetime(2026, 7, 10, 12, 0, tzinfo=UTC),
+    )
+    ledger = Mock()
+    audit = Mock()
+    audit.list_events.side_effect = ((event_new, event_mid), (event_old,))
+    monkeypatch.setattr(export_audit, "PostgresMemoryLedger", Mock(return_value=ledger))
+    monkeypatch.setattr(export_audit, "AuditLogService", Mock(return_value=audit))
+    monkeypatch.setenv("UAM_DATABASE_URL", "postgresql://example/db")
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "export_audit.py",
+            str(tmp_path),
+            "--tenant-id",
+            str(tenant),
+            "--all-workspaces",
+            "--all-pages",
+            "--batch-size",
+            "2",
+            "--since",
+            "2026-07-10T12:00:00Z",
+            "--until",
+            "2026-07-10T12:03:00Z",
+        ],
+    )
+
+    assert export_audit.main() == 0
+
+    lines = (tmp_path / "audit-events.jsonl").read_text(encoding="utf-8").splitlines()
+    manifest = json.loads((tmp_path / "manifest.json").read_text(encoding="utf-8"))
+    first_call = audit.list_events.call_args_list[0].kwargs
+    second_call = audit.list_events.call_args_list[1].kwargs
+    assert len(lines) == 3
+    assert manifest["event_count"] == 3
+    assert manifest["filters"]["all_pages"] is True
+    assert manifest["filters"]["page_count"] == 2
+    assert first_call["limit"] == 2
+    assert second_call["created_before"] == event_mid.created_at
+    assert second_call["before_event_id"] == event_mid.id
 
 
 def test_export_audit_signs_and_verifies_bundle(

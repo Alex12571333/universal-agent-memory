@@ -50,6 +50,19 @@ def main() -> int:
     parser.add_argument("--all-workspaces", action="store_true", help="Do not filter by workspace")
     parser.add_argument("--action", help="Audit action filter, for example memory.retain")
     parser.add_argument("--resource-type", help="Resource type filter, for example memory_item")
+    parser.add_argument("--since", help="Inclusive ISO-8601 lower created_at bound")
+    parser.add_argument("--until", help="Exclusive ISO-8601 upper created_at bound")
+    parser.add_argument(
+        "--all-pages",
+        action="store_true",
+        help="Export every page in the selected time/filter window",
+    )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=500,
+        help="Page size for --all-pages; repository cap is 500",
+    )
     parser.add_argument(
         "--limit",
         type=int,
@@ -71,12 +84,19 @@ def main() -> int:
     ledger.connect()
     audit = AuditLogService(ledger)
     workspace_id = None if args.all_workspaces else args.workspace_id
-    events = audit.list_events(
-        args.tenant_id,
+    created_after = _parse_datetime(args.since)
+    created_before = _parse_datetime(args.until)
+    events, page_count = _collect_events(
+        audit,
+        tenant_id=args.tenant_id,
         workspace_id=workspace_id,
         action=args.action,
         resource_type=args.resource_type,
+        created_after=created_after,
+        created_before=created_before,
         limit=args.limit,
+        batch_size=args.batch_size,
+        all_pages=args.all_pages,
     )
 
     output = Path(args.output_dir)
@@ -96,6 +116,11 @@ def main() -> int:
         action=args.action,
         resource_type=args.resource_type,
         requested_limit=args.limit,
+        created_after=created_after,
+        created_before=created_before,
+        all_pages=args.all_pages,
+        batch_size=args.batch_size,
+        page_count=page_count,
         signed=bool(args.signing_key),
     )
     manifest_bytes = _canonical_json_bytes(manifest)
@@ -112,11 +137,65 @@ def main() -> int:
 
     print(
         "audit_export=PASS "
-        f"events={len(events)} output={output} "
+        f"events={len(events)} pages={page_count} output={output} "
         f"manifest_sha256={_sha256(manifest_bytes)} "
         f"signed={'yes' if args.signing_key else 'no'}"
     )
     return 0
+
+
+def _collect_events(
+    audit: AuditLogService,
+    *,
+    tenant_id: UUID,
+    workspace_id: UUID | None,
+    action: str | None,
+    resource_type: str | None,
+    created_after: datetime | None,
+    created_before: datetime | None,
+    limit: int,
+    batch_size: int,
+    all_pages: bool,
+) -> tuple[tuple[AuditEvent, ...], int]:
+    """Collect one or more cursor pages from the audit service."""
+    if not all_pages:
+        return (
+            audit.list_events(
+                tenant_id,
+                workspace_id=workspace_id,
+                action=action,
+                resource_type=resource_type,
+                created_after=created_after,
+                created_before=created_before,
+                limit=limit,
+            ),
+            1,
+        )
+
+    page_limit = max(1, min(int(batch_size), 500))
+    page_count = 0
+    cursor_created_before = created_before
+    cursor_before_event_id: UUID | None = None
+    rows: list[AuditEvent] = []
+    while True:
+        page = audit.list_events(
+            tenant_id,
+            workspace_id=workspace_id,
+            action=action,
+            resource_type=resource_type,
+            created_after=created_after,
+            created_before=cursor_created_before,
+            before_event_id=cursor_before_event_id,
+            limit=page_limit,
+        )
+        page_count += 1
+        rows.extend(page)
+        if len(page) < page_limit:
+            break
+        last = page[-1]
+        cursor_created_before = last.created_at
+        cursor_before_event_id = last.id
+    return tuple(rows), page_count
 
 
 def _jsonl_bytes(events: tuple[AuditEvent, ...]) -> bytes:
@@ -138,6 +217,11 @@ def _manifest(
     action: str | None,
     resource_type: str | None,
     requested_limit: int,
+    created_after: datetime | None,
+    created_before: datetime | None,
+    all_pages: bool,
+    batch_size: int,
+    page_count: int,
     signed: bool,
 ) -> dict[str, Any]:
     """Build the tamper-evident manifest for one export bundle."""
@@ -152,6 +236,11 @@ def _manifest(
             "resource_type": resource_type,
             "requested_limit": requested_limit,
             "effective_limit": max(1, min(int(requested_limit), 500)),
+            "created_after": created_after.isoformat() if created_after else None,
+            "created_before": created_before.isoformat() if created_before else None,
+            "all_pages": all_pages,
+            "batch_size": max(1, min(int(batch_size), 500)),
+            "page_count": page_count,
         },
         "event_count": len(events),
         "created_at_range": {
@@ -190,6 +279,16 @@ def _sha256(payload: bytes) -> str:
 def _hmac_sha256(secret: str, payload: bytes) -> str:
     """Return a hex HMAC-SHA256 signature for one payload."""
     return hmac.new(secret.encode("utf-8"), payload, hashlib.sha256).hexdigest()
+
+
+def _parse_datetime(value: str | None) -> datetime | None:
+    """Parse ISO-8601 datetimes, accepting a trailing Z."""
+    if not value:
+        return None
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed
 
 
 def _verify_bundle(output: Path, *, signing_key: str | None) -> int:

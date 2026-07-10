@@ -521,6 +521,9 @@ class PostgresMemoryLedger:
         workspace_id: UUID | None = None,
         action: str | None = None,
         resource_type: str | None = None,
+        created_after: datetime | None = None,
+        created_before: datetime | None = None,
+        before_event_id: UUID | None = None,
         limit: int = 100,
     ) -> tuple[AuditEvent, ...]:
         """List recent audit events under RLS."""
@@ -535,6 +538,16 @@ class PostgresMemoryLedger:
                 where (%s::uuid is null or workspace_id = %s::uuid)
                   and (%s::text is null or action = %s::text)
                   and (%s::text is null or resource_type = %s::text)
+                  and (%s::timestamptz is null or created_at >= %s::timestamptz)
+                  and (
+                    %s::timestamptz is null
+                    or created_at < %s::timestamptz
+                    or (
+                      %s::uuid is not null
+                      and created_at = %s::timestamptz
+                      and id::text < %s::text
+                    )
+                  )
                 order by created_at desc, id desc
                 limit %s
                 """,
@@ -545,6 +558,13 @@ class PostgresMemoryLedger:
                     action,
                     resource_type,
                     resource_type,
+                    created_after,
+                    created_after,
+                    created_before,
+                    created_before,
+                    before_event_id,
+                    created_before,
+                    str(before_event_id) if before_event_id is not None else None,
                     safe_limit,
                 ),
             ).fetchall()

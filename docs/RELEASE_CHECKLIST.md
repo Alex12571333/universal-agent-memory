@@ -34,6 +34,7 @@ Manual checks:
 - Confirm `audit-export/manifest.sha256` verifies before preserving release
   evidence.
 - Confirm signed audit bundles verify with `scripts/export_audit.py --verify`.
+- Confirm incident/audit exports use `--all-pages` for multi-day windows.
 - Confirm `backups/latest-backup-report.json` reports `"ok": true`.
 - Confirm `ops/metrics-health.json` reports `"ok": true`.
 - Confirm worker logs do not show repeated NATS/Qdrant connection failures.

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 from uuid import UUID
 
@@ -50,6 +51,9 @@ class AuditLogService:
         workspace_id: UUID | None = None,
         action: str | None = None,
         resource_type: str | None = None,
+        created_after: datetime | None = None,
+        created_before: datetime | None = None,
+        before_event_id: UUID | None = None,
         limit: int = 100,
     ) -> tuple[AuditEvent, ...]:
         """List recent audit events under the tenant boundary."""
@@ -58,6 +62,8 @@ class AuditLogService:
             workspace_id=workspace_id,
             action=action,
             resource_type=resource_type,
+            created_after=created_after,
+            created_before=created_before,
+            before_event_id=before_event_id,
             limit=max(1, min(int(limit), 500)),
         )
-

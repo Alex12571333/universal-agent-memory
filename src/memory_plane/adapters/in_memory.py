@@ -356,6 +356,9 @@ class InMemoryMemoryStore:
         workspace_id: UUID | None = None,
         action: str | None = None,
         resource_type: str | None = None,
+        created_after: datetime | None = None,
+        created_before: datetime | None = None,
+        before_event_id: UUID | None = None,
         limit: int = 100,
     ) -> tuple[AuditEvent, ...]:
         """List recent audit events for operator review."""
@@ -366,6 +369,16 @@ class InMemoryMemoryStore:
             and (workspace_id is None or event.workspace_id == workspace_id)
             and (action is None or event.action == action)
             and (resource_type is None or event.resource_type == resource_type)
+            and (created_after is None or event.created_at >= created_after)
+            and (
+                created_before is None
+                or event.created_at < created_before
+                or (
+                    before_event_id is not None
+                    and event.created_at == created_before
+                    and str(event.id) < str(before_event_id)
+                )
+            )
         ]
         rows.sort(key=lambda event: (event.created_at, event.id), reverse=True)
         return tuple(rows[:limit])

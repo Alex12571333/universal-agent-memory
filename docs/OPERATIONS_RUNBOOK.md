@@ -120,8 +120,11 @@ security review:
 PYTHONPATH=src python scripts/export_audit.py ./audit-export \
   --tenant-id "$UAM_SERVER_ID" \
   --workspace-id "$UAM_PROJECT_ID" \
+  --since 2026-07-01T00:00:00Z \
+  --until 2026-07-11T00:00:00Z \
+  --all-pages \
   --signing-key "$UAM_AUDIT_SIGNING_KEY" \
-  --limit 500
+  --batch-size 500
 ```
 
 The bundle contains:
@@ -143,9 +146,9 @@ PYTHONPATH=src python ../scripts/export_audit.py . --verify \
 ```
 
 The current export is intentionally bounded to the recent filtered audit window
-exposed by the repository API. For regulated retention, protect
-`UAM_AUDIT_SIGNING_KEY` in an external secret manager, add scheduled exports or a
-cursor/range export job, and store bundles in immutable storage.
+unless `--all-pages` is supplied. For regulated retention, protect
+`UAM_AUDIT_SIGNING_KEY` in an external secret manager, run scheduled range
+exports, and store bundles in immutable storage.
 
 ## Upgrade
 

@@ -23,6 +23,7 @@ remaining hard requirements.
       incident review.
 - [x] Audit export bundle can be HMAC-signed and verified with an operator-held
       signing key.
+- [x] Audit export supports time-window pagination for long incident windows.
 - [x] Health checks exist for API, PostgreSQL, and NATS.
 - [x] Metrics endpoint exists.
 - [x] Metrics health evaluator can fail on outbox lag/dead letters and emit JSON

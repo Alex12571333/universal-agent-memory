@@ -242,14 +242,24 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 "audit script exports JSONL plus checksum and optional signature",
             ),
             Check(
+                "audit:range-export",
+                "--all-pages" in read("scripts/export_audit.py")
+                and "--since" in read("scripts/export_audit.py")
+                and "before_event_id" in read("scripts/export_audit.py"),
+                "audit export supports time-window pagination",
+            ),
+            Check(
                 "tests:audit-export-bundle",
                 "test_export_audit_writes_jsonl_manifest_and_checksum" in read(
                     "tests/test_backup_restore_scripts.py"
                 )
                 and "test_export_audit_signs_and_verifies_bundle" in read(
                     "tests/test_backup_restore_scripts.py"
+                )
+                and "test_export_audit_can_export_all_pages_with_time_range" in read(
+                    "tests/test_backup_restore_scripts.py"
                 ),
-                "audit bundle checksum/signature behavior is covered by tests",
+                "audit bundle checksum/signature/range behavior is covered by tests",
             ),
             Check(
                 "keys:registry-rls",
