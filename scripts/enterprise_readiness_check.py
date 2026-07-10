@@ -63,6 +63,7 @@ def run_checks(*, static_only: bool) -> list[Check]:
         "scripts/ui_walkthrough_eval.py",
         "scripts/real_memory_llm_eval.py",
         "scripts/generate_release_evidence_manifest.py",
+        "scripts/generate_release_notes.py",
         "scripts/vault_manifest.py",
         "scripts/restore_drill.py",
         "scripts/scheduled_backup.py",
@@ -545,10 +546,15 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 in read("scripts/verify_release_evidence.py")
                 and "branch_protection" in read("scripts/verify_release_evidence.py")
                 and "ui_walkthrough" in read("scripts/verify_release_evidence.py")
+                and "release_notes" in read("scripts/verify_release_evidence.py")
+                and "obelisk-release-notes-v1" in read(
+                    "scripts/verify_release_evidence.py"
+                )
                 and "ops/ops-schedule.json" in read("docs/RELEASE_EVIDENCE.md")
                 and "ops/observability-preflight.json" in read(
                     "docs/RELEASE_EVIDENCE.md"
                 )
+                and "ops/release-notes.json" in read("docs/RELEASE_EVIDENCE.md")
                 and "ops/deployment-preflight.json" in read("docs/RELEASE_EVIDENCE.md")
                 and "ops/secret-files.json" in read("docs/RELEASE_EVIDENCE.md")
                 and "ops/vault-import.json" in read("docs/RELEASE_EVIDENCE.md")
@@ -565,6 +571,15 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 "release evidence manifest generator is documented and verifier-bound",
             ),
             Check(
+                "release:notes-generator",
+                "generate_release_notes.py" in read("docs/RELEASE_EVIDENCE.md")
+                and "generate_release_notes.py" in read("docs/RELEASE_CHECKLIST.md")
+                and "obelisk-release-notes-v1" in read("scripts/generate_release_notes.py")
+                and '"log", "--oneline"' in read("scripts/generate_release_notes.py")
+                and "rollback" in read("scripts/generate_release_notes.py"),
+                "release notes generator writes changelog and rollback evidence",
+            ),
+            Check(
                 "tests:release-evidence-verifier",
                 "test_verify_release_evidence_accepts_complete_manifest"
                 in read("tests/test_backup_restore_scripts.py")
@@ -579,6 +594,8 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 and "test_verify_release_evidence_rejects_missing_ops_alert_route"
                 in read("tests/test_backup_restore_scripts.py")
                 and "test_verify_release_evidence_rejects_missing_observability_alert"
+                in read("tests/test_backup_restore_scripts.py")
+                and "test_verify_release_evidence_rejects_missing_rollback_steps"
                 in read("tests/test_backup_restore_scripts.py"),
                 "release evidence verifier behavior is covered",
             ),
@@ -589,6 +606,14 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 and "test_generate_release_evidence_manifest_cli_writes_manifest"
                 in read("tests/test_backup_restore_scripts.py"),
                 "release evidence manifest generator behavior is covered",
+            ),
+            Check(
+                "tests:release-notes-generator",
+                "test_generate_release_notes_builds_changelog_and_rollback"
+                in read("tests/test_backup_restore_scripts.py")
+                and "test_generate_release_notes_cli_writes_report"
+                in read("tests/test_backup_restore_scripts.py"),
+                "release notes generator behavior is covered",
             ),
             Check(
                 "ops:observability-preflight-runner",

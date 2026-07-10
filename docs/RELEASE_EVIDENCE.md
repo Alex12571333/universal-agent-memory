@@ -28,6 +28,7 @@ The generated manifest contains every artifact currently required by
     "metrics_health": "ops/metrics-health.json",
     "ops_schedule": "ops/ops-schedule.json",
     "observability": "ops/observability-preflight.json",
+    "release_notes": "ops/release-notes.json",
     "scheduled_backup": "backups/latest-backup-report.json",
     "audit_retention": "ops/audit-retention.json",
     "deployment_preflight": "ops/deployment-preflight.json",
@@ -111,6 +112,13 @@ GITHUB_TOKEN=... python scripts/check_branch_protection.py \
   --required-check python \
   --required-check web \
   --json > ./ops/branch-protection.json
+
+python scripts/generate_release_notes.py \
+  --release 2026.07.10 \
+  --previous-ref v2026.07.09 \
+  --current-ref HEAD \
+  --evidence-manifest ./release-evidence.json \
+  --output ./ops/release-notes.json
 ```
 
 ## Verify before release
@@ -141,6 +149,9 @@ The verifier requires:
 - observability report format `obelisk-observability-preflight-v1`, `ok: true`,
   Grafana dashboard coverage and Prometheus alert rules for required production
   metrics/failure modes;
+- release notes report format `obelisk-release-notes-v1`, `ok: true`, a
+  non-empty versioned changelog, and rollback instructions that name the
+  previous ref/image and restore procedure;
 - scheduled backup report format `obelisk-scheduled-backup-report-v1`,
   `ok: true`, restore drill not skipped and audit export not skipped;
 - audit retention report format `obelisk-audit-retention-v1`, `ok: true`,

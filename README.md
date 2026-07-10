@@ -166,6 +166,12 @@ PostgreSQL, Qdrant, NATS, and MinIO internal.
      --base-url https://api.openai.com/v1 \
      --model gpt-5.6-terra \
      --json-report ./ops/memory-llm.json
+   python scripts/generate_release_notes.py \
+     --release 2026.07.10 \
+     --previous-ref v2026.07.09 \
+     --current-ref HEAD \
+     --evidence-manifest ./release-evidence.json \
+     --output ./ops/release-notes.json
    python scripts/enterprise_readiness_check.py
    ```
 
@@ -393,6 +399,12 @@ UAM_AUDIT_SIGNING_KEY=... PYTHONPATH=src python scripts/audit_retention.py \
   --retain-days 365 \
   --export-root ./audit-retention \
   --json-report ./ops/audit-retention.json
+python scripts/generate_release_notes.py \
+  --release 2026.07.10 \
+  --previous-ref v2026.07.09 \
+  --current-ref HEAD \
+  --evidence-manifest ./release-evidence.json \
+  --output ./ops/release-notes.json
 python scripts/generate_release_evidence_manifest.py \
   --release 2026.07.10 \
   --output ./release-evidence.json

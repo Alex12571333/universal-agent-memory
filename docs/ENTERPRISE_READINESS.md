@@ -76,6 +76,8 @@ remaining hard requirements.
       a full-production claim.
 - [x] Release evidence manifest generator keeps required artifact keys in sync
       with the verifier.
+- [x] Release notes generator writes a versioned changelog and rollback
+      instructions for release evidence.
 - [x] CI workflow validates lint, tests, web build, and compose configs.
 - [x] Enterprise readiness check script exists.
 - [x] Branch-protection verifier exists for the `main` release gate.
@@ -94,6 +96,8 @@ remaining hard requirements.
       roots, and preserve the generated report.
 - [ ] Run observability preflight against the target monitoring artifacts,
       verify dashboard/alert coverage, and preserve the generated report.
+- [ ] Generate release notes with rollback instructions and preserve
+      `ops/release-notes.json` before tagging.
 - [x] Require signed vault import manifests in production operating procedure
       and release evidence.
 - [x] Enforce GitHub branch protection and PR-only merges to `main`.

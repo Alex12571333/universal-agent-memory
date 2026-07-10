@@ -45,6 +45,7 @@ ops_schedule_preflight = _load_script("ops_schedule_preflight")
 secret_files_preflight = _load_script("secret_files_preflight")
 verify_release_evidence = _load_script("verify_release_evidence")
 generate_release_evidence_manifest = _load_script("generate_release_evidence_manifest")
+generate_release_notes = _load_script("generate_release_notes")
 
 
 def test_migration_runner_includes_every_versioned_sql_file() -> None:
@@ -943,6 +944,7 @@ def test_verify_release_evidence_accepts_complete_manifest(tmp_path: Path) -> No
         "deployment_preflight:backend-not-public",
         "ops_schedule:required-checks",
         "secret_files:all-required-secrets-checked",
+        "release_notes:rollback",
         "vault_import:verified-signed-manifest",
         "branch_protection:passed",
         "ui_walkthrough:model-probe-not-skipped",
@@ -1063,6 +1065,22 @@ def test_verify_release_evidence_rejects_missing_observability_alert(tmp_path: P
     assert not all(check.passed for check in checks)
 
 
+def test_verify_release_evidence_rejects_missing_rollback_steps(tmp_path: Path) -> None:
+    manifest = _write_release_evidence_bundle(tmp_path)
+    release_notes_path = tmp_path / "release-notes.json"
+    payload = json.loads(release_notes_path.read_text(encoding="utf-8"))
+    payload["rollback"] = ["Restart the services."]
+    release_notes_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    checks = verify_release_evidence.verify_manifest(manifest)
+
+    rollback_check = next(
+        check for check in checks if check.name == "release_notes:rollback"
+    )
+    assert rollback_check.passed is False
+    assert not all(check.passed for check in checks)
+
+
 def test_verify_release_evidence_json_cli_output(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -1087,6 +1105,7 @@ def test_generate_release_evidence_manifest_contains_required_artifacts() -> Non
     assert set(artifacts) == verify_release_evidence.REQUIRED_ARTIFACTS
     assert artifacts["observability"] == "ops/observability-preflight.json"
     assert artifacts["ops_schedule"] == "ops/ops-schedule.json"
+    assert artifacts["release_notes"] == "ops/release-notes.json"
 
 
 def test_generate_release_evidence_manifest_cli_writes_manifest(
@@ -1116,6 +1135,73 @@ def test_generate_release_evidence_manifest_cli_writes_manifest(
     assert payload["artifacts"]["memory_llm"] == "ops/custom-memory-llm.json"
     assert set(payload["artifacts"]) == verify_release_evidence.REQUIRED_ARTIFACTS
     assert "release_evidence_manifest=" in capsys.readouterr().out
+
+
+def test_generate_release_notes_builds_changelog_and_rollback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_git(*args: str) -> str:
+        if args == ("rev-parse", "previous"):
+            return "0" * 40
+        if args == ("rev-parse", "HEAD"):
+            return "1" * 40
+        if args[:2] == ("log", "--oneline"):
+            return "abc123 Add release gate\n"
+        raise AssertionError(args)
+
+    monkeypatch.setattr(generate_release_notes, "_git", fake_git)
+
+    report = generate_release_notes.build_release_notes(
+        release="2026.07.10",
+        previous_ref="previous",
+        current_ref="HEAD",
+        evidence_manifest="release-evidence.json",
+    )
+
+    assert report["format"] == "obelisk-release-notes-v1"
+    assert report["ok"] is True
+    assert report["changelog"] == ["abc123 Add release gate"]
+    rollback_text = " ".join(report["rollback"]).lower()
+    assert "previous" in rollback_text
+    assert "restore" in rollback_text
+
+
+def test_generate_release_notes_cli_writes_report(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def fake_git(*args: str) -> str:
+        if args == ("rev-parse", "v1"):
+            return "0" * 40
+        if args == ("rev-parse", "HEAD"):
+            return "1" * 40
+        if args[:2] == ("log", "--oneline"):
+            return "abc123 Add release gate\n"
+        raise AssertionError(args)
+
+    report_path = tmp_path / "release-notes.json"
+    monkeypatch.setattr(generate_release_notes, "_git", fake_git)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "generate_release_notes.py",
+            "--release",
+            "2026.07.10",
+            "--previous-ref",
+            "v1",
+            "--output",
+            str(report_path),
+        ],
+    )
+
+    assert generate_release_notes.main() == 0
+
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    assert payload["format"] == "obelisk-release-notes-v1"
+    assert payload["previous_ref"] == "v1"
+    assert payload["changelog"] == ["abc123 Add release gate"]
+    assert "release_notes=" in capsys.readouterr().out
 
 
 def _write_release_evidence_bundle(tmp_path: Path) -> Path:
@@ -1217,6 +1303,29 @@ def _write_release_evidence_bundle(tmp_path: Path) -> Path:
                 {"name": "backup", "ok": True},
                 {"name": "restore_drill", "ok": True},
                 {"name": "audit_export", "ok": True},
+            ],
+        },
+    )
+    _write_json(
+        tmp_path / "release-notes.json",
+        {
+            "format": "obelisk-release-notes-v1",
+            "ok": True,
+            "release": "test",
+            "previous_ref": "previous",
+            "previous_commit": "0" * 40,
+            "current_ref": "current",
+            "current_commit": "1" * 40,
+            "evidence_manifest": "release-evidence.json",
+            "changelog": ["abc123 Add production gate"],
+            "rollback": [
+                "Stop memory-server, outbox-relay and embedding-worker.",
+                "Run restore drill against the release backup before touching production data.",
+                "Redeploy the previous image or git ref 0000000000000000000000000000000000000000.",
+                (
+                    "Restore PostgreSQL from the verified backup only if "
+                    "schema/data rollback is required."
+                ),
             ],
         },
     )
@@ -1329,6 +1438,7 @@ def _write_release_evidence_bundle(tmp_path: Path) -> Path:
                 "metrics_health": "metrics-health.json",
                 "ops_schedule": "ops-schedule.json",
                 "observability": "observability.json",
+                "release_notes": "release-notes.json",
                 "scheduled_backup": "scheduled-backup.json",
                 "audit_retention": "audit-retention.json",
                 "deployment_preflight": "deployment-preflight.json",
