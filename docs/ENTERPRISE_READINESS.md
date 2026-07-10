@@ -39,6 +39,8 @@ remaining hard requirements.
       failures.
 - [x] Vault export/import uses safe dry-run and CAS supersede.
 - [x] Vault CLI export/import supports manifest checksums and HMAC signatures.
+- [x] Operator UI can accept, override or dismiss conflict cases through the
+      persisted conflict-review API.
 - [x] Qdrant/vector indexing is async and fail-soft.
 - [x] Memory LLM is separate from embedding endpoint.
 - [x] Qwen/Spark `.10` memory LLM defaults are documented.
@@ -71,6 +73,8 @@ remaining hard requirements.
 - [ ] Run live embedding/Qwen regression tests against DGX Spark `.10` and
       preserve the generated reports.
 - [ ] Verify the preserved release evidence manifest before tagging.
+- [ ] Preserve a live UI walkthrough report or recording for the target
+      deployment.
 
 ## Production interpretation
 

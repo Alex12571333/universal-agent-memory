@@ -289,6 +289,20 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 "security headers are covered by API tests",
             ),
             Check(
+                "ui:conflict-actions",
+                "Принять рекомендацию" in read("web/src/App.tsx")
+                and "Скрыть как неактуальный" in read("web/src/App.tsx")
+                and "decideConflict(" in api
+                and "evidence:" in read("web/src/App.tsx"),
+                "operator UI can accept, override or dismiss conflicts",
+            ),
+            Check(
+                "tests:ui-conflict-actions",
+                "test_conflict_decision_can_dismiss_without_winner" in tests
+                and "decideConflict(" in tests,
+                "conflict UI/API decision behavior is covered",
+            ),
+            Check(
                 "ops:metrics-health-evaluator",
                 "outbox_dead_letter_total" in read("scripts/check_metrics_health.py")
                 and "outbox_lag_seconds" in read("scripts/check_metrics_health.py")
