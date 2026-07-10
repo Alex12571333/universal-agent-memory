@@ -12,7 +12,7 @@ it is not enough.
 |---|---|---|
 | Architecture | PostgreSQL source of truth, Qdrant index, outbox, NATS workers, vault, API, UI | Good foundation |
 | Docker | Dev/prod compose plus Caddy TLS proxy example exist; prod hides internal infra ports | Good for trusted local/team deployment; real TLS boundary must be installed |
-| API auth | Bearer key, scoped keys and non-secret key registry with last-used/revoked state exist; `/health` public | Strong local/team baseline; still not enterprise IAM |
+| API auth | Bearer key, scoped keys, env validator and non-secret key registry with last-used/revoked state exist; `/health` public | Strong local/team baseline; still not enterprise IAM |
 | Audit trail | Append-only `audit_events` table, RLS, operator export API, signed paginated JSONL bundle, metrics, tests | Strong baseline; retention schedule, key custody and immutable storage still needed |
 | Browser/API hardening | Security headers are enforced by middleware and tests | Baseline present |
 | Data model | Append-only memory, CAS supersede, provenance, statuses | Strong foundation |
@@ -41,6 +41,8 @@ Required gates:
    - Key rotation record: owner, scope, created time, last used, revoked time.
      Baseline registry exists; external secret manager integration is still
      recommended for larger deployments.
+   - `.env.production` must pass `scripts/validate_production_env.py` with
+     strict production flags before deployment.
    - Audit log export for write, supersede, conflict-decision, vault-import,
      settings-change and model-change events. Durable storage plus optional
      HMAC-signed paginated export bundles exist; regulated environments still

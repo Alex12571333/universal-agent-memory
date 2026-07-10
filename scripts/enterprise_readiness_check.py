@@ -51,6 +51,7 @@ def run_checks(*, static_only: bool) -> list[Check]:
         "migrations/009_api_key_registry.sql",
         "scripts/check_branch_protection.py",
         "scripts/check_metrics_health.py",
+        "scripts/validate_production_env.py",
         "scripts/export_audit.py",
         "scripts/agent_soak_eval.py",
         "scripts/vault_manifest.py",
@@ -99,6 +100,12 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 "scripts/agent_soak_eval.py" in readme
                 and "cross-workspace leakage" in readme,
                 "README documents live agent soak evidence",
+            ),
+            Check(
+                "readme:env-validation",
+                "scripts/validate_production_env.py" in readme
+                and "--require-public-tls" in readme,
+                "README documents strict production env validation",
             ),
             Check("readme:128k", "131072" in readme, "128k context budget documented"),
             Check("readme:dgx", "192.168.0.10" in readme, "DGX Spark .10 endpoint documented"),
@@ -175,6 +182,17 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 "ci:prod-compose",
                 "docker-compose.prod.yml" in ci,
                 "CI validates production compose",
+            ),
+            Check(
+                "ci:reverse-proxy-compose",
+                "deploy/reverse-proxy/docker-compose.caddy.yml" in ci,
+                "CI validates reverse proxy compose overlay",
+            ),
+            Check(
+                "ci:env-placeholder-guard",
+                "validate_production_env.py .env.production.example" in ci
+                and "unexpectedly passed strict production validation" in ci,
+                "CI confirms placeholder env cannot pass strict production validation",
             ),
             Check(
                 "release:branch-protection-verifier",
@@ -397,6 +415,23 @@ def run_checks(*, static_only: bool) -> list[Check]:
                     "tests/test_backup_restore_scripts.py"
                 ),
                 "signed vault manifest behavior is covered by tests",
+            ),
+            Check(
+                "env:validator",
+                "PLACEHOLDER_PATTERNS" in read("scripts/validate_production_env.py")
+                and "--require-public-tls" in read("scripts/validate_production_env.py")
+                and "--require-real-embeddings" in read("scripts/validate_production_env.py"),
+                "production env validator rejects placeholder/local-only config",
+            ),
+            Check(
+                "tests:env-validator",
+                "test_validate_production_env_accepts_strict_real_config" in read(
+                    "tests/test_backup_restore_scripts.py"
+                )
+                and "test_validate_production_env_rejects_placeholders" in read(
+                    "tests/test_backup_restore_scripts.py"
+                ),
+                "production env validator behavior is covered",
             ),
         ]
     )

@@ -26,6 +26,19 @@ external clients use `https://$UAM_PUBLIC_HOST`. See
 [TLS_REVERSE_PROXY.md](TLS_REVERSE_PROXY.md) before exposing the service outside
 localhost/VPN.
 
+Before starting a real production deployment, validate that the environment no
+longer contains placeholders or local-only defaults:
+
+```bash
+python scripts/validate_production_env.py .env.production \
+  --require-public-tls \
+  --require-signed-artifacts \
+  --require-real-embeddings
+```
+
+The example `.env.production.example` is expected to fail this strict check; it
+contains placeholders on purpose.
+
 ## Health checks
 
 ```bash

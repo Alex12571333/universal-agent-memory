@@ -1,6 +1,6 @@
 # Production envelope report — 2026-07-10
 
-Passed: 78
+Passed: 84
 Failed: 0
 
 | Check | Status | Detail |
@@ -16,6 +16,7 @@ Failed: 0
 | `file:migrations/009_api_key_registry.sql` | PASS | required production artifact |
 | `file:scripts/check_branch_protection.py` | PASS | required production artifact |
 | `file:scripts/check_metrics_health.py` | PASS | required production artifact |
+| `file:scripts/validate_production_env.py` | PASS | required production artifact |
 | `file:scripts/export_audit.py` | PASS | required production artifact |
 | `file:scripts/agent_soak_eval.py` | PASS | required production artifact |
 | `file:scripts/vault_manifest.py` | PASS | required production artifact |
@@ -37,6 +38,7 @@ Failed: 0
 | `readme:gap-audit` | PASS | README links the honest production gap audit |
 | `readme:agents` | PASS | agent adapters documented |
 | `readme:agent-soak` | PASS | README documents live agent soak evidence |
+| `readme:env-validation` | PASS | README documents strict production env validation |
 | `readme:128k` | PASS | 128k context budget documented |
 | `readme:dgx` | PASS | DGX Spark .10 endpoint documented |
 | `prod-compose:only-api-published` | PASS | production compose publishes API/UI but not PostgreSQL |
@@ -50,6 +52,8 @@ Failed: 0
 | `ci:web-build` | PASS | CI builds web UI |
 | `ci:production-readiness-eval` | PASS | CI runs in-process production readiness eval |
 | `ci:prod-compose` | PASS | CI validates production compose |
+| `ci:reverse-proxy-compose` | PASS | CI validates reverse proxy compose overlay |
+| `ci:env-placeholder-guard` | PASS | CI confirms placeholder env cannot pass strict production validation |
 | `release:branch-protection-verifier` | PASS | branch-protection verifier checks PR, status, and admin enforcement |
 | `tests:branch-protection-verifier` | PASS | branch-protection verifier behavior is covered by tests |
 | `env:memory-llm` | PASS | Qwen memory LLM endpoint |
@@ -79,6 +83,8 @@ Failed: 0
 | `tests:agent-soak-runner` | PASS | agent soak runner success and leakage failure are covered |
 | `vault:signed-manifest` | PASS | vault export/import supports manifest checksum and HMAC signatures |
 | `tests:vault-signed-manifest` | PASS | signed vault manifest behavior is covered by tests |
+| `env:validator` | PASS | production env validator rejects placeholder/local-only config |
+| `tests:env-validator` | PASS | production env validator behavior is covered |
 | `gap-audit:no-overclaim` | PASS | gap audit explicitly forbids readiness over-claims |
 | `gap-audit:full-production-gates` | PASS | gap audit defines full-production gates |
 | `benchmark:passed` | PASS | latest benchmark pass count |

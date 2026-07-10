@@ -130,6 +130,10 @@ PostgreSQL, Qdrant, NATS, and MinIO internal.
 4. Run the benchmark/readiness gates:
 
    ```bash
+   python scripts/validate_production_env.py .env.production \
+     --require-public-tls \
+     --require-signed-artifacts \
+     --require-real-embeddings
    python scripts/benchmark_suite.py
    UAM_API_KEY=... python scripts/agent_soak_eval.py \
      --base-url http://127.0.0.1:6798 \
@@ -282,6 +286,10 @@ ruff check src tests scripts agent-integrations
 pytest -q
 docker compose --profile advanced config
 docker compose -f docker-compose.prod.yml config
+python scripts/validate_production_env.py .env.production \
+  --require-public-tls \
+  --require-signed-artifacts \
+  --require-real-embeddings
 UAM_API_KEY=... python scripts/agent_soak_eval.py --json-report ./ops/agent-soak.json
 python scripts/benchmark_suite.py
 python scripts/enterprise_readiness_check.py

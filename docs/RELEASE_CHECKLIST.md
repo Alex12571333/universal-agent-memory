@@ -6,6 +6,10 @@ Use this before tagging or pushing a production release.
 ruff check src tests scripts agent-integrations
 pytest -q
 PYTHONPATH=src python scripts/production_readiness_eval.py
+python scripts/validate_production_env.py .env.production \
+  --require-public-tls \
+  --require-signed-artifacts \
+  --require-real-embeddings
 PYTHONPATH=src python scripts/scheduled_backup.py \
   --backup-dir ./backups \
   --audit-dir ./audit-export \
@@ -39,6 +43,8 @@ python scripts/enterprise_readiness_check.py
 Manual checks:
 
 - Open `http://localhost:6798/ui` and verify dashboard, graph, vault, settings.
+- Confirm `scripts/validate_production_env.py .env.production` passes with
+  strict production flags.
 - Retain and recall a Russian and English memory.
 - Verify conflict inbox can list and resolve at least one conflict.
 - Export vault, edit a note, run dry-run import, then apply only after review.
@@ -68,6 +74,7 @@ Do not release if:
 - restore drill fails for the release backup;
 - `benchmark_suite.py` reports any failed gate;
 - production compose exposes internal infrastructure ports;
+- production env validation fails or still contains placeholder secrets;
 - non-local production exposes backend `6798` directly instead of HTTPS proxy;
 - generated context contains rejected/archived/superseded memory as active truth.
 - branch protection or PR-only merge policy is disabled for a shared production

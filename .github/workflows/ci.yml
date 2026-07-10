@@ -27,6 +27,13 @@ jobs:
         run: |
           docker compose --profile advanced config
           docker compose -f docker-compose.prod.yml --env-file .env.production.example config
+          docker compose -f docker-compose.prod.yml -f deploy/reverse-proxy/docker-compose.caddy.yml --env-file .env.production.example config
+      - name: Production env placeholder guard
+        run: |
+          if python scripts/validate_production_env.py .env.production.example --require-public-tls --require-signed-artifacts --require-real-embeddings; then
+            echo ".env.production.example unexpectedly passed strict production validation"
+            exit 1
+          fi
       - name: Enterprise readiness static gate
         run: python scripts/enterprise_readiness_check.py --static-only
 

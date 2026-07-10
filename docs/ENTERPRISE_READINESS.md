@@ -17,6 +17,8 @@ remaining hard requirements.
 - [x] Scoped API keys can separate operator, agent, read, and write access.
 - [x] API-key registry tracks non-secret fingerprints, scopes, last-used time
       and revocation state.
+- [x] Production env validator catches placeholders, weak secrets and local-only
+      settings before deployment.
 - [x] HTTP responses include baseline browser/API security headers.
 - [x] Durable audit log records memory writes, supersedes, conflict decisions,
       vault imports/archives and model-setting changes.

@@ -4,6 +4,7 @@ import hashlib
 import importlib.util
 import json
 import subprocess
+import sys
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -21,6 +22,7 @@ def _load_script(name: str) -> ModuleType:
     assert spec is not None
     assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
     spec.loader.exec_module(module)
     return module
 
@@ -34,6 +36,7 @@ scheduled_backup = _load_script("scheduled_backup")
 export_vault = _load_script("export_vault")
 import_vault = _load_script("import_vault")
 migrate = _load_script("migrate")
+validate_production_env = _load_script("validate_production_env")
 
 
 def test_migration_runner_includes_every_versioned_sql_file() -> None:
@@ -51,6 +54,70 @@ def test_migration_runner_includes_every_versioned_sql_file() -> None:
     configured = {path.name for path in migrate.MIGRATIONS}
 
     assert configured == expected
+
+
+def test_validate_production_env_accepts_strict_real_config(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env.production"
+    env_file.write_text(
+        "\n".join(
+            [
+                "UAM_API_KEY=ak_" + "a" * 40,
+                "UAM_API_KEYS="
+                "openclaw:oc_" + "b" * 32 + ":agent,"
+                "hermes:hm_" + "c" * 32 + ":agent,"
+                "operator:op_" + "d" * 32 + ":operator",
+                "UAM_SERVER_ID=00000000-0000-0000-0000-000000000001",
+                "UAM_PROJECT_ID=00000000-0000-0000-0000-000000000002",
+                "UAM_PUBLIC_HOST=memory.example.com",
+                "UAM_PUBLIC_EMAIL=ops@example.com",
+                "POSTGRES_PASSWORD=pg_" + "e" * 40,
+                "UAM_APP_DB_PASSWORD=app_" + "f" * 40,
+                "MINIO_ROOT_PASSWORD=minio_" + "a" * 40,
+                "UAM_CONTEXT_BUDGET_TOKENS=131072",
+                "UAM_PRIVACY_ENABLED=true",
+                "UAM_PRIVACY_ACTION=redact",
+                "UAM_AUDIT_SIGNING_KEY=audit_" + "b" * 40,
+                "UAM_VAULT_SIGNING_KEY=vault_" + "c" * 40,
+                "UAM_EMBEDDING_PROVIDER=tei",
+                "UAM_EMBEDDING_BASE_URL=http://192.168.0.10:8002",
+                "UAM_EMBEDDING_DIM=2048",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    values = validate_production_env.parse_env_file(env_file)
+    checks = validate_production_env.validate_env(
+        values,
+        require_public_tls=True,
+        require_signed_artifacts=True,
+        require_real_embeddings=True,
+    )
+
+    assert all(check.ok for check in checks)
+
+
+def test_validate_production_env_rejects_placeholders_and_missing_public_tls() -> None:
+    values = validate_production_env.parse_env_file(ROOT / ".env.production.example")
+
+    checks = validate_production_env.validate_env(
+        values,
+        require_public_tls=True,
+        require_signed_artifacts=True,
+        require_real_embeddings=True,
+    )
+
+    failed = {check.name for check in checks if not check.ok}
+    assert {
+        "UAM_API_KEY",
+        "UAM_API_KEYS",
+        "POSTGRES_PASSWORD",
+        "UAM_APP_DB_PASSWORD",
+        "MINIO_ROOT_PASSWORD",
+        "public-tls",
+        "UAM_AUDIT_SIGNING_KEY",
+        "UAM_VAULT_SIGNING_KEY",
+    } <= failed
 
 
 def test_backup_invokes_pg_dump(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
