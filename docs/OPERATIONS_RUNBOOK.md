@@ -15,6 +15,9 @@ inside the Docker network.
 ```bash
 curl http://localhost:6798/health
 curl -H "Authorization: Bearer $UAM_API_KEY" http://localhost:6798/metrics
+UAM_API_KEY=... PYTHONPATH=src python scripts/check_metrics_health.py \
+  --metrics-url http://localhost:6798/metrics \
+  --report ./ops/metrics-health.json
 docker compose -f docker-compose.prod.yml --env-file .env.production ps
 ```
 
@@ -25,6 +28,11 @@ Healthy production means:
 - `nats` is healthy;
 - `outbox-relay` and `embedding-worker` are running;
 - `/metrics` does not show growing pending/dead-letter backlogs.
+
+`check_metrics_health.py` turns Prometheus text into an operator gate. It fails
+when outbox pending, dead-letter, lag or in-flight values exceed configured
+thresholds, writes a JSON report, and can post failed reports through
+`UAM_METRICS_ALERT_WEBHOOK`.
 
 ## Access keys
 

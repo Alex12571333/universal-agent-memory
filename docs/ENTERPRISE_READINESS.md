@@ -23,6 +23,8 @@ remaining hard requirements.
       incident review.
 - [x] Health checks exist for API, PostgreSQL, and NATS.
 - [x] Metrics endpoint exists.
+- [x] Metrics health evaluator can fail on outbox lag/dead letters and emit JSON
+      reports/webhook alerts.
 - [x] Privacy guard redacts common secrets and high-risk PII.
 - [x] Backup script exists.
 - [x] Restore-drill script verifies backups in an isolated PostgreSQL container.
@@ -45,8 +47,8 @@ remaining hard requirements.
 - [ ] Add audit retention schedule, immutable storage, and private-key signatures
       for regulated environments.
 - [ ] Install environment-level backup schedule and immutable artifact storage.
-- [ ] Add dashboards/alerts for outbox lag, dead letters, Qdrant failures, and
-      embedding latency.
+- [ ] Wire metrics reports into deployment dashboards/alerts and add embedding
+      latency metrics.
 - [ ] Add optional row-level encryption for selected memory scopes.
 - [ ] Add signed vault import manifests.
 - [ ] Enforce GitHub branch protection and PR-only merges to `main`.

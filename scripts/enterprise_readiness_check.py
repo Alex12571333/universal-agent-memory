@@ -48,6 +48,7 @@ def run_checks(*, static_only: bool) -> list[Check]:
         "migrations/008_audit_events.sql",
         "migrations/009_api_key_registry.sql",
         "scripts/check_branch_protection.py",
+        "scripts/check_metrics_health.py",
         "scripts/export_audit.py",
         "scripts/restore_drill.py",
         "scripts/scheduled_backup.py",
@@ -190,6 +191,21 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 "tests:security-headers",
                 "test_api_responses_include_security_headers" in tests,
                 "security headers are covered by API tests",
+            ),
+            Check(
+                "ops:metrics-health-evaluator",
+                "outbox_dead_letter_total" in read("scripts/check_metrics_health.py")
+                and "outbox_lag_seconds" in read("scripts/check_metrics_health.py")
+                and "UAM_METRICS_ALERT_WEBHOOK" in read("scripts/check_metrics_health.py"),
+                "metrics health script evaluates outbox lag/dead letters and alert hook",
+            ),
+            Check(
+                "tests:metrics-health-evaluator",
+                "test_metrics_health_fails_on_dead_letters_lag_and_missing_metric"
+                in read("tests/test_metrics.py")
+                and "test_metrics_health_cli_writes_report_and_alerts_on_failure"
+                in read("tests/test_metrics.py"),
+                "metrics health thresholds and report behavior are covered",
             ),
             Check(
                 "audit:rls",

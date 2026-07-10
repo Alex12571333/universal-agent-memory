@@ -158,6 +158,7 @@
 | `backup.py` | Запускает `pg_dump --format=custom` | URL из `UAM_BACKUP_DATABASE_URL`/admin/database env |
 | `restore.py` | Запускает `pg_restore` | Non-destructive by default; `--clean` opt-in |
 | `check_branch_protection.py` | Проверяет GitHub release gate для `main` | Требует PR, status checks, strict mode и admin enforcement |
+| `check_metrics_health.py` | `/metrics`/file/stdin → JSON health gate | Fail по outbox lag/dead-letter; webhook alert |
 | `scheduled_backup.py` | Backup → restore drill → audit export → JSON report | Webhook alert при fail; подходит для cron/systemd |
 
 ## Vault — `services/vault.py`, `scripts/export_vault.py`, `scripts/import_vault.py`

@@ -10,6 +10,9 @@ PYTHONPATH=src python scripts/scheduled_backup.py \
   --backup-dir ./backups \
   --audit-dir ./audit-export \
   --report ./backups/latest-backup-report.json
+UAM_API_KEY=... PYTHONPATH=src python scripts/check_metrics_health.py \
+  --metrics-url http://localhost:6798/metrics \
+  --report ./ops/metrics-health.json
 GITHUB_TOKEN=... python scripts/check_branch_protection.py \
   --repo Alex12571333/universal-agent-memory \
   --required-check python \
@@ -31,6 +34,7 @@ Manual checks:
 - Confirm `audit-export/manifest.sha256` verifies before preserving release
   evidence.
 - Confirm `backups/latest-backup-report.json` reports `"ok": true`.
+- Confirm `ops/metrics-health.json` reports `"ok": true`.
 - Confirm worker logs do not show repeated NATS/Qdrant connection failures.
 - Confirm restore drill passes against the backup intended for rollback.
 - Confirm `.env.production` is not staged.

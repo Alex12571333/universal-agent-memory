@@ -1,6 +1,6 @@
 # Production envelope report — 2026-07-10
 
-Passed: 60
+Passed: 63
 Failed: 0
 
 | Check | Status | Detail |
@@ -13,6 +13,7 @@ Failed: 0
 | `file:migrations/008_audit_events.sql` | PASS | required production artifact |
 | `file:migrations/009_api_key_registry.sql` | PASS | required production artifact |
 | `file:scripts/check_branch_protection.py` | PASS | required production artifact |
+| `file:scripts/check_metrics_health.py` | PASS | required production artifact |
 | `file:scripts/export_audit.py` | PASS | required production artifact |
 | `file:scripts/restore_drill.py` | PASS | required production artifact |
 | `file:scripts/scheduled_backup.py` | PASS | required production artifact |
@@ -49,6 +50,8 @@ Failed: 0
 | `env:scoped-keys` | PASS | scoped API keys documented |
 | `api:security-headers` | PASS | API applies baseline security headers |
 | `tests:security-headers` | PASS | security headers are covered by API tests |
+| `ops:metrics-health-evaluator` | PASS | metrics health script evaluates outbox lag/dead letters and alert hook |
+| `tests:metrics-health-evaluator` | PASS | metrics health thresholds and report behavior are covered |
 | `audit:rls` | PASS | audit events are durable and tenant-isolated |
 | `audit:operator-export` | PASS | audit export endpoint is operator-scoped |
 | `tests:audit-trail` | PASS | audit trail behavior is covered by API tests |

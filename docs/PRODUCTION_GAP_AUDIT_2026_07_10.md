@@ -23,7 +23,7 @@ it is not enough.
 | UI | React dashboard exists and is improving | Operator-grade, not yet admin-console complete |
 | Testing | Unit, integration-style, benchmark scripts, web build | Needs load/chaos/restore/security tests |
 | Release process | `AGENTS.md` describes issue/PR workflow | Main branch protection and PR-only enforcement are not proven |
-| Operations | Runbook, backup/restore scripts, isolated restore-drill script, scheduler-ready backup runner with JSON report/webhook, release checklist | Needs environment scheduler and durable/immutable storage |
+| Operations | Runbook, backup/restore scripts, isolated restore-drill script, scheduler-ready backup runner, metrics health evaluator with JSON report/webhook, release checklist | Needs environment scheduler, durable/immutable storage and dashboard wiring |
 
 ## What “full production level” means for this project
 
@@ -52,7 +52,8 @@ Required gates:
      deployment still must install the actual cron/systemd/orchestrator schedule
      and durable storage policy.
    - Migration rehearsal against a copy of a real volume.
-   - Outbox/NATS/Qdrant dead-letter monitoring with alerts.
+   - Outbox dead-letter and lag monitoring with alerts. Metrics health evaluator
+     exists; deployment still needs dashboard/alert routing.
    - Worker restart and poison-event behavior tested.
    - Graceful degradation when embeddings, Qdrant, or Qwen/Spark are down.
 
@@ -107,7 +108,8 @@ Required gates:
 2. Install environment-level backup schedule, immutable artifact storage, and
    alert routing for `scheduled_backup.py` reports.
 3. Add live `.14` OpenClaw/Hermes soak test script.
-4. Add worker/outbox/embedding alert metrics and dashboard panel.
+4. Wire metrics health reports into the deployment dashboard/alerting stack and
+   add embedding latency metrics.
 5. Add UI conflict-resolution flow with accept/supersede/reject actions.
 6. Add branch-protection/PR-only release policy in GitHub settings.
 7. Add optional external secret-manager integration.
