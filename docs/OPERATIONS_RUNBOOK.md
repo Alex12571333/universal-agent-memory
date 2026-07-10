@@ -234,7 +234,8 @@ the review boundary with a signed manifest:
 ```bash
 UAM_VAULT_SIGNING_KEY=... PYTHONPATH=src python scripts/export_vault.py ./vault-review
 UAM_VAULT_SIGNING_KEY=... PYTHONPATH=src python scripts/import_vault.py ./vault-review \
-  --require-signature
+  --require-signature \
+  --json-report ./ops/vault-import.json
 ```
 
 The exporter writes:
@@ -245,7 +246,9 @@ The exporter writes:
 
 Use `--require-signature` for production imports, including dry-run planning,
 and keep `UAM_VAULT_SIGNING_KEY` in the same class of secret storage as
-`UAM_AUDIT_SIGNING_KEY`.
+`UAM_AUDIT_SIGNING_KEY`. Preserve the `obelisk-vault-import-report-v1` JSON
+report as release evidence; full-production release verification requires it to
+show a verified signed manifest and `require_signature: true`.
 
 ## Upgrade
 

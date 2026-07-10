@@ -17,6 +17,7 @@ REQUIRED_ARTIFACTS = {
     "metrics_health",
     "scheduled_backup",
     "audit_retention",
+    "vault_import",
     "branch_protection",
     "ui_walkthrough",
 }
@@ -109,6 +110,7 @@ def verify_manifest(path: Path) -> list[EvidenceCheck]:
         "metrics_health": _verify_metrics_health,
         "scheduled_backup": _verify_scheduled_backup,
         "audit_retention": _verify_audit_retention,
+        "vault_import": _verify_vault_import,
         "branch_protection": _verify_branch_protection,
         "ui_walkthrough": _verify_ui_walkthrough,
     }
@@ -305,6 +307,23 @@ def _verify_audit_retention(payload: dict[str, Any]) -> list[EvidenceCheck]:
             "audit_retention:signed-export",
             payload.get("signed_export") is True,
             "pre-prune audit export was signed",
+        ),
+    ]
+
+
+def _verify_vault_import(payload: dict[str, Any]) -> list[EvidenceCheck]:
+    return [
+        _format_check("vault_import", payload, "obelisk-vault-import-report-v1"),
+        _ok_check("vault_import", payload),
+        EvidenceCheck(
+            "vault_import:require-signature",
+            payload.get("require_signature") is True,
+            "vault import required a signed manifest",
+        ),
+        EvidenceCheck(
+            "vault_import:verified-signed-manifest",
+            payload.get("manifest_verified") is True and payload.get("manifest_signed") is True,
+            "signed vault manifest verified before import planning/apply",
         ),
     ]
 

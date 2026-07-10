@@ -178,7 +178,7 @@
 | `VaultExporter._observation_file()` | `Observation` → reflection note | Evidence backlinks to `mem-*` notes |
 | `vault_manifest.py` | Markdown vault folder → manifest/checksum/signature verification | SHA-256 per file plus optional HMAC signature |
 | `export_vault.py` | PostgreSQL workspace → folder | Deterministic materialized export; writes manifest/checksum/signature |
-| `import_vault.py` | Folder → dry-run/apply import | Dry-run by default; can require manifest/signature before writes |
+| `import_vault.py` | Folder → dry-run/apply import | Dry-run by default; can require manifest/signature before writes and emit `obelisk-vault-import-report-v1` evidence |
 
 ## Native integrations — `agent-integrations/`
 

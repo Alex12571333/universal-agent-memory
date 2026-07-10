@@ -933,6 +933,7 @@ def test_verify_release_evidence_accepts_complete_manifest(tmp_path: Path) -> No
         "load_smoke:parallelism",
         "scheduled_backup:restore-drill",
         "audit_retention:verified-export",
+        "vault_import:verified-signed-manifest",
         "branch_protection:passed",
         "ui_walkthrough:model-probe-not-skipped",
     }
@@ -953,6 +954,27 @@ def test_verify_release_evidence_rejects_skipped_restore_drill(tmp_path: Path) -
         check for check in checks if check.name == "scheduled_backup:restore-drill"
     )
     assert restore_check.passed is False
+    assert not all(check.passed for check in checks)
+
+
+def test_verify_release_evidence_rejects_unsigned_vault_import(tmp_path: Path) -> None:
+    manifest = _write_release_evidence_bundle(tmp_path)
+    vault_import_path = tmp_path / "vault-import.json"
+    payload = json.loads(vault_import_path.read_text(encoding="utf-8"))
+    payload["require_signature"] = False
+    payload["manifest_signed"] = False
+    vault_import_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    checks = verify_release_evidence.verify_manifest(manifest)
+
+    signature_check = next(
+        check for check in checks if check.name == "vault_import:require-signature"
+    )
+    signed_check = next(
+        check for check in checks if check.name == "vault_import:verified-signed-manifest"
+    )
+    assert signature_check.passed is False
+    assert signed_check.passed is False
     assert not all(check.passed for check in checks)
 
 
@@ -1053,6 +1075,22 @@ def _write_release_evidence_bundle(tmp_path: Path) -> Path:
         },
     )
     _write_json(
+        tmp_path / "vault-import.json",
+        {
+            "format": "obelisk-vault-import-report-v1",
+            "ok": True,
+            "mode": "planned",
+            "require_manifest": False,
+            "require_signature": True,
+            "manifest_verified": True,
+            "manifest_signed": True,
+            "manifest_file_count": 1,
+            "change_count": 1,
+            "supersede_count": 0,
+            "actions": {"unchanged": 1},
+        },
+    )
+    _write_json(
         tmp_path / "branch-protection.json",
         {
             "passed": True,
@@ -1098,6 +1136,7 @@ def _write_release_evidence_bundle(tmp_path: Path) -> Path:
                 "metrics_health": "metrics-health.json",
                 "scheduled_backup": "scheduled-backup.json",
                 "audit_retention": "audit-retention.json",
+                "vault_import": "vault-import.json",
                 "branch_protection": "branch-protection.json",
                 "ui_walkthrough": "ui-walkthrough.json",
             },
@@ -1222,12 +1261,22 @@ def test_import_vault_verifies_signed_manifest_before_apply(
             "--require-signature",
             "--signing-key",
             "vault-secret",
+            "--json-report",
+            str(tmp_path / "ops" / "vault-import.json"),
         ],
     )
 
     assert import_vault.main() == 0
 
     vault.apply_import.assert_called_once()
+    report = json.loads((tmp_path / "ops" / "vault-import.json").read_text(encoding="utf-8"))
+    assert report["format"] == "obelisk-vault-import-report-v1"
+    assert report["ok"] is True
+    assert report["mode"] == "applied"
+    assert report["require_signature"] is True
+    assert report["manifest_verified"] is True
+    assert report["manifest_signed"] is True
+    assert report["manifest_file_count"] == 1
 
 
 def test_import_vault_rejects_tampered_signed_manifest(

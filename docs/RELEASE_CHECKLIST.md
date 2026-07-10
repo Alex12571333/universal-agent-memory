@@ -21,7 +21,8 @@ UAM_AUDIT_SIGNING_KEY=... PYTHONPATH=src python scripts/audit_retention.py \
   --json-report ./ops/audit-retention.json
 UAM_VAULT_SIGNING_KEY=... python scripts/export_vault.py ./vault-release
 UAM_VAULT_SIGNING_KEY=... python scripts/import_vault.py ./vault-release \
-  --require-signature
+  --require-signature \
+  --json-report ./ops/vault-import.json
 UAM_API_KEY=... PYTHONPATH=src python scripts/check_metrics_health.py \
   --metrics-url http://localhost:6798/metrics \
   --report ./ops/metrics-health.json
@@ -68,6 +69,9 @@ Manual checks:
 - Verify conflict inbox can list and resolve at least one conflict.
 - Export vault, edit a note, run dry-run import, then apply only after review.
 - Confirm vault imports use `--require-signature` for release/operator bundles.
+- Confirm `ops/vault-import.json` reports `"ok": true`,
+  `"require_signature": true`, `"manifest_verified": true` and
+  `"manifest_signed": true`.
 - Confirm the configured OpenAI-compatible memory LLM endpoint is reachable.
 - Confirm `ops/memory-llm.json` reports `"ok": true` for that endpoint/model.
 - Confirm embedding endpoint returns the configured dimension.

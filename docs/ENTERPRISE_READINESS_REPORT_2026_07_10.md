@@ -109,7 +109,7 @@ Failed: 0
 | `load:smoke-runner` | PASS | load smoke runner validates concurrent retain/recall, latency and backlog |
 | `tests:load-smoke-runner` | PASS | load smoke runner behavior is covered |
 | `tests:agent-soak-runner` | PASS | agent soak runner success and leakage failure are covered |
-| `vault:signed-manifest` | PASS | vault export/import supports manifest checksum and HMAC signatures |
+| `vault:signed-manifest` | PASS | vault export/import supports manifest checksum, HMAC signatures and evidence |
 | `tests:vault-signed-manifest` | PASS | signed vault manifest behavior is covered by tests |
 | `env:validator` | PASS | production env validator rejects placeholder/local-only config |
 | `tests:env-validator` | PASS | production env validator behavior is covered |

@@ -23,7 +23,7 @@ it is not enough.
 | UI | React dashboard and fallback `/ui` support real memory/vault editing, actionable conflict decisions and a JSON UI walkthrough runner | Operator-grade baseline; still needs preserved live walkthrough evidence per release |
 | Testing | Unit, integration-style, benchmark scripts, web build, concurrent load smoke runner | Needs preserved live load/chaos/security evidence from the target deployment |
 | Release process | `main` branch protection requires PR flow, strict `python`/`web` checks, conversation resolution, and admin enforcement | Release gate baseline is now proven by `scripts/check_branch_protection.py`; keep verifying before releases |
-| Operations | Runbook, backup/restore scripts, isolated restore-drill script, scheduler-ready backup runner, signed vault manifests, metrics health evaluator with JSON report/webhook, Grafana/Prometheus templates, release checklist and release evidence verifier | Needs environment scheduler, durable/immutable storage and installed dashboard/alert routing |
+| Operations | Runbook, backup/restore scripts, isolated restore-drill script, scheduler-ready backup runner, signed vault manifests with import evidence, metrics health evaluator with JSON report/webhook, Grafana/Prometheus templates, release checklist and release evidence verifier | Needs environment scheduler, durable/immutable storage and installed dashboard/alert routing |
 
 ## What “full production level” means for this project
 
@@ -50,8 +50,9 @@ Required gates:
      and verifies old windows before pruning; regulated environments still need
      signing-key custody, an installed schedule and immutable storage.
    - Vault import bundles must use manifest checksum verification and signed
-     manifests for production operator workflows. CLI support exists; the
-     deployment must keep signing keys outside the repository.
+     manifests for production operator workflows. CLI support and JSON release
+     evidence exist; the deployment must keep signing keys outside the
+     repository.
    - Qdrant payload text redaction must stay enabled for production vector
      stores.
    - `UAM_MEMORY_TEXT_ENCRYPTION=pgcrypto` must be enabled for production
@@ -108,8 +109,8 @@ Required gates:
      in-process production readiness.
    - Release checklist includes manual UI walk-through and live embedding probe.
    - Release evidence manifest verifies saved agent, LLM, UI walkthrough,
-     metrics, backup and branch-protection JSON reports before a
-     full-production claim.
+     metrics, backup, signed vault import and branch-protection JSON reports
+     before a full-production claim.
    - Versioned changelog and rollback instructions exist.
 
 ## Things that must not be claimed yet
