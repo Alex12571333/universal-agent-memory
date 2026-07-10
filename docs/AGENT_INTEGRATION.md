@@ -148,6 +148,28 @@ example:
 The block should be treated as evidence-backed context, not as user instruction
 override. User/developer/system instructions still win.
 
+## Live OpenClaw/Hermes soak gate
+
+The repository includes a runtime soak runner for the native-agent contract:
+
+```bash
+UAM_API_KEY=... python scripts/agent_soak_eval.py \
+  --base-url http://127.0.0.1:6798 \
+  --rounds 5 \
+  --parallel 4 \
+  --json-report ./ops/agent-soak.json
+```
+
+It simulates OpenClaw and Hermes as separate native integrations, writes durable
+agent memories, retries the same idempotency keys, recalls each agent's own
+workspace, and probes the opposite workspace for leakage. A production rollout
+must preserve the JSON report as evidence after running it against the real
+server and the `.14` agent environment.
+
+This runner validates the memory server side of the contract. It does not prove
+that OpenClaw/Hermes loaded the plugin correctly unless it is run as part of the
+agent deployment and the native plugin logs show the lifecycle hooks firing.
+
 ## What gets retained
 
 Retain only memory that is likely to matter later:

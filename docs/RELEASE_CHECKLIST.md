@@ -13,6 +13,11 @@ PYTHONPATH=src python scripts/scheduled_backup.py \
 UAM_API_KEY=... PYTHONPATH=src python scripts/check_metrics_health.py \
   --metrics-url http://localhost:6798/metrics \
   --report ./ops/metrics-health.json
+UAM_API_KEY=... python scripts/agent_soak_eval.py \
+  --base-url http://localhost:6798 \
+  --rounds 5 \
+  --parallel 4 \
+  --json-report ./ops/agent-soak.json
 GITHUB_TOKEN=... python scripts/check_branch_protection.py \
   --repo Alex12571333/universal-agent-memory \
   --required-check python \
@@ -37,6 +42,8 @@ Manual checks:
 - Confirm incident/audit exports use `--all-pages` for multi-day windows.
 - Confirm `backups/latest-backup-report.json` reports `"ok": true`.
 - Confirm `ops/metrics-health.json` reports `"ok": true`.
+- Confirm `ops/agent-soak.json` reports `"ok": true` after running against the
+  same server and `.14` OpenClaw/Hermes hosts used for production.
 - Confirm worker logs do not show repeated NATS/Qdrant connection failures.
 - Confirm restore drill passes against the backup intended for rollback.
 - Confirm `.env.production` is not staged.
@@ -53,3 +60,4 @@ Do not release if:
 - generated context contains rejected/archived/superseded memory as active truth.
 - branch protection or PR-only merge policy is disabled for a shared production
   repository.
+- OpenClaw/Hermes soak reports show cross-workspace leakage or missing recall.

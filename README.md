@@ -43,8 +43,8 @@ Current verified baseline, July 10, 2026:
 This means the repository is ready for a trusted local/team pilot. It is not yet
 “full production” in the strong sense. Full production still requires branch
 protection/PR-only releases, environment-level backup scheduling, external
-secret/key custody, security review, and real OpenClaw/Hermes soak tests on the
-target machines.
+secret/key custody, security review, and a saved OpenClaw/Hermes soak report
+from the target `.14` machines.
 
 Honest gap audit:
 [docs/PRODUCTION_GAP_AUDIT_2026_07_10.md](docs/PRODUCTION_GAP_AUDIT_2026_07_10.md).
@@ -121,6 +121,9 @@ PostgreSQL, Qdrant, NATS, and MinIO internal.
 
    ```bash
    python scripts/benchmark_suite.py
+   UAM_API_KEY=... python scripts/agent_soak_eval.py \
+     --base-url http://127.0.0.1:6798 \
+     --json-report ./ops/agent-soak.json
    python scripts/enterprise_readiness_check.py
    ```
 
@@ -223,6 +226,21 @@ Adapters live in [agent-integrations/](agent-integrations/):
 - Hermes: `agent-integrations/hermes/universal_agent_memory`;
 - shared Python helpers: `agent-integrations/shared`.
 
+Before a production rollout, run the live agent soak gate against the same
+server the agents will use:
+
+```bash
+UAM_API_KEY=... python scripts/agent_soak_eval.py \
+  --base-url http://127.0.0.1:6798 \
+  --rounds 5 \
+  --parallel 4 \
+  --json-report ./ops/agent-soak.json
+```
+
+The report must show `ok: true`. It verifies OpenClaw/Hermes-style writes,
+recall, idempotent retries, and cross-workspace leakage checks. It is runtime
+evidence, not a substitute for installing the native plugins.
+
 Detailed integration guide:
 [docs/AGENT_INTEGRATION.md](docs/AGENT_INTEGRATION.md).
 
@@ -253,6 +271,7 @@ ruff check src tests scripts agent-integrations
 pytest -q
 docker compose --profile advanced config
 docker compose -f docker-compose.prod.yml config
+UAM_API_KEY=... python scripts/agent_soak_eval.py --json-report ./ops/agent-soak.json
 python scripts/benchmark_suite.py
 python scripts/enterprise_readiness_check.py
 ```

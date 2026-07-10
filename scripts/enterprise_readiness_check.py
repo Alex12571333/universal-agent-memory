@@ -50,6 +50,7 @@ def run_checks(*, static_only: bool) -> list[Check]:
         "scripts/check_branch_protection.py",
         "scripts/check_metrics_health.py",
         "scripts/export_audit.py",
+        "scripts/agent_soak_eval.py",
         "scripts/restore_drill.py",
         "scripts/scheduled_backup.py",
         "docs/assets/obelisk-memory-hero.png",
@@ -88,6 +89,12 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 "readme:agents",
                 "OpenClaw" in readme and "Hermes" in readme,
                 "agent adapters documented",
+            ),
+            Check(
+                "readme:agent-soak",
+                "scripts/agent_soak_eval.py" in readme
+                and "cross-workspace leakage" in readme,
+                "README documents live agent soak evidence",
             ),
             Check("readme:128k", "131072" in readme, "128k context budget documented"),
             Check("readme:dgx", "192.168.0.10" in readme, "DGX Spark .10 endpoint documented"),
@@ -309,6 +316,21 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 and "test_scheduled_backup_alerts_on_failure"
                 in read("tests/test_backup_restore_scripts.py"),
                 "scheduled backup success/failure reporting is covered",
+            ),
+            Check(
+                "agents:soak-runner",
+                "OpenClaw/Hermes soak checks" in read("scripts/agent_soak_eval.py")
+                and "cross-workspace-leakage" in read("scripts/agent_soak_eval.py")
+                and "obelisk-agent-soak-v1" in read("scripts/agent_soak_eval.py"),
+                "live agent soak runner validates retain/recall/leakage",
+            ),
+            Check(
+                "tests:agent-soak-runner",
+                "test_agent_soak_eval_passes_parallel_agent_lifecycle"
+                in read("tests/test_agent_soak_eval.py")
+                and "test_agent_soak_eval_fails_on_cross_workspace_leakage"
+                in read("tests/test_agent_soak_eval.py"),
+                "agent soak runner success and leakage failure are covered",
             ),
         ]
     )

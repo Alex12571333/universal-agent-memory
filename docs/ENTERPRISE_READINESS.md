@@ -39,6 +39,7 @@ remaining hard requirements.
 - [x] Memory LLM is separate from embedding endpoint.
 - [x] Qwen/Spark `.10` memory LLM defaults are documented.
 - [x] OpenClaw and Hermes integration guides exist.
+- [x] OpenClaw/Hermes soak runner exists and writes JSON release evidence.
 - [x] CI workflow validates lint, tests, web build, and compose configs.
 - [x] Enterprise readiness check script exists.
 - [x] Branch-protection verifier exists for the `main` release gate.
@@ -55,7 +56,8 @@ remaining hard requirements.
 - [ ] Add optional row-level encryption for selected memory scopes.
 - [ ] Add signed vault import manifests.
 - [ ] Enforce GitHub branch protection and PR-only merges to `main`.
-- [ ] Run real OpenClaw/Hermes soak tests against the `.14` agents.
+- [ ] Run real OpenClaw/Hermes soak tests against the `.14` agents and preserve
+      the generated report.
 - [ ] Run live embedding/Qwen regression tests against DGX Spark `.10`.
 
 ## Production interpretation

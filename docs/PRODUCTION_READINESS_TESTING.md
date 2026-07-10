@@ -1,6 +1,6 @@
 # Production readiness testing
 
-This project now has three repeatable validation layers beyond ordinary unit
+This project now has four repeatable validation layers beyond ordinary unit
 tests.
 
 ## 1. Fast unit/API regression
@@ -68,6 +68,30 @@ curl -sS http://127.0.0.1:6799/collections/memory_items
 
 Expected: collection `memory_items` is green and has points after API writes or
 reindexing.
+
+## 4. Live OpenClaw/Hermes soak eval
+
+Run this against the server used by the real agent hosts:
+
+```bash
+UAM_API_KEY=... .venv/bin/python scripts/agent_soak_eval.py \
+  --base-url http://127.0.0.1:6798 \
+  --rounds 5 \
+  --parallel 4 \
+  --json-report ./ops/agent-soak.json
+```
+
+Checks:
+
+- OpenClaw-style retain and recall lifecycle;
+- Hermes-style retain and recall lifecycle;
+- idempotent retry behavior under parallel execution;
+- cross-workspace leakage probes;
+- JSON evidence suitable for release review.
+
+For full production evidence, run it from the `.14` OpenClaw/Hermes deployment
+path or immediately after those plugins are installed, then preserve
+`ops/agent-soak.json` with the release artifacts.
 
 ## Bugs caught by this layer
 

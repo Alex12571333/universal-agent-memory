@@ -19,7 +19,7 @@ it is not enough.
 | Conversation capture | Raw conversation ledger exists, but curation remains explicit/manual or hook-driven | Not “automatically remembers everything” yet |
 | Embeddings | Real provider support exists; fake remains available for CI/emergency | Production depends on real endpoint and reindex discipline |
 | Memory LLM | Qwen/Spark `.10` config exists and fails soft | Needs live quality evaluation before autonomy |
-| OpenClaw/Hermes | Native adapter scaffolds and tests exist | Needs real runtime soak tests on `.14` |
+| OpenClaw/Hermes | Native adapter scaffolds, tests and live soak runner exist | Needs saved real runtime soak evidence from `.14` |
 | UI | React dashboard exists and is improving | Operator-grade, not yet admin-console complete |
 | Testing | Unit, integration-style, benchmark scripts, web build | Needs load/chaos/restore/security tests |
 | Release process | `AGENTS.md` describes issue/PR workflow | Main branch protection and PR-only enforcement are not proven |
@@ -73,7 +73,9 @@ Required gates:
      after-tool retain, checkpoint, run-complete reflection.
    - Each agent uses its own scoped key and namespace.
    - Failed memory calls are fail-soft and visible in logs/metrics.
-   - Soak test with parallel agents verifies no cross-project leakage.
+   - Soak test with parallel agents verifies no cross-project leakage; the
+     repository runner exists, but full production requires a preserved report
+     from the actual `.14` OpenClaw/Hermes deployment.
 
 5. **UI/operator gate**
    - Dashboard values come from real API state, not fixed mock numbers.
@@ -93,8 +95,8 @@ Required gates:
 ## Things that must not be claimed yet
 
 - “Fully enterprise production-ready” — not until branch protection, automated
-  restore drills, alerting, signed audit retention, and real agent soak tests
-  are proven.
+  restore drills, alerting, signed audit retention, and real `.14` agent soak
+  reports are proven.
 - “Remembers all conversations automatically” — the raw ledger can store full
   turns, but automatic capture depends on agent/plugin hooks being installed.
 - “Semantic recall is production quality” — only true when a real embedding
@@ -108,7 +110,8 @@ Required gates:
    storage, and deployment verification that range exports are preserved.
 2. Install environment-level backup schedule, immutable artifact storage, and
    alert routing for `scheduled_backup.py` reports.
-3. Add live `.14` OpenClaw/Hermes soak test script.
+3. Run `scripts/agent_soak_eval.py` from the `.14` OpenClaw/Hermes deployment
+   path and preserve the JSON report as release evidence.
 4. Wire metrics and scheduled-backup health reports into the deployment
    dashboard/alerting stack.
 5. Add UI conflict-resolution flow with accept/supersede/reject actions.

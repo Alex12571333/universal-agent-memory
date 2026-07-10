@@ -1,6 +1,6 @@
 # Production envelope report — 2026-07-10
 
-Passed: 64
+Passed: 68
 Failed: 0
 
 | Check | Status | Detail |
@@ -15,6 +15,7 @@ Failed: 0
 | `file:scripts/check_branch_protection.py` | PASS | required production artifact |
 | `file:scripts/check_metrics_health.py` | PASS | required production artifact |
 | `file:scripts/export_audit.py` | PASS | required production artifact |
+| `file:scripts/agent_soak_eval.py` | PASS | required production artifact |
 | `file:scripts/restore_drill.py` | PASS | required production artifact |
 | `file:scripts/scheduled_backup.py` | PASS | required production artifact |
 | `file:docs/assets/obelisk-memory-hero.png` | PASS | required production artifact |
@@ -31,6 +32,7 @@ Failed: 0
 | `readme:honest-status` | PASS | README does not over-claim full production readiness |
 | `readme:gap-audit` | PASS | README links the honest production gap audit |
 | `readme:agents` | PASS | agent adapters documented |
+| `readme:agent-soak` | PASS | README documents live agent soak evidence |
 | `readme:128k` | PASS | 128k context budget documented |
 | `readme:dgx` | PASS | DGX Spark .10 endpoint documented |
 | `prod-compose:only-api-published` | PASS | production compose publishes API/UI but not PostgreSQL |
@@ -65,6 +67,8 @@ Failed: 0
 | `tests:restore-drill` | PASS | restore drill command flow is covered by tests |
 | `backup:schedule-runner` | PASS | scheduled backup runner performs backup, restore drill and alert hook |
 | `tests:scheduled-backup` | PASS | scheduled backup success/failure reporting is covered |
+| `agents:soak-runner` | PASS | live agent soak runner validates retain/recall/leakage |
+| `tests:agent-soak-runner` | PASS | agent soak runner success and leakage failure are covered |
 | `gap-audit:no-overclaim` | PASS | gap audit explicitly forbids readiness over-claims |
 | `gap-audit:full-production-gates` | PASS | gap audit defines full-production gates |
 | `benchmark:passed` | PASS | latest benchmark pass count |

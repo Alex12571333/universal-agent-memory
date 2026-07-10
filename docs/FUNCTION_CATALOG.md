@@ -160,6 +160,7 @@
 | `check_branch_protection.py` | Проверяет GitHub release gate для `main` | Требует PR, status checks, strict mode и admin enforcement |
 | `check_metrics_health.py` | `/metrics`/file/stdin → JSON health gate | Fail по outbox lag/dead-letter; webhook alert |
 | `scheduled_backup.py` | Backup → restore drill → audit export → JSON report | Webhook alert при fail; подходит для cron/systemd |
+| `agent_soak_eval.py` | Live OpenClaw/Hermes soak gate → JSON report | Retain/recall/idempotency/leakage checks against a running server |
 
 ## Vault — `services/vault.py`, `scripts/export_vault.py`, `scripts/import_vault.py`
 
@@ -187,6 +188,7 @@
 | `openclaw/plugin/package.json` | OpenClaw extension metadata | `openclaw.extensions: ["./index.js"]` |
 | `hermes/universal_agent_memory/__init__.py` | Hermes `MemoryProvider` | `prefetch`, `sync_turn`, `on_session_end`, explicit tools |
 | `hermes/universal_agent_memory/plugin.yaml` | Hermes provider metadata | User-installed memory provider manifest |
+| `scripts/agent_soak_eval.py` | Runtime evidence for OpenClaw/Hermes contract | Parallel agent markers plus cross-workspace leakage probes |
 
 ## Composition/API
 
