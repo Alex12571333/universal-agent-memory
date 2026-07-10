@@ -30,6 +30,11 @@ UAM_API_KEY=... python scripts/agent_soak_eval.py \
   --rounds 5 \
   --parallel 4 \
   --json-report ./ops/agent-soak.json
+UAM_API_KEY=... python scripts/load_smoke_eval.py \
+  --base-url http://localhost:6798 \
+  --agents 8 \
+  --operations-per-agent 5 \
+  --json-report ./ops/load-smoke.json
 UAM_API_KEY=... python scripts/ui_walkthrough_eval.py \
   --base-url http://localhost:6798 \
   --json-report ./ops/ui-walkthrough.json
@@ -86,6 +91,9 @@ Manual checks:
   loaded into the target alerting stack.
 - Confirm `ops/agent-soak.json` reports `"ok": true` after running against the
   same server and `.14` OpenClaw/Hermes hosts used for production.
+- Confirm `ops/load-smoke.json` reports `"ok": true`, includes
+  `concurrent-retain-recall`, `retain-p95`, `recall-p95` and
+  `metrics-backlog`, and was run against the release server.
 - Confirm `ops/ui-walkthrough.json` reports `"ok": true` and includes
   vault editable text, vault archive, conflict decision, model probe, reindex
   and metrics checks.
@@ -110,6 +118,8 @@ Do not release if:
 - branch protection or PR-only merge policy is disabled for a shared production
   repository.
 - OpenClaw/Hermes soak reports show cross-workspace leakage or missing recall.
+- load smoke evidence is missing, has non-zero errors, violates p95 thresholds,
+  or shows outbox dead letters/backlog after the run.
 - OpenAI-compatible memory LLM regression returns invalid JSON or keeps obsolete
   memory as current truth.
 - UI walkthrough evidence is missing, skipped model probing, or shows vector /

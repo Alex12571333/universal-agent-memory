@@ -15,6 +15,7 @@ Create `release-evidence.json` next to the referenced reports:
   "artifacts": {
     "agent_soak": "ops/agent-soak.json",
     "memory_llm": "ops/memory-llm.json",
+    "load_smoke": "ops/load-smoke.json",
     "metrics_health": "ops/metrics-health.json",
     "scheduled_backup": "backups/latest-backup-report.json",
     "audit_retention": "ops/audit-retention.json",
@@ -50,6 +51,12 @@ UAM_API_KEY=... python scripts/agent_soak_eval.py \
   --parallel 4 \
   --json-report ./ops/agent-soak.json
 
+UAM_API_KEY=... python scripts/load_smoke_eval.py \
+  --base-url http://localhost:6798 \
+  --agents 8 \
+  --operations-per-agent 5 \
+  --json-report ./ops/load-smoke.json
+
 UAM_API_KEY=... python scripts/ui_walkthrough_eval.py \
   --base-url http://localhost:6798 \
   --json-report ./ops/ui-walkthrough.json
@@ -84,6 +91,8 @@ The verifier requires:
   Hermes recall and cross-workspace leakage checks;
 - memory LLM report format `obelisk-memory-llm-eval-v1`, `ok: true`,
   chat-completions and JSON curation checks;
+- load smoke report format `obelisk-load-smoke-v1`, `ok: true`, parallel
+  retain/recall correctness, error-rate, p95 latency and metrics-backlog checks;
 - metrics health report format `obelisk-metrics-health-v1`, `ok: true`, outbox
   pending/dead-letter/lag and inflight checks;
 - scheduled backup report format `obelisk-scheduled-backup-report-v1`,

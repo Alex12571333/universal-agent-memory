@@ -21,7 +21,7 @@ it is not enough.
 | Memory LLM | Provider-neutral OpenAI-compatible contract, fail-soft adapter and live regression runner exist | Needs saved live endpoint regression evidence before autonomy |
 | OpenClaw/Hermes | Native adapter scaffolds, tests and live soak runner exist | Needs saved real runtime soak evidence from `.14` |
 | UI | React dashboard and fallback `/ui` support real memory/vault editing, actionable conflict decisions and a JSON UI walkthrough runner | Operator-grade baseline; still needs preserved live walkthrough evidence per release |
-| Testing | Unit, integration-style, benchmark scripts, web build | Needs load/chaos/restore/security tests |
+| Testing | Unit, integration-style, benchmark scripts, web build, concurrent load smoke runner | Needs preserved live load/chaos/security evidence from the target deployment |
 | Release process | `main` branch protection requires PR flow, strict `python`/`web` checks, conversation resolution, and admin enforcement | Release gate baseline is now proven by `scripts/check_branch_protection.py`; keep verifying before releases |
 | Operations | Runbook, backup/restore scripts, isolated restore-drill script, scheduler-ready backup runner, signed vault manifests, metrics health evaluator with JSON report/webhook, Grafana/Prometheus templates, release checklist and release evidence verifier | Needs environment scheduler, durable/immutable storage and installed dashboard/alert routing |
 
@@ -131,11 +131,13 @@ Required gates:
    alert routing for `scheduled_backup.py` reports.
 3. Run `scripts/agent_soak_eval.py` from the `.14` OpenClaw/Hermes deployment
    path and preserve the JSON report as release evidence.
-4. Install the provided metrics dashboard/alert rules and scheduled-backup
+4. Run `scripts/load_smoke_eval.py` against the target release server and
+   preserve the JSON report as release evidence.
+5. Install the provided metrics dashboard/alert rules and scheduled-backup
    health reports into the deployment alerting stack.
-5. Run `scripts/ui_walkthrough_eval.py` against the release server and preserve
+6. Run `scripts/ui_walkthrough_eval.py` against the release server and preserve
    the report showing conflict decision, vault editable text/archive, model
    settings probe, reindex and metrics.
-6. Preserve and verify the release evidence manifest in every release bundle.
-7. Install and verify the target environment secret manager using the supported
+7. Preserve and verify the release evidence manifest in every release bundle.
+8. Install and verify the target environment secret manager using the supported
    `*_FILE` runtime secret paths.
