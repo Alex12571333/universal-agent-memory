@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import sys
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -22,6 +23,17 @@ from shared.config import AgentMemoryConfig  # noqa: E402
 from shared.identity import resolve_workspace_id  # noqa: E402
 from shared.lifecycle import AgentEventKind, AgentLifecycleEvent, AgentRunContext  # noqa: E402
 from shared.plugin import UniversalAgentMemoryPlugin  # noqa: E402
+
+
+def _load_openclaw_cli_bridge():
+    spec = importlib.util.spec_from_file_location(
+        "obelisk_openclaw_cli",
+        INTEGRATIONS / "openclaw" / "obelisk_openclaw_cli.py",
+    )
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 class FakeMemoryClient:
@@ -126,6 +138,72 @@ def test_identity_fallbacks_are_stable(monkeypatch: MonkeyPatch) -> None:
     second = resolve_workspace_id(fallback="repo-a")
 
     assert first == second
+
+
+def test_openclaw_cli_bridge_recalls_and_retains(monkeypatch: MonkeyPatch, capsys) -> None:
+    bridge = _load_openclaw_cli_bridge()
+    calls: list[tuple[str, dict[str, object]]] = []
+
+    monkeypatch.setattr(
+        bridge,
+        "_config",
+        lambda: {
+            "url": "http://memory.test",
+            "apiKey": "key",
+            "tenantId": "00000000-0000-0000-0000-000000000001",
+            "workspaceId": "00000000-0000-0000-0000-000000000002",
+            "agentId": "00000000-0000-0000-0000-000000000003",
+        },
+    )
+    monkeypatch.setattr(
+        bridge,
+        "_post",
+        lambda _config, path, payload: calls.append((path, payload))
+        or {"context": {"markdown": "## Memory\\n- remembered"}},
+    )
+    monkeypatch.setattr(
+        bridge.subprocess,
+        "run",
+        lambda command, **_kwargs: type(
+            "Result", (), {"returncode": 0, "stdout": "answer", "stderr": ""}
+        )(),
+    )
+
+    assert bridge.main(["--session-key", "agent:main:test", "--message", "question", "--json"]) == 0
+    assert calls[0][0] == "/v1/memory/recall"
+    assert calls[1][0] == "/v1/memory/retain"
+    assert "Контекст Obelisk" in calls[0][1]["query"] or calls[0][1]["query"] == "question"
+    assert calls[1][1]["kind"] == "run_summary"
+    assert "answer" in capsys.readouterr().out
+
+
+def test_openclaw_cli_bridge_reads_protected_env_file(tmp_path: Path) -> None:
+    bridge = _load_openclaw_cli_bridge()
+    env_file = tmp_path / "openclaw.env"
+    env_file.write_text("UAM_API_KEY=local-key\nIGNORED=value\n", encoding="utf-8")
+
+    assert bridge._dotenv(env_file) == {"UAM_API_KEY": "local-key"}
+
+
+def test_openclaw_cli_bridge_omits_empty_api_key() -> None:
+    bridge = _load_openclaw_cli_bridge()
+
+    assert bridge._headers({"apiKey": ""}) == {"Content-Type": "application/json"}
+
+
+def test_openclaw_cli_bridge_uses_configured_thread_id() -> None:
+    bridge = _load_openclaw_cli_bridge()
+    identity = bridge._identity(
+        {
+            "tenantId": "tenant",
+            "workspaceId": "workspace",
+            "agentId": "agent",
+            "threadId": "thread",
+        },
+        ["--session-key", "different-session"],
+    )
+
+    assert identity["thread_id"] == "thread"
 
 
 def test_hermes_provider_discovery_and_tools(monkeypatch: MonkeyPatch) -> None:
