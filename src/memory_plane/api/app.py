@@ -1816,16 +1816,30 @@ def create_app(
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         except RuntimeError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
+        if result.proposal is not None:
+            proposal = result.proposal.proposal
+            record_audit(
+                request,
+                tenant_id=body.tenant_id,
+                workspace_id=proposal.workspace_id,
+                action="conversation.curate.propose",
+                resource_type="memory_proposal",
+                resource_id=str(proposal.id),
+                metadata={"turn_id": str(turn_id), "created": result.proposal.created},
+            )
+            return _memory_proposal_response(proposal, created=result.proposal.created)
+        assert result.retained is not None
+        retained = result.retained
         record_audit(
             request,
             tenant_id=body.tenant_id,
-            workspace_id=result.item.workspace_id,
+            workspace_id=retained.item.workspace_id,
             action="conversation.curate",
             resource_type="memory_item",
-            resource_id=str(result.item.id),
-            metadata={"turn_id": str(turn_id), "created": result.created},
+            resource_id=str(retained.item.id),
+            metadata={"turn_id": str(turn_id), "created": retained.created},
         )
-        return _memory_write_response(result)
+        return _memory_write_response(retained)
 
     @app.post("/v1/memory/proposals", status_code=201)
     def submit_memory_proposal(body: MemoryProposalBody) -> dict[str, Any]:

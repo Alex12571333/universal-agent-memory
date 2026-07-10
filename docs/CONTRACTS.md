@@ -98,11 +98,12 @@ maintenance endpoint `POST /v1/workspaces/{workspace_id}/conversations/purge-exp
 `purged_after_expiry`; вызов безопасен для повторов и фиксируется в audit log.
 Production scheduler обязан вызывать его чаще заданного TTL.
 
-`ConversationCurator.curate_turn` является первым deterministic мостом из raw
-ledger в recallable memory. Он создаёт `MemoryItem` с provenance
-`conversation://{turn_id}` через обычный `RetentionService`, поэтому embedding,
-outbox, graph/reflection jobs и idempotency работают тем же путём, что и для
-ручного `/v1/memory/retain`.
+`ConversationCurator.curate_turn` не создаёт recallable memory в production
+composition. Даже при включённом LLM он создаёт evidence-backed `MemoryProposal`
+с `source_turn_id`, а `/v1/memory/recall` его не видит. Только отдельный
+operator/policy accept может создать `MemoryItem` через normal retention path.
+Так LLM классифицирует и суммирует, но не становится источником автоматически
+принятой истины.
 
 `MemoryProposalService.submit` хранит предлагаемое изменение памяти отдельно от
 `MemoryItem`. Запись в `/v1/memory/proposals` не попадает в recall и не запускает

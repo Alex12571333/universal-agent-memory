@@ -69,7 +69,7 @@ def test_conversation_curator_uses_memory_llm_when_available() -> None:
         }
     )
 
-    retained = ConversationCurator(
+    result = ConversationCurator(
         store,
         RetentionService(store),
         memory_llm=reasoner,
@@ -80,6 +80,8 @@ def test_conversation_curator_uses_memory_llm_when_available() -> None:
         )
     )
 
+    assert result.retained is not None
+    retained = result.retained
     assert retained.item.metadata["curator_engine"] == "memory_llm"
     assert retained.item.metadata["llm_confidence"] == 0.92
     assert "Пользователь явно просит" in retained.item.text
@@ -101,7 +103,7 @@ def test_conversation_curator_falls_back_when_memory_llm_fails() -> None:
         )
     )
 
-    retained = ConversationCurator(
+    result = ConversationCurator(
         store,
         RetentionService(store),
         memory_llm=FailingReasoner(),
@@ -112,6 +114,8 @@ def test_conversation_curator_falls_back_when_memory_llm_fails() -> None:
         )
     )
 
+    assert result.retained is not None
+    retained = result.retained
     assert retained.item.metadata["curator_engine"] == "deterministic_fallback"
     assert retained.item.metadata["llm_error"] == "RuntimeError"
     assert "Conversation turn summary" in retained.item.text
