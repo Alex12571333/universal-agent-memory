@@ -61,6 +61,16 @@ _ITEM_COLUMNS = f"""
     p.quote_text, p.extraction_version
 """
 _WORD = re.compile(r"\w+", re.UNICODE)
+_CONVERSATION_CONTENT_SQL = f"""
+case
+  when left(m.content, {len(_PGCRYPTO_TEXT_PREFIX)}) = '{_PGCRYPTO_TEXT_PREFIX}'
+  then pgp_sym_decrypt(
+    decode(substr(m.content, {len(_PGCRYPTO_TEXT_PREFIX) + 1}), 'base64'),
+    nullif(current_setting('app.memory_text_encryption_key', true), '')
+  )
+  else m.content
+end
+"""
 
 
 def _is_foreign_key_violation(exc: Exception) -> bool:
@@ -960,7 +970,7 @@ class PostgresMemoryLedger:
         with self._connection() as connection:
             self._set_tenant(connection, tenant_id)
             row = connection.execute(
-                """
+                f"""
                 select
                   t.id, t.tenant_id, t.workspace_id, t.thread_id, t.agent_id,
                   t.namespace, t.source_kind, t.retention_policy, t.metadata,
@@ -969,7 +979,7 @@ class PostgresMemoryLedger:
                     jsonb_agg(
                       jsonb_build_object(
                         'role', m.role,
-                        'content', m.content,
+                        'content', {_CONVERSATION_CONTENT_SQL},
                         'name', m.name,
                         'metadata', m.metadata
                       )
@@ -1000,7 +1010,7 @@ class PostgresMemoryLedger:
         with self._connection() as connection:
             self._set_tenant(connection, tenant_id)
             rows = connection.execute(
-                """
+                f"""
                 select
                   t.id, t.tenant_id, t.workspace_id, t.thread_id, t.agent_id,
                   t.namespace, t.source_kind, t.retention_policy, t.metadata,
@@ -1009,7 +1019,7 @@ class PostgresMemoryLedger:
                     jsonb_agg(
                       jsonb_build_object(
                         'role', m.role,
-                        'content', m.content,
+                        'content', {_CONVERSATION_CONTENT_SQL},
                         'name', m.name,
                         'metadata', m.metadata
                       )
@@ -1688,7 +1698,7 @@ class PostgresMemoryLedger:
         self, connection: Any, tenant_id: UUID, key: str
     ) -> ConversationTurn | None:
         row = connection.execute(
-            """
+            f"""
             select
               t.id, t.tenant_id, t.workspace_id, t.thread_id, t.agent_id,
               t.namespace, t.source_kind, t.retention_policy, t.metadata,
@@ -1697,7 +1707,7 @@ class PostgresMemoryLedger:
                 jsonb_agg(
                   jsonb_build_object(
                     'role', m.role,
-                    'content', m.content,
+                    'content', {_CONVERSATION_CONTENT_SQL},
                     'name', m.name,
                     'metadata', m.metadata
                   )
@@ -1879,6 +1889,12 @@ class PostgresMemoryLedger:
         """Return plaintext or pgcrypto ciphertext for memory_items.text."""
         if not self._should_encrypt_item(item):
             return item.text
+        return self._stored_sensitive_text(connection, item.text)
+
+    def _stored_sensitive_text(self, connection: Any, value: str) -> str:
+        """Encrypt a non-indexed sensitive value when pgcrypto is enabled."""
+        if not self._text_encryption_enabled:
+            return value
         row = connection.execute(
             """
             select %s || encode(
@@ -1886,7 +1902,7 @@ class PostgresMemoryLedger:
               'base64'
             ) as encrypted_text
             """,
-            (_PGCRYPTO_TEXT_PREFIX, item.text, self._text_encryption_key),
+            (_PGCRYPTO_TEXT_PREFIX, value, self._text_encryption_key),
         ).fetchone()
         if row is None:
             raise RuntimeError("pgcrypto did not return encrypted memory text")
@@ -1920,8 +1936,7 @@ class PostgresMemoryLedger:
             ),
         )
 
-    @staticmethod
-    def _insert_turn(connection: Any, turn: ConversationTurn) -> None:
+    def _insert_turn(self, connection: Any, turn: ConversationTurn) -> None:
         from psycopg.types.json import Jsonb
 
         connection.execute(
@@ -1958,7 +1973,7 @@ class PostgresMemoryLedger:
                     position,
                     message.role,
                     message.name,
-                    message.content,
+                    self._stored_sensitive_text(connection, message.content),
                     Jsonb(message.metadata),
                 ),
             )
