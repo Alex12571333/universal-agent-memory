@@ -161,6 +161,9 @@ def test_validate_production_env_accepts_strict_real_config(tmp_path: Path) -> N
                 '"workspace_id":"00000000-0000-0000-0000-000000000002",'
                 '"agent_id":"00000000-0000-0000-0000-000000000020"}}',
                 "UAM_REQUIRE_IDENTITY_BINDINGS=true",
+                "UAM_UI_SESSION_SIGNING_KEY=ui_" + "h" * 40,
+                "UAM_UI_SESSION_TTL_SECONDS=28800",
+                "UAM_UI_COOKIE_SECURE=true",
                 "UAM_SERVER_ID=00000000-0000-0000-0000-000000000001",
                 "UAM_PROJECT_ID=00000000-0000-0000-0000-000000000002",
                 "UAM_PUBLIC_HOST=memory.example.com",
@@ -188,6 +191,7 @@ def test_validate_production_env_accepts_strict_real_config(tmp_path: Path) -> N
                 "UAM_MEMORY_LLM_PROVIDER=openai-compatible",
                 "UAM_MEMORY_LLM_MODEL=gateway-memory-model",
                 "UAM_MEMORY_LLM_BASE_URL=https://llm-gateway.internal/v1",
+                "UAM_MODEL_ENDPOINT_ALLOWLIST=https://api.openai.com,https://llm-gateway.internal",
             ]
         ),
         encoding="utf-8",
@@ -217,6 +221,7 @@ def test_validate_production_env_accepts_secret_files(tmp_path: Path) -> None:
         "UAM_AUDIT_SIGNING_KEY": "audit_" + "b" * 40,
         "UAM_VAULT_SIGNING_KEY": "vault_" + "c" * 40,
         "UAM_RELEASE_SIGNING_KEY": "release_" + "d" * 40,
+        "UAM_UI_SESSION_SIGNING_KEY": "ui_" + "h" * 40,
         "UAM_API_PRINCIPAL_BINDINGS_JSON": json.dumps(
             {
                 "openclaw": {
@@ -244,6 +249,8 @@ def test_validate_production_env_accepts_secret_files(tmp_path: Path) -> None:
             [
                 *secret_lines,
                 "UAM_REQUIRE_IDENTITY_BINDINGS=true",
+                "UAM_UI_SESSION_TTL_SECONDS=28800",
+                "UAM_UI_COOKIE_SECURE=true",
                 "UAM_SERVER_ID=00000000-0000-0000-0000-000000000001",
                 "UAM_PROJECT_ID=00000000-0000-0000-0000-000000000002",
                 "UAM_PUBLIC_HOST=memory.example.com",
@@ -263,6 +270,7 @@ def test_validate_production_env_accepts_secret_files(tmp_path: Path) -> None:
                 "UAM_MEMORY_LLM_PROVIDER=openai-compatible",
                 "UAM_MEMORY_LLM_MODEL=gateway-memory-model",
                 "UAM_MEMORY_LLM_BASE_URL=https://llm-gateway.internal/v1",
+                "UAM_MODEL_ENDPOINT_ALLOWLIST=https://api.openai.com,https://llm-gateway.internal",
             ]
         ),
         encoding="utf-8",
@@ -333,6 +341,22 @@ def test_validate_production_env_requires_key_for_explicit_openai_profile() -> N
     memory_llm = next(check for check in checks if check.name == "memory-llm")
     assert memory_llm.ok is False
     assert "requires an API key" in memory_llm.detail
+
+
+def test_validate_production_env_requires_all_model_origins_in_allowlist() -> None:
+    checks = validate_production_env.validate_env(
+        {
+            "UAM_EMBEDDING_BASE_URL": "https://embedding.example/v1",
+            "UAM_MEMORY_LLM_BASE_URL": "https://llm.example/v1",
+            "UAM_MODEL_ENDPOINT_ALLOWLIST": "https://embedding.example",
+        }
+    )
+
+    allowlist = next(
+        check for check in checks if check.name == "model-endpoint-allowlist"
+    )
+    assert allowlist.ok is False
+    assert "https://llm.example:443" in allowlist.detail
 
 
 def test_validate_production_env_rejects_plaintext_memory_storage() -> None:

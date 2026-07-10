@@ -9,15 +9,36 @@ import type {
   VaultResponse
 } from "./types";
 
+export type UiSession = {
+  authenticated: boolean;
+  auth_required: boolean;
+  principal?: string;
+  csrf_token?: string | null;
+  expires_at?: number;
+};
+
+let csrfToken: string | null = null;
+
+export function setCsrfToken(value: string | null | undefined) {
+  csrfToken = value || null;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     ...init,
+    credentials: "same-origin",
     headers: {
       "Content-Type": "application/json",
+      ...(csrfToken && !["GET", "HEAD", "OPTIONS"].includes(init?.method ?? "GET")
+        ? { "X-CSRF-Token": csrfToken }
+        : {}),
       ...(init?.headers ?? {})
     }
   });
   if (!response.ok) {
+    if (response.status === 401) {
+      window.dispatchEvent(new Event("uam-auth-required"));
+    }
     const text = await response.text();
     throw new Error(`${response.status} ${response.statusText}: ${text}`);
   }
@@ -25,6 +46,18 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  session() {
+    return request<UiSession>("/v1/ui/session");
+  },
+  login(apiKey: string) {
+    return request<UiSession>("/v1/ui/session", {
+      method: "POST",
+      body: JSON.stringify({ api_key: apiKey })
+    });
+  },
+  logout() {
+    return request<UiSession>("/v1/ui/session", { method: "DELETE" });
+  },
   memories(workspace: string, tenant: string) {
     return request<MemoriesResponse>(
       `/v1/workspaces/${workspace}/memories?tenant_id=${tenant}`

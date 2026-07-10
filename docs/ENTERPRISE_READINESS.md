@@ -18,6 +18,8 @@ remaining hard requirements.
       security headers and direct backend exposure checks.
 - [x] API key auth can protect API, docs, metrics, and UI.
 - [x] Scoped API keys gate operator, agent, read, and write route classes.
+- [x] React UI exchanges an operator key for an HttpOnly signed session, applies
+      CSRF protection to mutations and invalidates sessions on key revocation.
 - [x] Production can require every agent API principal to be bound to one
       tenant/workspace/agent identity; forged IDs and foreign threads are
       rejected and private recall is owner-filtered across all candidate layers.

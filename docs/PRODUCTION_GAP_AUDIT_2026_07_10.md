@@ -20,7 +20,7 @@ under failure.
 | Embeddings | Provider-neutral endpoints, async worker, fail-soft recall, scoped sync and immutable collection identity exist | Target outage/migration evidence remains required |
 | Memory LLM | Provider-neutral OpenAI-compatible contract, deterministic fallback and live runner exist | LLM output currently bypasses proposal/review and cannot be autonomous in production |
 | OpenClaw/Hermes | Native adapter scaffolds, tests and live soak runner exist | Needs saved soak evidence from the deployed runtime versions |
-| UI | React dashboard supports memory/vault editing, conflict decisions and a JSON walkthrough runner | Authenticated browser flow, endpoint egress policy and durable settings are incomplete |
+| UI | React dashboard supports signed HttpOnly operator sessions, CSRF, memory/vault editing, conflict decisions, exact-origin model probe policy and a JSON walkthrough runner | Target HTTPS session/egress evidence and secret-manager integration evidence remain required |
 | Testing | Unit/API tests, live PostgreSQL/Qdrant isolation/failure tests, benchmark scripts, web build and load runner exist | Target chaos/security evidence is still missing |
 | Release process | PR flow, release reports and a signed content-addressed evidence manifest exist | OCI build provenance, SBOM, scanning and image signing are still required |
 | Operations | Runbook, backup/restore scripts, isolated restore drill, schedule/observability preflights, signed vault/audit bundles and release evidence verifier | Needs target evidence and the runtime blockers below resolved |
@@ -124,15 +124,26 @@ static readiness script are green.
    isolated PostgreSQL 17 clean boot. The real target run remains a required
    release artifact.
 
-9. **Production UI authentication flow is incomplete.**
-   `/ui` requires a bearer token when auth is enabled, but normal browser
-   navigation and the React API client do not supply it. The shipped Caddy
-   config does not establish an authenticated UI session or inject credentials.
+9. **Browser session auth needs target evidence.**
+   `/ui` can render its login shell without exposing operator data. The React
+   client exchanges an operator/admin key once for a signed HttpOnly
+   `SameSite=Strict` cookie, keeps the original key out of browser storage,
+   bootstraps a per-session CSRF token, and attaches it to every mutation.
+   Sessions expire, require `Secure` cookies in production and are invalidated
+   by key revocation/rotation. API tests cover login scope, cookie flags, CSRF,
+   logout and revocation. A real HTTPS browser walkthrough and target session
+   expiry/rotation evidence remain required.
 
-10. **Model endpoint testing creates an SSRF boundary.**
-    An operator can submit an arbitrary model base URL, which the server probes.
-    Production needs an explicit endpoint allowlist/network egress policy and
-    secrets must not be persisted as plaintext model settings JSON.
+10. **Model endpoint boundary needs target egress evidence.**
+    Model saves and probes enforce `UAM_MODEL_ENDPOINT_ALLOWLIST` as normalized
+    exact origins; without it only loopback endpoints are accepted. Credentials,
+    query strings and fragments in base URLs are rejected, and both embedding
+    and LLM HTTP clients refuse redirects. Desired settings are written
+    atomically with mode `0600` and never persist provider API keys; legacy
+    plaintext keys are removed on load. Production validation requires every
+    configured embedding/LLM origin to be allowlisted. A container/cluster
+    egress-deny policy and target probe evidence remain required defense in
+    depth.
 
 11. **Conversation retention policies do not implement their names.**
     Every call first appends a raw turn, including `curated_only`; there is no

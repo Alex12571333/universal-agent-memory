@@ -1,6 +1,6 @@
 # Production envelope report — 2026-07-10
 
-Passed: 143
+Passed: 145
 Failed: 0
 
 | Check | Status | Detail |
@@ -85,6 +85,8 @@ Failed: 0
 | `env:privacy` | PASS | privacy defaults |
 | `env:scoped-keys` | PASS | scoped API keys documented |
 | `env:secret-files` | PASS | mounted secret-file env alternatives are documented |
+| `env:ui-session` | PASS | secure browser-session policy is documented |
+| `env:model-endpoint-allowlist` | PASS | exact-origin model endpoint allowlist is documented |
 | `env:identity-bindings` | PASS | strict agent principal bindings are documented |
 | `env:text-encryption-scopes` | PASS | canonical memory text encryption scopes are documented |
 | `env:signing-keys` | PASS | operator-held signing keys are documented |

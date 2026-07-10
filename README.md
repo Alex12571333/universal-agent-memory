@@ -159,6 +159,10 @@ Production notes:
 - set `UAM_API_KEY` to a long random secret;
 - prefer scoped `UAM_API_KEYS` for agents and UI operators:
   `openclaw:<secret>:agent,hermes:<secret>:agent,operator:<secret>:operator`;
+- mount a separate `UAM_UI_SESSION_SIGNING_KEY_FILE`, keep
+  `UAM_UI_COOKIE_SECURE=true`, and sign in through `/ui` with the operator key;
+- restrict model probes to exact trusted origins with
+  `UAM_MODEL_ENDPOINT_ALLOWLIST`; HTTP redirects are rejected;
 - set `UAM_REQUIRE_IDENTITY_BINDINGS=true` and bind every agent principal to
   its provisioned tenant/workspace/agent UUID in
   `UAM_API_PRINCIPAL_BINDINGS_JSON` (or the matching `*_FILE` variable);

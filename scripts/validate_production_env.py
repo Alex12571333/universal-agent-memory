@@ -62,6 +62,8 @@ def validate_env(
         _check_secret(values, "UAM_APP_DB_PASSWORD", min_length=32),
         _check_secret(values, "MINIO_ROOT_PASSWORD", min_length=32),
         _check_scoped_api_keys(values),
+        _check_secret(values, "UAM_UI_SESSION_SIGNING_KEY", min_length=32),
+        _check_ui_session_policy(values),
         _check_principal_bindings(values),
         _check_uuid(values, "UAM_SERVER_ID"),
         _check_uuid(values, "UAM_PROJECT_ID"),
@@ -72,6 +74,7 @@ def validate_env(
         _check_qdrant_payload_text(values),
         _check_memory_text_encryption(values),
         _check_memory_llm_endpoint(values),
+        _check_model_endpoint_allowlist(values),
     ]
     if require_public_tls:
         checks.append(_check_public_tls(values))
@@ -253,6 +256,58 @@ def _check_qdrant_collection(values: dict[str, str]) -> EnvCheck:
             "must be a stable 1..128 character alphanumeric/underscore/hyphen name",
         )
     return EnvCheck("UAM_QDRANT_COLLECTION", True, name)
+
+
+def _check_ui_session_policy(values: dict[str, str]) -> EnvCheck:
+    if values.get("UAM_UI_COOKIE_SECURE", "").strip().lower() != "true":
+        return EnvCheck("ui-session", False, "UAM_UI_COOKIE_SECURE must be true")
+    try:
+        ttl = int(values.get("UAM_UI_SESSION_TTL_SECONDS", "0"))
+    except ValueError:
+        return EnvCheck("ui-session", False, "session TTL must be an integer")
+    if not 300 <= ttl <= 86400:
+        return EnvCheck("ui-session", False, "session TTL must be between 300 and 86400")
+    return EnvCheck("ui-session", True, f"secure cookie with {ttl}s TTL")
+
+
+def _origin(value: str) -> str | None:
+    try:
+        parsed = urlsplit(value)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            return None
+        if parsed.username or parsed.password or parsed.query or parsed.fragment:
+            return None
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    except ValueError:
+        return None
+    return f"{parsed.scheme}://{parsed.hostname.casefold()}:{port}"
+
+
+def _check_model_endpoint_allowlist(values: dict[str, str]) -> EnvCheck:
+    entries = [
+        entry.strip()
+        for entry in values.get("UAM_MODEL_ENDPOINT_ALLOWLIST", "").split(",")
+        if entry.strip()
+    ]
+    origins = {_origin(entry) for entry in entries}
+    if not entries or None in origins:
+        return EnvCheck("model-endpoint-allowlist", False, "missing or invalid exact origins")
+    required = {
+        _origin(values.get("UAM_EMBEDDING_BASE_URL", "")),
+        _origin(values.get("UAM_MEMORY_LLM_BASE_URL", "")),
+    }
+    missing = sorted(origin for origin in required if origin and origin not in origins)
+    if missing:
+        return EnvCheck(
+            "model-endpoint-allowlist",
+            False,
+            "configured model origins missing: " + ", ".join(missing),
+        )
+    return EnvCheck(
+        "model-endpoint-allowlist",
+        True,
+        f"{len(origins)} exact origins",
+    )
 
 
 def _check_memory_text_encryption(values: dict[str, str]) -> EnvCheck:

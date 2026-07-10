@@ -2439,6 +2439,78 @@ textarea:focus-visible {
   display: none;
 }
 
+.auth-screen {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background:
+    radial-gradient(circle at 50% 10%, rgba(41, 101, 255, 0.3), transparent 34rem),
+    radial-gradient(circle at 85% 25%, rgba(119, 63, 255, 0.18), transparent 30rem),
+    #030815;
+}
+
+.auth-card {
+  width: min(100%, 480px);
+  display: grid;
+  gap: 16px;
+  padding: 42px;
+  border: 1px solid rgba(104, 156, 255, 0.3);
+  border-radius: 28px;
+  background: linear-gradient(145deg, rgba(9, 22, 48, 0.96), rgba(4, 11, 27, 0.98));
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.48), inset 0 1px rgba(255, 255, 255, 0.04);
+}
+
+.auth-card h1,
+.auth-card p {
+  margin: 0;
+}
+
+.auth-card p:not(.eyebrow) {
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.auth-card label {
+  color: #dce8ff;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.auth-card input {
+  width: 100%;
+  min-width: 0;
+}
+
+.auth-orb {
+  width: 58px;
+  height: 58px;
+  border: 1px solid rgba(91, 180, 255, 0.75);
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #62d5ff, #1767ff 40%, #311070 75%);
+  box-shadow: 0 0 36px rgba(37, 138, 255, 0.64);
+}
+
+.auth-error {
+  padding: 11px 13px;
+  border: 1px solid rgba(255, 91, 130, 0.35);
+  border-radius: 12px;
+  color: #ff9ab4;
+  background: rgba(116, 18, 46, 0.22);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.logout-button {
+  width: 100%;
+  margin-top: 8px;
+  padding: 7px 10px;
+  border-color: rgba(117, 157, 224, 0.26);
+  color: #bed2f4;
+  background: rgba(8, 20, 43, 0.55);
+  font-size: 11px;
+}
+
 .vault-preview-grid,
 .vault-editor {
   grid-template-columns: minmax(210px, 300px) minmax(0, 1fr);
