@@ -30,6 +30,7 @@ restore = _load_script("restore")
 restore_drill = _load_script("restore_drill")
 check_branch_protection = _load_script("check_branch_protection")
 export_audit = _load_script("export_audit")
+scheduled_backup = _load_script("scheduled_backup")
 export_vault = _load_script("export_vault")
 import_vault = _load_script("import_vault")
 migrate = _load_script("migrate")
@@ -260,6 +261,99 @@ def test_check_branch_protection_rejects_missing_required_status_check(
     )
 
     assert check_branch_protection.main() == 1
+
+
+def test_scheduled_backup_runs_backup_drill_audit_and_writes_report(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    commands: list[list[str]] = []
+
+    def fake_run(
+        command: list[str],
+        *,
+        check: bool = False,
+        text: bool = True,
+        capture_output: bool = True,
+    ) -> subprocess.CompletedProcess[str]:
+        commands.append(command)
+        return subprocess.CompletedProcess(command, 0, stdout="ok\n", stderr="")
+
+    report = tmp_path / "report.json"
+    monkeypatch.setattr(scheduled_backup.subprocess, "run", fake_run)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "scheduled_backup.py",
+            "--backup-dir",
+            str(tmp_path / "backups"),
+            "--audit-dir",
+            str(tmp_path / "audit"),
+            "--report",
+            str(report),
+            "--database-url",
+            "postgresql://example/db",
+            "--timestamp",
+            "20260710T120000Z",
+        ],
+    )
+
+    assert scheduled_backup.main() == 0
+
+    payload = json.loads(report.read_text(encoding="utf-8"))
+    names = [step["name"] for step in payload["steps"]]
+    assert payload["ok"] is True
+    assert payload["backup_path"].endswith("obelisk-memory-20260710T120000Z.dump")
+    assert names == ["backup", "restore_drill", "audit_export"]
+    assert "backup.py" in commands[0][1]
+    assert "restore_drill.py" in commands[1][1]
+    assert "export_audit.py" in commands[2][1]
+
+
+def test_scheduled_backup_alerts_on_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    alerts: list[dict[str, object]] = []
+
+    def fake_run(
+        command: list[str],
+        *,
+        check: bool = False,
+        text: bool = True,
+        capture_output: bool = True,
+    ) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(command, 7, stdout="", stderr="boom")
+
+    def fake_send_alert(_webhook: str, report: dict[str, object]) -> None:
+        alerts.append(report)
+
+    report = tmp_path / "report.json"
+    monkeypatch.setattr(scheduled_backup.subprocess, "run", fake_run)
+    monkeypatch.setattr(scheduled_backup, "_send_alert", fake_send_alert)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "scheduled_backup.py",
+            "--backup-dir",
+            str(tmp_path / "backups"),
+            "--report",
+            str(report),
+            "--database-url",
+            "postgresql://example/db",
+            "--alert-webhook",
+            "https://alerts.example/backup",
+            "--skip-audit-export",
+            "--timestamp",
+            "20260710T120000Z",
+        ],
+    )
+
+    assert scheduled_backup.main() == 1
+
+    payload = json.loads(report.read_text(encoding="utf-8"))
+    assert payload["ok"] is False
+    assert payload["steps"][0]["name"] == "backup"
+    assert payload["steps"][0]["returncode"] == 7
+    assert alerts and alerts[0]["ok"] is False
 
 
 def test_export_vault_builds_postgres_exporter(

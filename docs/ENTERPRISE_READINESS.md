@@ -26,6 +26,8 @@ remaining hard requirements.
 - [x] Privacy guard redacts common secrets and high-risk PII.
 - [x] Backup script exists.
 - [x] Restore-drill script verifies backups in an isolated PostgreSQL container.
+- [x] Scheduler-ready backup runner writes JSON reports and can alert on
+      failures.
 - [x] Vault export/import uses safe dry-run and CAS supersede.
 - [x] Qdrant/vector indexing is async and fail-soft.
 - [x] Memory LLM is separate from embedding endpoint.
@@ -42,7 +44,7 @@ remaining hard requirements.
 - [ ] Move bearer secrets to an external secret manager for larger deployments.
 - [ ] Add audit retention schedule, immutable storage, and private-key signatures
       for regulated environments.
-- [ ] Add automated scheduled backup execution and alerting.
+- [ ] Install environment-level backup schedule and immutable artifact storage.
 - [ ] Add dashboards/alerts for outbox lag, dead letters, Qdrant failures, and
       embedding latency.
 - [ ] Add optional row-level encryption for selected memory scopes.

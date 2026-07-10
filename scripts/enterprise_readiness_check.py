@@ -50,6 +50,7 @@ def run_checks(*, static_only: bool) -> list[Check]:
         "scripts/check_branch_protection.py",
         "scripts/export_audit.py",
         "scripts/restore_drill.py",
+        "scripts/scheduled_backup.py",
         "docs/assets/obelisk-memory-hero.png",
         "docs/GITHUB_BRANCH_PROTECTION.md",
         "docs/OPERATIONS_RUNBOOK.md",
@@ -255,6 +256,22 @@ def run_checks(*, static_only: bool) -> list[Check]:
                     "tests/test_backup_restore_scripts.py"
                 ),
                 "restore drill command flow is covered by tests",
+            ),
+            Check(
+                "backup:schedule-runner",
+                '"backup.py"' in read("scripts/scheduled_backup.py")
+                and '"restore_drill.py"' in read("scripts/scheduled_backup.py")
+                and '"export_audit.py"' in read("scripts/scheduled_backup.py")
+                and "UAM_BACKUP_ALERT_WEBHOOK" in read("scripts/scheduled_backup.py"),
+                "scheduled backup runner performs backup, restore drill and alert hook",
+            ),
+            Check(
+                "tests:scheduled-backup",
+                "test_scheduled_backup_runs_backup_drill_audit_and_writes_report"
+                in read("tests/test_backup_restore_scripts.py")
+                and "test_scheduled_backup_alerts_on_failure"
+                in read("tests/test_backup_restore_scripts.py"),
+                "scheduled backup success/failure reporting is covered",
             ),
         ]
     )

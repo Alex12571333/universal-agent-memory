@@ -6,8 +6,10 @@ Use this before tagging or pushing a production release.
 ruff check src tests scripts agent-integrations
 pytest -q
 PYTHONPATH=src python scripts/production_readiness_eval.py
-PYTHONPATH=src python scripts/export_audit.py ./audit-export --limit 500
-python scripts/restore_drill.py ./backups/obelisk-memory.dump
+PYTHONPATH=src python scripts/scheduled_backup.py \
+  --backup-dir ./backups \
+  --audit-dir ./audit-export \
+  --report ./backups/latest-backup-report.json
 GITHUB_TOKEN=... python scripts/check_branch_protection.py \
   --repo Alex12571333/universal-agent-memory \
   --required-check python \
@@ -28,6 +30,7 @@ Manual checks:
 - Confirm embedding endpoint returns the configured dimension.
 - Confirm `audit-export/manifest.sha256` verifies before preserving release
   evidence.
+- Confirm `backups/latest-backup-report.json` reports `"ok": true`.
 - Confirm worker logs do not show repeated NATS/Qdrant connection failures.
 - Confirm restore drill passes against the backup intended for rollback.
 - Confirm `.env.production` is not staged.

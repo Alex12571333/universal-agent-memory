@@ -1,6 +1,6 @@
 # Production envelope report — 2026-07-10
 
-Passed: 57
+Passed: 60
 Failed: 0
 
 | Check | Status | Detail |
@@ -15,6 +15,7 @@ Failed: 0
 | `file:scripts/check_branch_protection.py` | PASS | required production artifact |
 | `file:scripts/export_audit.py` | PASS | required production artifact |
 | `file:scripts/restore_drill.py` | PASS | required production artifact |
+| `file:scripts/scheduled_backup.py` | PASS | required production artifact |
 | `file:docs/assets/obelisk-memory-hero.png` | PASS | required production artifact |
 | `file:docs/GITHUB_BRANCH_PROTECTION.md` | PASS | required production artifact |
 | `file:docs/OPERATIONS_RUNBOOK.md` | PASS | required production artifact |
@@ -58,6 +59,8 @@ Failed: 0
 | `tests:key-registry` | PASS | key registry last-used and revocation behavior is covered |
 | `restore-drill:script` | PASS | restore drill verifies backups in isolated PostgreSQL |
 | `tests:restore-drill` | PASS | restore drill command flow is covered by tests |
+| `backup:schedule-runner` | PASS | scheduled backup runner performs backup, restore drill and alert hook |
+| `tests:scheduled-backup` | PASS | scheduled backup success/failure reporting is covered |
 | `gap-audit:no-overclaim` | PASS | gap audit explicitly forbids readiness over-claims |
 | `gap-audit:full-production-gates` | PASS | gap audit defines full-production gates |
 | `benchmark:passed` | PASS | latest benchmark pass count |

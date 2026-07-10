@@ -74,6 +74,33 @@ The drill creates a temporary PostgreSQL Docker container and volume, restores
 the dump inside it, verifies required production tables, then removes the
 temporary resources. Use `--keep` only when you need manual forensic inspection.
 
+## Scheduled backup job
+
+For unattended operations, run the scheduler-ready backup wrapper from cron,
+systemd timer, launchd, or your orchestrator:
+
+```bash
+UAM_BACKUP_DATABASE_URL=postgresql://... \
+UAM_BACKUP_ALERT_WEBHOOK=https://alerts.example/obelisk-backup \
+PYTHONPATH=src python scripts/scheduled_backup.py \
+  --backup-dir ./backups \
+  --audit-dir ./audit-exports \
+  --report ./backups/latest-backup-report.json
+```
+
+The job:
+
+- creates a timestamped PostgreSQL dump;
+- runs the isolated restore drill against that dump;
+- exports a recent audit bundle;
+- writes a JSON report with every step and return code;
+- posts the report to `UAM_BACKUP_ALERT_WEBHOOK` when any required step fails.
+
+Production deployments should run this on a fixed schedule and ship
+`latest-backup-report.json`, backup dumps, and audit bundles to durable storage
+outside the Docker host. The repository provides the runner and alert hook; the
+actual cron/systemd/orchestrator schedule is an environment-level control.
+
 ## Audit export
 
 Export recent operator/agent audit events before upgrades, incident response, or
@@ -113,18 +140,17 @@ a cursor/range export job and store bundles in immutable storage.
    docker compose -f docker-compose.prod.yml --env-file .env.production config
    ```
 
-3. Back up PostgreSQL.
-4. Export an audit bundle with `PYTHONPATH=src python scripts/export_audit.py ./audit-export`.
-5. Run `python scripts/restore_drill.py ./backups/obelisk-memory.dump`.
-6. Start the stack; migrations run through the one-shot `migrate` service.
-7. Run:
+3. Run `PYTHONPATH=src python scripts/scheduled_backup.py --backup-dir ./backups --audit-dir ./audit-export`.
+4. Confirm `./backups/latest-backup-report.json` has `"ok": true`.
+5. Start the stack; migrations run through the one-shot `migrate` service.
+6. Run:
 
    ```bash
    python scripts/benchmark_suite.py
    python scripts/enterprise_readiness_check.py
    ```
 
-8. Review `/metrics` and worker logs.
+7. Review `/metrics` and worker logs.
 
 ## Model changes
 

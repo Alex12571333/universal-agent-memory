@@ -23,7 +23,7 @@ it is not enough.
 | UI | React dashboard exists and is improving | Operator-grade, not yet admin-console complete |
 | Testing | Unit, integration-style, benchmark scripts, web build | Needs load/chaos/restore/security tests |
 | Release process | `AGENTS.md` describes issue/PR workflow | Main branch protection and PR-only enforcement are not proven |
-| Operations | Runbook, backup/restore scripts, isolated restore-drill script, release checklist | Needs scheduled backup automation and alerts |
+| Operations | Runbook, backup/restore scripts, isolated restore-drill script, scheduler-ready backup runner with JSON report/webhook, release checklist | Needs environment scheduler and durable/immutable storage |
 
 ## What “full production level” means for this project
 
@@ -47,8 +47,10 @@ Required gates:
    - Security headers and CSP stay covered by tests.
 
 2. **Reliability gate**
-   - PostgreSQL backup schedule and tested restore drill. Manual isolated
-     restore drill exists; automated scheduling/alerting is still required.
+   - PostgreSQL backup schedule and tested restore drill. A scheduler-ready
+     runner with restore drill, JSON report and failure webhook exists; the
+     deployment still must install the actual cron/systemd/orchestrator schedule
+     and durable storage policy.
    - Migration rehearsal against a copy of a real volume.
    - Outbox/NATS/Qdrant dead-letter monitoring with alerts.
    - Worker restart and poison-event behavior tested.
@@ -102,7 +104,8 @@ Required gates:
 
 1. Add audit retention policy, scheduled immutable storage, and private-key
    signatures for audit bundles.
-2. Add automated scheduled backup execution and restore-drill alerting.
+2. Install environment-level backup schedule, immutable artifact storage, and
+   alert routing for `scheduled_backup.py` reports.
 3. Add live `.14` OpenClaw/Hermes soak test script.
 4. Add worker/outbox/embedding alert metrics and dashboard panel.
 5. Add UI conflict-resolution flow with accept/supersede/reject actions.
