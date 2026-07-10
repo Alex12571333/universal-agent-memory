@@ -41,10 +41,10 @@ Current verified baseline, July 10, 2026:
 | Tests | Unit/integration contracts, Docker config checks, live benchmark suite |
 
 This means the repository is ready for a trusted local/team pilot. It is not yet
-“full production” in the strong sense. Full production still requires branch
-protection/PR-only releases, environment-level backup scheduling, external
-secret/key custody, security review, and a saved OpenClaw/Hermes soak report
-from the target `.14` machines.
+“full production” in the strong sense. Full production still requires
+environment-level backup scheduling, external secret/key custody, security
+review, and saved OpenClaw/Hermes plus Qwen/Spark live reports from the target
+machines.
 
 Honest gap audit:
 [docs/PRODUCTION_GAP_AUDIT_2026_07_10.md](docs/PRODUCTION_GAP_AUDIT_2026_07_10.md).

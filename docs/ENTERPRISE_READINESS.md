@@ -63,7 +63,7 @@ remaining hard requirements.
 - [ ] Add optional row-level encryption for selected memory scopes.
 - [ ] Enforce signed vault import manifests in production operating procedure
       and keep signing keys outside the repository.
-- [ ] Enforce GitHub branch protection and PR-only merges to `main`.
+- [x] Enforce GitHub branch protection and PR-only merges to `main`.
 - [ ] Run real OpenClaw/Hermes soak tests against the `.14` agents and preserve
       the generated report.
 - [ ] Run live embedding/Qwen regression tests against DGX Spark `.10` and
