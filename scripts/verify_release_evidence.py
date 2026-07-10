@@ -988,7 +988,7 @@ def _verify_scheduled_backup(payload: dict[str, Any]) -> list[EvidenceCheck]:
         if isinstance(step, dict) and step.get("skipped")
     }
     return [
-        _format_check("scheduled_backup", payload, "obelisk-scheduled-backup-report-v1"),
+        _format_check("scheduled_backup", payload, "obelisk-scheduled-backup-report-v2"),
         _ok_check("scheduled_backup", payload),
         EvidenceCheck(
             "scheduled_backup:restore-drill",
@@ -999,6 +999,15 @@ def _verify_scheduled_backup(payload: dict[str, Any]) -> list[EvidenceCheck]:
             "scheduled_backup:audit-export",
             "audit_export" in step_names and "audit_export" not in skipped,
             "audit export ran and was not skipped",
+        ),
+        EvidenceCheck(
+            "scheduled_backup:encrypted-artifact",
+            "backup_encryption" in step_names
+            and "backup_encryption" not in skipped
+            and str(payload.get("backup_path", "")).endswith(".dump.enc")
+            and isinstance(payload.get("backup_encryption"), dict)
+            and payload["backup_encryption"].get("algorithm") == "AES-256-GCM",
+            "backup encryption completed with an AES-256-GCM artifact",
         ),
     ]
 
@@ -1071,6 +1080,11 @@ def _verify_deployment_preflight(payload: dict[str, Any]) -> list[EvidenceCheck]
 
 def _verify_secret_files(payload: dict[str, Any]) -> list[EvidenceCheck]:
     names = _check_names(payload)
+    declared = {
+        secret_name
+        for secret_name in payload.get("required_secrets", [])
+        if isinstance(secret_name, str)
+    }
     required_suffixes = {
         "raw-empty",
         "file-configured",
@@ -1078,9 +1092,7 @@ def _verify_secret_files(payload: dict[str, Any]) -> list[EvidenceCheck]:
         "file-prefix",
     }
     missing_by_secret: list[str] = []
-    for secret_name in payload.get("required_secrets", []):
-        if not isinstance(secret_name, str):
-            continue
+    for secret_name in sorted(declared | {"UAM_BACKUP_ENCRYPTION_KEY"}):
         suffixes = {
             name.split(":", 1)[1]
             for name in names
@@ -1094,10 +1106,10 @@ def _verify_secret_files(payload: dict[str, Any]) -> list[EvidenceCheck]:
         _ok_check("secret_files", payload),
         EvidenceCheck(
             "secret_files:all-required-secrets-checked",
-            not missing_by_secret and bool(payload.get("required_secrets")),
+            not missing_by_secret and bool(declared),
             (
                 "all required secrets have raw/file/read/prefix checks"
-                if not missing_by_secret and bool(payload.get("required_secrets"))
+                if not missing_by_secret and bool(declared)
                 else "; ".join(missing_by_secret) or "required_secrets missing"
             ),
         ),

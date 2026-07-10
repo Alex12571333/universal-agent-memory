@@ -209,17 +209,21 @@ services:
     profiles: ["ops"]
     build:
       context: .
-    command: ["python", "scripts/backup.py", "/backups/obelisk-memory.dump"]
+    command: ["python", "scripts/scheduled_backup.py", "--skip-restore-drill"]
     environment:
       UAM_BACKUP_DATABASE_HOST: postgres
       UAM_BACKUP_DATABASE_PORT: 5432
       UAM_BACKUP_DATABASE_NAME: ${POSTGRES_DB}
       UAM_BACKUP_DATABASE_USER: ${POSTGRES_USER}
       UAM_BACKUP_DATABASE_PASSWORD_FILE: /run/secrets/postgres_password
+      UAM_BACKUP_ENCRYPTION_KEY_FILE: /run/secrets/backup_encryption_key
+      UAM_BACKUP_DIR: /backups
+      UAM_BACKUP_REPORT: /backups/latest-backup-report.json
     volumes:
       - ./backups:/backups
     secrets:
       - postgres_password
+      - backup_encryption_key
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -238,3 +242,5 @@ secrets:
     file: ${UAM_APP_DB_PASSWORD_FILE:?UAM_APP_DB_PASSWORD_FILE must point to a host secret file}
   ui_session_signing_key:
     file: ${UAM_UI_SESSION_SIGNING_KEY_FILE:?UAM_UI_SESSION_SIGNING_KEY_FILE must point to a host secret file}
+  backup_encryption_key:
+    file: ${UAM_BACKUP_ENCRYPTION_KEY_FILE:?UAM_BACKUP_ENCRYPTION_KEY_FILE must point to a host secret file}

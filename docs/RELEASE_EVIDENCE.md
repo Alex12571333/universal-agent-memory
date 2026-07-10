@@ -245,8 +245,9 @@ The verifier requires:
 - release notes report format `obelisk-release-notes-v1`, `ok: true`, a
   non-empty versioned changelog, and rollback instructions that name the
   previous ref/image and restore procedure;
-- scheduled backup report format `obelisk-scheduled-backup-report-v1`,
-  `ok: true`, restore drill not skipped and audit export not skipped;
+- scheduled backup report format `obelisk-scheduled-backup-report-v2`,
+  `ok: true`, AES-256-GCM artifact, restore drill not skipped and audit export
+  not skipped;
 - audit retention report format `obelisk-audit-retention-v1`, `ok: true`,
   signed pre-prune export and verified export;
 - deployment preflight report format `obelisk-deployment-preflight-v1`,
