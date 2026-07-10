@@ -295,6 +295,8 @@ def test_metrics_endpoint_uses_prometheus_text_and_api_key() -> None:
     assert "uam_outbox_pending_total 1" in response.text
     assert "uam_audit_events_total 1" in response.text
     assert "uam_api_keys_total 1" in response.text
+    assert "uam_embedding_operations_total 0" in response.text
+    assert "uam_embedding_failures_total 0" in response.text
 
 
 def test_api_key_is_disabled_when_not_configured(monkeypatch) -> None:

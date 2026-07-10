@@ -50,7 +50,7 @@ Failed: 0
 | `env:scoped-keys` | PASS | scoped API keys documented |
 | `api:security-headers` | PASS | API applies baseline security headers |
 | `tests:security-headers` | PASS | security headers are covered by API tests |
-| `ops:metrics-health-evaluator` | PASS | metrics health script evaluates outbox lag/dead letters and alert hook |
+| `ops:metrics-health-evaluator` | PASS | metrics health script evaluates outbox lag/dead letters; embedding exposes failure/latency metrics |
 | `tests:metrics-health-evaluator` | PASS | metrics health thresholds and report behavior are covered |
 | `audit:rls` | PASS | audit events are durable and tenant-isolated |
 | `audit:operator-export` | PASS | audit export endpoint is operator-scoped |

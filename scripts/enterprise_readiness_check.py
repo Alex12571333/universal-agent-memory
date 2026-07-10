@@ -196,8 +196,15 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 "ops:metrics-health-evaluator",
                 "outbox_dead_letter_total" in read("scripts/check_metrics_health.py")
                 and "outbox_lag_seconds" in read("scripts/check_metrics_health.py")
+                and "embedding_failures_total" in read("src/memory_plane/services/embedding.py")
+                and "embedding_last_duration_seconds" in read(
+                    "src/memory_plane/services/embedding.py"
+                )
                 and "UAM_METRICS_ALERT_WEBHOOK" in read("scripts/check_metrics_health.py"),
-                "metrics health script evaluates outbox lag/dead letters and alert hook",
+                (
+                    "metrics health script evaluates outbox lag/dead letters; "
+                    "embedding exposes failure/latency metrics"
+                ),
             ),
             Check(
                 "tests:metrics-health-evaluator",

@@ -975,6 +975,9 @@ def create_app(
             rows = collector(tenant_id)
         except RuntimeError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
+        embedding_collector = getattr(services.embedding, "collect_metrics", None)
+        if callable(embedding_collector):
+            rows = {**rows, **embedding_collector()}
         return render_prometheus(rows)
 
     @app.get("/ui", response_class=HTMLResponse)

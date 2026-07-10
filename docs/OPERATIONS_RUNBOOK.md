@@ -32,7 +32,9 @@ Healthy production means:
 `check_metrics_health.py` turns Prometheus text into an operator gate. It fails
 when outbox pending, dead-letter, lag or in-flight values exceed configured
 thresholds, writes a JSON report, and can post failed reports through
-`UAM_METRICS_ALERT_WEBHOOK`.
+`UAM_METRICS_ALERT_WEBHOOK`. The `/metrics` endpoint also exposes embedding
+operation count, failure count, last duration, cumulative duration and reindex
+health so a deployment can alert when vector indexing degrades.
 
 ## Access keys
 

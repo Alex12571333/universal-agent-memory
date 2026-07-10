@@ -326,4 +326,5 @@
 |---|---|---|
 | `process_memory_retained(tenant, id)` | Асинхронная обработка и индексация памяти | Загружает память и делает upsert в Qdrant |
 | `reindex_all(tenant, workspace)` | Полная переиндексация воркспейса | Удаляет и заново заливает коллекцию в Qdrant |
+| `collect_metrics()` | Process-local embedding health counters | Operations/failures/latency/reindex metrics for `/metrics` |
 | `_validate_dimension(vector)` | Provider output guard | Mismatch aborts before Qdrant write |

@@ -213,6 +213,10 @@ class EmbeddingServiceTest(unittest.TestCase):
         self.assertEqual(1, len(qdrant_candidates))
         self.assertEqual(memory_id, qdrant_candidates[0].item.id)
         self.assertGreaterEqual(qdrant_candidates[0].semantic, 0.0)
+        metrics = self.container.embedding.collect_metrics()
+        self.assertEqual(1, metrics["embedding_operations_total"])
+        self.assertEqual(0, metrics["embedding_failures_total"])
+        self.assertGreaterEqual(metrics["embedding_last_duration_seconds"], 0.0)
 
     def test_process_memory_retained_rejects_dimension_mismatch(self) -> None:
         """Provider output dimension is validated before indexing."""
@@ -236,6 +240,9 @@ class EmbeddingServiceTest(unittest.TestCase):
                     result.item.id,
                 )
             mock_upsert.assert_not_called()
+        metrics = self.container.embedding.collect_metrics()
+        self.assertEqual(1, metrics["embedding_operations_total"])
+        self.assertEqual(1, metrics["embedding_failures_total"])
 
     def test_process_memory_retained_missing_raises(self) -> None:
         """Processing a non-existent memory ID raises ValueError for worker retries."""
@@ -292,6 +299,9 @@ class EmbeddingServiceTest(unittest.TestCase):
             c for c in recall_result.candidates if "qdrant_hybrid" in c.source
         ]
         self.assertEqual(2, len(qdrant_candidates))
+        metrics = self.container.embedding.collect_metrics()
+        self.assertEqual(1, metrics["embedding_reindex_total"])
+        self.assertEqual(0, metrics["embedding_reindex_failures_total"])
 
 
 if __name__ == "__main__":

@@ -25,6 +25,7 @@ remaining hard requirements.
 - [x] Metrics endpoint exists.
 - [x] Metrics health evaluator can fail on outbox lag/dead letters and emit JSON
       reports/webhook alerts.
+- [x] Embedding service exposes operation, failure, latency and reindex metrics.
 - [x] Privacy guard redacts common secrets and high-risk PII.
 - [x] Backup script exists.
 - [x] Restore-drill script verifies backups in an isolated PostgreSQL container.
@@ -47,8 +48,7 @@ remaining hard requirements.
 - [ ] Add audit retention schedule, immutable storage, and private-key signatures
       for regulated environments.
 - [ ] Install environment-level backup schedule and immutable artifact storage.
-- [ ] Wire metrics reports into deployment dashboards/alerts and add embedding
-      latency metrics.
+- [ ] Wire metrics and scheduled-backup reports into deployment dashboards/alerts.
 - [ ] Add optional row-level encryption for selected memory scopes.
 - [ ] Add signed vault import manifests.
 - [ ] Enforce GitHub branch protection and PR-only merges to `main`.
