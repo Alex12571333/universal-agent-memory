@@ -18,8 +18,8 @@ It is designed for a local-first or team-owned environment:
 - NATS JetStream + outbox relay for async indexing;
 - Markdown vault export/import for human inspection and editing;
 - web operator UI for recall, graph, conflicts, vault, and model settings;
-- Qwen memory-reasoning LLM on DGX Spark `.10`;
-- real embedding endpoint support for production semantic search.
+- OpenAI-compatible memory-reasoning endpoint for provider-neutral curation;
+- real OpenAI-compatible embedding endpoint support for production semantic search.
 
 This is intentionally not a hosted SaaS architecture.
 
@@ -33,7 +33,7 @@ Current verified baseline, July 10, 2026:
 | Storage | PostgreSQL migrations, CAS supersede, idempotency, backup/restore |
 | Vector search | Qdrant adapter + embedding worker + real embedding endpoint support |
 | Async pipeline | Transactional outbox, NATS JetStream relay, dead-letter path |
-| Memory reasoning | Qwen/Spark `.10` OpenAI-compatible chat endpoint, fail-soft fallback |
+| Memory reasoning | OpenAI-compatible chat endpoint, provider-neutral config, fail-soft fallback |
 | Context | 128k recall budget and `top_k` up to 1000 candidates |
 | Human vault | Markdown/Obsidian-style export, dry-run import, safe supersede |
 | UI | React/Vite operator dashboard served by Docker on `/ui` |
@@ -43,8 +43,8 @@ Current verified baseline, July 10, 2026:
 This means the repository is ready for a trusted local/team pilot. It is not yet
 “full production” in the strong sense. Full production still requires
 environment-level backup scheduling, external secret/key custody, security
-review, and saved OpenClaw/Hermes plus Qwen/Spark live reports from the target
-machines.
+review, and saved OpenClaw/Hermes plus live memory LLM reports from the target
+deployment.
 
 Honest gap audit:
 [docs/PRODUCTION_GAP_AUDIT_2026_07_10.md](docs/PRODUCTION_GAP_AUDIT_2026_07_10.md).
@@ -59,11 +59,11 @@ flowchart LR
   UI["Operator UI"] --> API
   API --> PG[("PostgreSQL source of truth")]
   API --> Curator["Memory Curator / Proposal service"]
-  Curator --> Qwen["Qwen on DGX Spark .10"]
+  Curator --> LLM["OpenAI-compatible memory LLM endpoint"]
   PG --> Outbox["Transactional outbox"]
   Outbox --> NATS["NATS JetStream"]
   NATS --> Worker["Embedding worker"]
-  Worker --> Embed["Embedding endpoint .10"]
+  Worker --> Embed["OpenAI-compatible embedding endpoint"]
   Worker --> Qdrant[("Qdrant vectors")]
   API --> Qdrant
   API --> Vault["Markdown vault export/import"]
@@ -138,9 +138,12 @@ PostgreSQL, Qdrant, NATS, and MinIO internal.
    UAM_API_KEY=... python scripts/agent_soak_eval.py \
      --base-url http://127.0.0.1:6798 \
      --json-report ./ops/agent-soak.json
+   UAM_API_KEY=... python scripts/ui_walkthrough_eval.py \
+     --base-url http://127.0.0.1:6798 \
+     --json-report ./ops/ui-walkthrough.json
    python scripts/real_memory_llm_eval.py \
-     --base-url http://192.168.0.10:8000/v1 \
-     --model qwen3.6-35b-a3b \
+     --base-url https://api.openai.com/v1 \
+     --model gpt-5.6-terra \
      --json-report ./ops/memory-llm.json
    python scripts/enterprise_readiness_check.py
    ```
@@ -201,34 +204,44 @@ curl -X POST http://localhost:6798/v1/conversations/turns \
 
 OpenAPI docs are available at `http://localhost:6798/docs` when authorized.
 
-## Memory LLM on DGX Spark `.10`
+## Provider-neutral memory LLM endpoint
 
 Obelisk Memory separates memory reasoning from embeddings. The memory LLM handles
-curation, proposals, compacting, and future graph extraction. The production
-default is Qwen served by your DGX Spark:
+curation, proposals, compacting, and future graph extraction. Production uses an
+OpenAI-compatible `/v1/chat/completions` contract so the same configuration can
+point at OpenAI, OpenRouter, LiteLLM, vLLM, llama.cpp, or another compatible
+gateway:
 
 ```dotenv
-UAM_MEMORY_LLM_PROVIDER=spark
-UAM_MEMORY_LLM_MODEL=qwen3.6-35b-a3b
-UAM_MEMORY_LLM_BASE_URL=http://192.168.0.10:8000/v1
+UAM_MEMORY_LLM_PROVIDER=openai-compatible
+UAM_MEMORY_LLM_MODEL=gpt-5.6-terra
+UAM_MEMORY_LLM_BASE_URL=https://api.openai.com/v1
+UAM_MEMORY_LLM_API_KEY=...
 UAM_MEMORY_LLM_CONTEXT_TOKENS=131072
 UAM_MEMORY_LLM_MAX_TOKENS=1600
 UAM_MEMORY_LLM_ENABLE_THINKING=false
 ```
 
+The default model choice follows the current OpenAI model guidance: GPT-5.6 Sol
+is the flagship for complex reasoning/coding, while GPT-5.6 Terra balances
+intelligence and cost. Obelisk defaults to Terra for memory maintenance and lets
+operators override the model for another compatible provider.
+
 Embedding model configuration is separate:
 
 ```dotenv
-UAM_EMBEDDING_PROVIDER=tei
-UAM_EMBEDDING_MODEL=jina-embeddings-v4
-UAM_EMBEDDING_DIM=2048
-UAM_EMBEDDING_BASE_URL=http://192.168.0.10:8002
+UAM_EMBEDDING_PROVIDER=openai
+UAM_EMBEDDING_MODEL=text-embedding-3-large
+UAM_EMBEDDING_DIM=3072
+UAM_EMBEDDING_BASE_URL=https://api.openai.com/v1
+UAM_EMBEDDING_API_KEY=...
 UAM_QDRANT_PAYLOAD_TEXT=false
 UAM_MEMORY_TEXT_ENCRYPTION=pgcrypto
 UAM_MEMORY_TEXT_ENCRYPTION_KEY=...
 ```
 
-See [docs/DGX_SPARK_MEMORY_LLM.md](docs/DGX_SPARK_MEMORY_LLM.md) and
+For local self-hosted alternatives, see
+[docs/DGX_SPARK_MEMORY_LLM.md](docs/DGX_SPARK_MEMORY_LLM.md) and
 [docs/DGX_SPARK_EMBEDDINGS.md](docs/DGX_SPARK_EMBEDDINGS.md).
 
 In production, keep `UAM_QDRANT_PAYLOAD_TEXT=false`. Qdrant then stores vectors
@@ -307,16 +320,17 @@ python scripts/validate_production_env.py .env.production \
   --require-signed-artifacts \
   --require-real-embeddings
 UAM_API_KEY=... python scripts/agent_soak_eval.py --json-report ./ops/agent-soak.json
+UAM_API_KEY=... python scripts/ui_walkthrough_eval.py --json-report ./ops/ui-walkthrough.json
 python scripts/real_memory_llm_eval.py --json-report ./ops/memory-llm.json
 python scripts/verify_release_evidence.py ./release-evidence.json
 python scripts/benchmark_suite.py
 python scripts/enterprise_readiness_check.py
 ```
 
-The benchmark suite covers config contracts, API memory contracts, Qwen memory
-LLM wiring, in-memory vector recall, 128k context compilation, agent integration
+The benchmark suite covers config contracts, API memory contracts, memory LLM
+wiring, in-memory vector recall, 128k context compilation, agent integration
 defaults, web build, Docker state, live HTTP API, live memory LLM, and live
-embeddings when the local endpoints are reachable. Passing these checks is not a
+embeddings when configured endpoints are reachable. Passing these checks is not a
 substitute for the production gates in the gap audit.
 
 ## Documentation map

@@ -234,9 +234,10 @@ Changing embedding model or dimension is a schema-level operational event:
 - confirm Qdrant collection dimension matches the new vectors;
 - keep the old backup until semantic recall quality is verified.
 
-Changing Qwen/Spark memory LLM is less risky because the API fails soft, but
-curation/proposal quality may change. Run benchmark and manually review
-proposal quality before trusting automatic curation.
+Changing the OpenAI-compatible memory LLM endpoint/model is less risky than
+changing embedding dimensions because the API fails soft, but curation/proposal
+quality may change. Run benchmark and manually review proposal quality before
+trusting automatic curation.
 
 ## Incident response
 

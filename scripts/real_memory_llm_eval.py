@@ -1,4 +1,4 @@
-"""Live regression checks for the DGX Spark Qwen memory LLM endpoint."""
+"""Live regression checks for an OpenAI-compatible memory LLM endpoint."""
 
 from __future__ import annotations
 
@@ -84,7 +84,7 @@ def _check_json_curation(client: MemoryLLMClient) -> None:
                 "content": (
                     "Контекст:\n"
                     "- Старое: production использует fake embeddings.\n"
-                    "- Новое: production использует Jina embeddings v4 Q8_0 на DGX Spark .10.\n"
+                    "- Новое: production использует OpenAI-compatible embeddings endpoint.\n"
                     "- OpenClaw и Hermes подключаются через native plugin hooks.\n\n"
                     "Задача: выбери, что сохранить как актуальную память. "
                     "JSON schema: {\"action\":\"retain|reject\","
@@ -102,8 +102,8 @@ def _check_json_curation(client: MemoryLLMClient) -> None:
     tags = payload.get("tags")
     if action != "retain":
         raise AssertionError(f"expected action=retain, got {action!r}")
-    if "Jina" not in proposal and "jina" not in proposal:
-        raise AssertionError(f"proposal missed current embedding model: {proposal!r}")
+    if "OpenAI" not in proposal and "openai" not in proposal:
+        raise AssertionError(f"proposal missed current embedding endpoint: {proposal!r}")
     if "fake" in proposal.lower():
         raise AssertionError(f"proposal preserved obsolete fake embedding claim: {proposal!r}")
     if not isinstance(confidence, int | float) or not 0 <= float(confidence) <= 1:
@@ -141,16 +141,17 @@ def write_report(report: LLMReport, path: Path) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--base-url", default="http://192.168.0.10:8000/v1")
-    parser.add_argument("--model", default="qwen3.6-35b-a3b")
+    parser.add_argument("--base-url", default="https://api.openai.com/v1")
+    parser.add_argument("--model", default="gpt-5.6-terra")
     parser.add_argument("--api-key")
-    parser.add_argument("--timeout-seconds", type=float, default=120.0)
+    parser.add_argument("--provider", default="openai-compatible")
+    parser.add_argument("--timeout-seconds", type=float, default=60.0)
     parser.add_argument("--json-report", type=Path)
     args = parser.parse_args()
 
     client = MemoryLLMClient(
         MemoryLLMConfig(
-            provider="spark",
+            provider=args.provider,
             model_name=args.model,
             base_url=args.base_url.rstrip("/"),
             api_key=args.api_key,

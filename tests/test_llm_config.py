@@ -5,7 +5,7 @@ import json
 from memory_plane.adapters.llm import MemoryLLMClient, MemoryLLMConfig, MemoryLLMError
 
 
-def test_memory_llm_defaults_to_qwen_spark_on_dgx_10(monkeypatch) -> None:
+def test_memory_llm_defaults_to_openai_compatible_endpoint(monkeypatch) -> None:
     for name in (
         "UAM_MEMORY_LLM_PROVIDER",
         "UAM_MEMORY_LLM_MODEL",
@@ -13,28 +13,30 @@ def test_memory_llm_defaults_to_qwen_spark_on_dgx_10(monkeypatch) -> None:
         "UAM_MEMORY_LLM_API_KEY",
         "UAM_MEMORY_LLM_CONTEXT_TOKENS",
         "UAM_MEMORY_LLM_ENABLE_THINKING",
+        "OPENAI_API_KEY",
         "SPARK_API_KEY",
     ):
         monkeypatch.delenv(name, raising=False)
 
     config = MemoryLLMConfig.from_env()
 
-    assert config.provider == "spark"
-    assert config.model_name == "qwen3.6-35b-a3b"
-    assert config.base_url == "http://192.168.0.10:8000/v1"
+    assert config.provider == "openai-compatible"
+    assert config.model_name == "gpt-5.6-terra"
+    assert config.base_url == "https://api.openai.com/v1"
     assert config.temperature == 0.1
     assert config.context_window_tokens == 131072
     assert config.enable_thinking is False
     assert config.max_tokens == 1600
 
 
-def test_memory_llm_reads_spark_api_key_fallback(monkeypatch) -> None:
+def test_memory_llm_reads_openai_api_key_fallback(monkeypatch) -> None:
     monkeypatch.delenv("UAM_MEMORY_LLM_API_KEY", raising=False)
-    monkeypatch.setenv("SPARK_API_KEY", "spark-secret")
+    monkeypatch.delenv("SPARK_API_KEY", raising=False)
+    monkeypatch.setenv("OPENAI_API_KEY", "openai-secret")
 
     config = MemoryLLMConfig.from_env()
 
-    assert config.api_key == "spark-secret"
+    assert config.api_key == "openai-secret"
     assert config.public_dict()["api_key_configured"] is True
     assert config.public_dict()["context_window_tokens"] == 131072
 
@@ -63,8 +65,9 @@ def test_memory_llm_chat_posts_openai_compatible_payload(monkeypatch) -> None:
 
     monkeypatch.setattr("memory_plane.adapters.llm.urlopen", fake_urlopen)
     config = MemoryLLMConfig(
-        model_name="qwen/test",
-        base_url="http://192.168.0.10:8000/v1",
+        provider="openai-compatible",
+        model_name="provider/test",
+        base_url="https://llm-gateway.example/v1",
         api_key="secret",
         timeout_seconds=9,
         temperature=0.2,
@@ -76,16 +79,46 @@ def test_memory_llm_chat_posts_openai_compatible_payload(monkeypatch) -> None:
     )
 
     assert result == "готово"
-    assert captured["url"] == "http://192.168.0.10:8000/v1/chat/completions"
+    assert captured["url"] == "https://llm-gateway.example/v1/chat/completions"
     assert captured["headers"]["Authorization"] == "Bearer secret"
     assert captured["payload"] == {
-        "model": "qwen/test",
+        "model": "provider/test",
         "messages": [{"role": "user", "content": "собери контекст памяти"}],
         "temperature": 0.2,
         "max_tokens": 123,
-        "chat_template_kwargs": {"enable_thinking": False},
     }
     assert captured["timeout"] == 9
+
+
+def test_memory_llm_can_send_qwen_thinking_flag_for_spark_gateways(monkeypatch) -> None:
+    captured = {}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args) -> None:
+            return None
+
+        def read(self) -> bytes:
+            return json.dumps(
+                {"choices": [{"message": {"content": "готово"}}]},
+            ).encode()
+
+    def fake_urlopen(request, timeout):  # noqa: ANN001
+        captured["payload"] = json.loads(request.data.decode())
+        return FakeResponse()
+
+    monkeypatch.setattr("memory_plane.adapters.llm.urlopen", fake_urlopen)
+    config = MemoryLLMConfig(
+        provider="spark",
+        model_name="qwen/test",
+        base_url="http://192.168.0.10:8000/v1",
+    )
+
+    MemoryLLMClient(config).chat([{"role": "user", "content": "собери контекст памяти"}])
+
+    assert captured["payload"]["chat_template_kwargs"] == {"enable_thinking": False}
 
 
 def test_memory_llm_chat_json_accepts_fenced_json(monkeypatch) -> None:

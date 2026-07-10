@@ -1,16 +1,21 @@
-# DGX Spark memory LLM
+# DGX Spark memory LLM alternative
+
+This document describes an optional self-hosted OpenAI-compatible memory LLM
+backend. The production contract is provider-neutral:
+`UAM_MEMORY_LLM_BASE_URL` must expose `/v1/chat/completions`. OpenAI, OpenRouter,
+LiteLLM, vLLM, llama.cpp, and this DGX Spark gateway can all fit that contract.
 
 Obelisk Memory uses two different model runtimes:
 
 - **Embeddings** — Jina embeddings v4 Q8 on DGX Spark `.10`, documented in
   [DGX_SPARK_EMBEDDINGS.md](DGX_SPARK_EMBEDDINGS.md).
-- **Memory LLM** — Qwen on DGX Spark `.10`, used by future Навигатор памяти
-  and Куратор памяти reasoning tasks.
+- **Memory LLM** — optional Qwen on DGX Spark `.10`, usable by future
+  Навигатор памяти and Куратор памяти reasoning tasks.
 
 The memory LLM must not point at the embedding endpoint. It should use an
 OpenAI-compatible chat/completions endpoint backed by Qwen.
 
-## Required production default
+## Optional DGX environment
 
 ```text
 UAM_MEMORY_LLM_PROVIDER=spark
@@ -28,7 +33,7 @@ If the Spark gateway on `.10` uses another port, keep the model/provider and
 override only `UAM_MEMORY_LLM_BASE_URL`.
 
 The server adapter appends `/chat/completions` to `UAM_MEMORY_LLM_BASE_URL`.
-With the production default above, the exact request URL is:
+With the DGX example above, the exact request URL is:
 
 ```text
 http://192.168.0.10:8000/v1/chat/completions
@@ -83,7 +88,7 @@ The current runtime client is `MemoryLLMClient` in
 
 ## Live regression gate
 
-Before production release, run the Qwen/Spark memory LLM regression:
+If using this self-hosted backend for a release, run the memory LLM regression:
 
 ```bash
 python scripts/real_memory_llm_eval.py \
@@ -109,7 +114,7 @@ Qwen3.6 may emit reasoning tokens before final `content` when thinking is
 enabled. Tiny health checks such as `max_tokens=8` or `max_tokens=64` can
 therefore finish with `content=null` even though the endpoint is healthy. Use
 `UAM_MEMORY_LLM_ENABLE_THINKING=false` for memory workers and keep the
-production default `UAM_MEMORY_LLM_MAX_TOKENS=1600`.
+configured `UAM_MEMORY_LLM_MAX_TOKENS=1600`.
 
 ## Separation from embeddings
 

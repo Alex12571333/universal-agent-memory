@@ -18,9 +18,9 @@ it is not enough.
 | Data model | Append-only memory, CAS supersede, provenance, statuses, optional pgcrypto ciphertext for canonical memory text | Strong foundation |
 | Conversation capture | Raw conversation ledger exists, but curation remains explicit/manual or hook-driven | Not “automatically remembers everything” yet |
 | Embeddings | Real provider support exists; Qdrant can redact raw text payloads and hydrate recall from PostgreSQL; fake remains available for CI/emergency | Production depends on real endpoint, `UAM_QDRANT_PAYLOAD_TEXT=false`, and reindex discipline |
-| Memory LLM | Qwen/Spark `.10` config, fail-soft adapter and live regression runner exist | Needs saved live `.10` regression evidence before autonomy |
+| Memory LLM | OpenAI-compatible config, fail-soft adapter and live regression runner exist | Needs saved live endpoint regression evidence before autonomy |
 | OpenClaw/Hermes | Native adapter scaffolds, tests and live soak runner exist | Needs saved real runtime soak evidence from `.14` |
-| UI | React dashboard and fallback `/ui` support real memory/vault editing and actionable conflict decisions | Operator-grade baseline; still needs live UI walkthrough evidence |
+| UI | React dashboard and fallback `/ui` support real memory/vault editing, actionable conflict decisions and a JSON UI walkthrough runner | Operator-grade baseline; still needs preserved live walkthrough evidence per release |
 | Testing | Unit, integration-style, benchmark scripts, web build | Needs load/chaos/restore/security tests |
 | Release process | `main` branch protection requires PR flow, strict `python`/`web` checks, conversation resolution, and admin enforcement | Release gate baseline is now proven by `scripts/check_branch_protection.py`; keep verifying before releases |
 | Operations | Runbook, backup/restore scripts, isolated restore-drill script, scheduler-ready backup runner, signed vault manifests, metrics health evaluator with JSON report/webhook, release checklist and release evidence verifier | Needs environment scheduler, durable/immutable storage and dashboard wiring |
@@ -66,7 +66,7 @@ Required gates:
      alerts. Metrics health evaluator and embedding counters exist; deployment
      still needs dashboard/alert routing.
    - Worker restart and poison-event behavior tested.
-   - Graceful degradation when embeddings, Qdrant, or Qwen/Spark are down.
+   - Graceful degradation when embeddings, Qdrant, or the configured memory LLM are down.
 
 3. **Memory-quality gate**
    - Real embedding endpoint is mandatory outside CI/emergency mode.
@@ -76,7 +76,7 @@ Required gates:
      operator action history.
    - LLM-derived memories must be proposals or evidence-grounded observations,
      not unverified truth.
-   - Qwen/Spark memory LLM changes must pass `scripts/real_memory_llm_eval.py`
+   - Memory LLM endpoint/model changes must pass `scripts/real_memory_llm_eval.py`
      and preserve the JSON report before release.
 
 4. **Agent-integration gate**
@@ -103,8 +103,9 @@ Required gates:
    - CI runs lint, tests, web build, compose config, static readiness, and
      in-process production readiness.
    - Release checklist includes manual UI walk-through and live embedding probe.
-   - Release evidence manifest verifies saved agent, LLM, metrics, backup and
-     branch-protection JSON reports before a full-production claim.
+   - Release evidence manifest verifies saved agent, LLM, UI walkthrough,
+     metrics, backup and branch-protection JSON reports before a
+     full-production claim.
    - Versioned changelog and rollback instructions exist.
 
 ## Things that must not be claimed yet
@@ -129,7 +130,8 @@ Required gates:
    path and preserve the JSON report as release evidence.
 4. Wire metrics and scheduled-backup health reports into the deployment
    dashboard/alerting stack.
-5. Preserve a release UI walkthrough showing conflict accept/override/dismiss,
-   vault edit/archive, graph movement, model settings probe and reindex.
+5. Run `scripts/ui_walkthrough_eval.py` against the release server and preserve
+   the report showing conflict decision, vault editable text/archive, model
+   settings probe, reindex and metrics.
 6. Preserve and verify the release evidence manifest in every release bundle.
 7. Add optional external secret-manager integration.

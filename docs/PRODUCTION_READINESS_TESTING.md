@@ -18,9 +18,9 @@ helpers.
 
 ```bash
 PYTHONPATH=src .venv/bin/python scripts/production_readiness_eval.py \
-  --embedding-base-url http://192.168.0.10:8002 \
-  --embedding-model jina-embeddings-v4 \
-  --embedding-dim 2048
+  --embedding-base-url https://api.openai.com/v1 \
+  --embedding-model text-embedding-3-large \
+  --embedding-dim 3072
 ```
 
 Checks:
@@ -30,7 +30,7 @@ Checks:
 - tenant/status recall isolation;
 - secret redaction before storage;
 - reflection/conflict inbox and vault dry-run import;
-- semantic recall using the live DGX Spark Q8 embedding endpoint.
+- semantic recall using the configured live OpenAI-compatible embedding endpoint.
 
 ## 3. Docker advanced E2E
 
@@ -93,14 +93,14 @@ For full production evidence, run it from the `.14` OpenClaw/Hermes deployment
 path or immediately after those plugins are installed, then preserve
 `ops/agent-soak.json` with the release artifacts.
 
-## 5. Live Qwen/Spark memory LLM eval
+## 5. Live OpenAI-compatible memory LLM eval
 
-Run this against the `.10` Qwen endpoint used by memory workers:
+Run this against the endpoint used by memory workers:
 
 ```bash
 .venv/bin/python scripts/real_memory_llm_eval.py \
-  --base-url http://192.168.0.10:8000/v1 \
-  --model qwen3.6-35b-a3b \
+  --base-url https://api.openai.com/v1 \
+  --model gpt-5.6-terra \
   --json-report ./ops/memory-llm.json
 ```
 
@@ -108,8 +108,8 @@ Checks:
 
 - OpenAI-compatible `/chat/completions` returns final content;
 - JSON-object mode works for memory curation;
-- the model keeps the current Jina/Q8 memory and rejects the obsolete fake
-  embeddings claim;
+- the model keeps the current OpenAI-compatible embedding endpoint memory and
+  rejects the obsolete fake embeddings claim;
 - JSON evidence is suitable for release review.
 
 ## Bugs caught by this layer

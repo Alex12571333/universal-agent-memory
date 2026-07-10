@@ -162,7 +162,7 @@
 | `validate_production_env.py` | `.env.production` → deployment gate | Rejects placeholders, weak secrets, local TLS defaults, fake embeddings |
 | `scheduled_backup.py` | Backup → restore drill → audit export → JSON report | Webhook alert при fail; подходит для cron/systemd |
 | `agent_soak_eval.py` | Live OpenClaw/Hermes soak gate → JSON report | Retain/recall/idempotency/leakage checks against a running server |
-| `real_memory_llm_eval.py` | Live Qwen/Spark memory LLM gate → JSON report | Chat completion + JSON curation regression |
+| `real_memory_llm_eval.py` | Live OpenAI-compatible memory LLM gate → JSON report | Chat completion + JSON curation regression |
 
 ## Vault — `services/vault.py`, `scripts/export_vault.py`, `scripts/import_vault.py`
 
@@ -319,7 +319,7 @@
 
 | Класс / Функция | Назначение | Гарантия |
 |---|---|---|
-| `MemoryLLMConfig.from_env()` | Env → Qwen/Spark memory LLM config | Defaults to `qwen3.6-35b-a3b`, 128k context on `192.168.0.10` |
+| `MemoryLLMConfig.from_env()` | Env → OpenAI-compatible memory LLM config | Defaults to `gpt-5.6-terra`, 128k context budget |
 | `MemoryLLMConfig.public_dict()` | Safe status payload | Does not expose API key |
 | `MemoryLLMClient.chat(messages)` | Calls OpenAI-compatible `/chat/completions` | Returns assistant text or raises `MemoryLLMError` |
 | `MemoryLLMClient.chat_json(messages)` | Requests JSON object output for memory workers | Strips fenced JSON and rejects non-object JSON |

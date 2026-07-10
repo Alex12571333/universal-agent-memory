@@ -26,7 +26,7 @@ real_memory_llm_eval = _load_script("real_memory_llm_eval")
 class FakeMemoryLLMClient:
     def __init__(self, *, bad_proposal: bool = False) -> None:
         self.config = MemoryLLMConfig(
-            model_name="qwen-test",
+            model_name="provider-test",
             base_url="http://memory-llm.example/v1",
         )
         self.bad_proposal = bad_proposal
@@ -43,10 +43,10 @@ class FakeMemoryLLMClient:
             "proposal": (
                 "production использует fake embeddings"
                 if self.bad_proposal
-                else "production использует Jina embeddings v4 Q8_0 на DGX Spark .10"
+                else "production использует OpenAI-compatible embeddings endpoint"
             ),
             "confidence": 0.91,
-            "tags": ["embeddings", "dgx"],
+            "tags": ["embeddings", "openai-compatible"],
         }
 
 

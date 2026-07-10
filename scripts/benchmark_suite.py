@@ -496,7 +496,7 @@ def bench_live_memory_llm(base_url: str, model: str) -> tuple[str, dict[str, Any
             f"memory LLM unavailable or incomplete: {type(exc).__name__}: {exc}"
         ) from exc
     assert_true(bool(text.strip()), "memory LLM returned empty text")
-    return "Live Qwen/Spark chat-completions returned final content.", {
+    return "Live OpenAI-compatible chat-completions returned final content.", {
         "base_url": base_url,
         "model": model,
         "response_chars": len(text),
@@ -511,12 +511,10 @@ def bench_live_embeddings(base_url: str, model: str) -> tuple[str, dict[str, Any
         "openclaw": "OpenClaw подключается через глубокий plugin runtime.",
     }
 
-    def embed(text: str, input_type: str) -> list[float]:
+    def embed(text: str) -> list[float]:
         request = Request(
             f"{base_url.rstrip('/')}/v1/embeddings",
-            data=json.dumps(
-                {"model": model, "input": text, "input_type": input_type}
-            ).encode(),
+            data=json.dumps({"model": model, "input": text}).encode(),
             headers={"Content-Type": "application/json"},
             method="POST",
         )
@@ -525,8 +523,8 @@ def bench_live_embeddings(base_url: str, model: str) -> tuple[str, dict[str, Any
         return [float(value) for value in payload["data"][0]["embedding"]]
 
     try:
-        vectors = {name: embed(text, "document") for name, text in docs.items()}
-        query = embed("какой индекс используется для semantic recall?", "query")
+        vectors = {name: embed(text) for name, text in docs.items()}
+        query = embed("какой индекс используется для semantic recall?")
     except Exception as exc:  # noqa: BLE001 - optional live endpoint.
         raise SkipCheck(f"embedding endpoint unavailable: {type(exc).__name__}: {exc}") from exc
     ranked = sorted(
@@ -601,10 +599,10 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--api-base-url", default="http://127.0.0.1:6798")
     parser.add_argument("--api-key")
-    parser.add_argument("--llm-base-url", default="http://192.168.0.10:8000/v1")
-    parser.add_argument("--llm-model", default="qwen3.6-35b-a3b")
-    parser.add_argument("--embedding-base-url", default="http://192.168.0.10:8002")
-    parser.add_argument("--embedding-model", default="jina-embeddings-v4")
+    parser.add_argument("--llm-base-url", default="https://api.openai.com/v1")
+    parser.add_argument("--llm-model", default="gpt-5.6-terra")
+    parser.add_argument("--embedding-base-url", default="https://api.openai.com/v1")
+    parser.add_argument("--embedding-model", default="text-embedding-3-large")
     parser.add_argument(
         "--report",
         default=str(ROOT / "docs" / "BENCHMARK_RESULTS_2026_07_09.md"),

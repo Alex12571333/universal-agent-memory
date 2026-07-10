@@ -10,6 +10,7 @@ The flow is intentionally small and deterministic:
 from __future__ import annotations
 
 import argparse
+import os
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -40,15 +41,15 @@ class Scenario:
 MEMORIES = {
     "storage-postgres": "Долговременная память UAM хранится в PostgreSQL ledger; "
     "Qdrant нужен как semantic vector index для recall.",
-    "embedding-dgx-q8": "На DGX Spark .10 production embeddings запускаются как "
-    "Jina embeddings v4 text retrieval Q8_0 GGUF через llama.cpp wrapper.",
+    "embedding-openai-compatible": "Production embeddings используют OpenAI-compatible "
+    "endpoint с text-embedding-3-large и размерностью 3072.",
     "openclaw-plugin": "OpenClaw должен получать память через глубокий plugin runtime: "
     "before run делает recall, after tool call сохраняет полезные traces.",
     "hermes-plugin": "Hermes использует Python plugin hooks: prefetch перед turn, "
     "sync_turn после ответа и session summary в конце.",
     "obsolete-fake": "Устаревшая инструкция: использовать fake embeddings в production.",
-    "current-jina-q8": "Актуальная инструкция: использовать Jina embeddings v4 Q8_0 "
-    "на DGX Spark .10 для production semantic recall.",
+    "current-openai-compatible": "Актуальная инструкция: использовать "
+    "OpenAI-compatible embeddings endpoint для production semantic recall.",
 }
 
 
@@ -59,9 +60,9 @@ SCENARIOS = (
         ("storage-postgres",),
     ),
     Scenario(
-        "dgx q8 recall",
-        "какую embedding модель запускать на dgx spark .10?",
-        ("embedding-dgx-q8", "current-jina-q8"),
+        "production embedding recall",
+        "какую embedding модель использовать в production?",
+        ("embedding-openai-compatible", "current-openai-compatible"),
     ),
     Scenario(
         "openclaw recall",
@@ -76,24 +77,30 @@ SCENARIOS = (
     Scenario(
         "freshness recall",
         "какие embeddings использовать в production semantic recall?",
-        ("current-jina-q8",),
+        ("current-openai-compatible",),
     ),
 )
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--base-url", default="http://192.168.0.10:8002")
-    parser.add_argument("--model", default="jina-embeddings-v4")
-    parser.add_argument("--dimension", type=int, default=2048)
+    parser.add_argument("--base-url", default="https://api.openai.com/v1")
+    parser.add_argument("--model", default="text-embedding-3-large")
+    parser.add_argument("--dimension", type=int, default=3072)
+    parser.add_argument(
+        "--api-key",
+        default=os.getenv("UAM_EMBEDDING_API_KEY") or os.getenv("OPENAI_API_KEY"),
+    )
+    parser.add_argument("--provider", default="openai")
     args = parser.parse_args()
 
     client = build_embedding_client(
         EmbeddingProviderConfig(
-            provider="tei",
+            provider=args.provider,
             model_name=args.model,
             dimension=args.dimension,
             base_url=args.base_url,
+            api_key=args.api_key,
             timeout_seconds=60,
         )
     )

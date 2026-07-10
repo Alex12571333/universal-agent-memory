@@ -43,13 +43,17 @@ remaining hard requirements.
       persisted conflict-review API.
 - [x] Qdrant/vector indexing is async and fail-soft.
 - [x] Memory LLM is separate from embedding endpoint.
-- [x] Qwen/Spark `.10` memory LLM defaults are documented.
-- [x] Qwen/Spark memory LLM live regression runner exists and writes JSON
+- [x] OpenAI-compatible memory LLM defaults are documented.
+- [x] OpenAI-compatible memory LLM live regression runner exists and writes JSON
       release evidence.
 - [x] OpenClaw and Hermes integration guides exist.
 - [x] OpenClaw/Hermes soak runner exists and writes JSON release evidence.
-- [x] Release evidence verifier checks saved agent, LLM, metrics, backup and
-      branch-protection reports before a full-production claim.
+- [x] UI walkthrough runner exists and writes JSON evidence for served UI,
+      conflict decision, vault editable text/archive, model probe, reindex and
+      metrics.
+- [x] Release evidence verifier checks saved agent, LLM, UI walkthrough,
+      metrics, backup and branch-protection reports before a full-production
+      claim.
 - [x] CI workflow validates lint, tests, web build, and compose configs.
 - [x] Enterprise readiness check script exists.
 - [x] Branch-protection verifier exists for the `main` release gate.
@@ -70,11 +74,10 @@ remaining hard requirements.
 - [x] Enforce GitHub branch protection and PR-only merges to `main`.
 - [ ] Run real OpenClaw/Hermes soak tests against the `.14` agents and preserve
       the generated report.
-- [ ] Run live embedding/Qwen regression tests against DGX Spark `.10` and
-      preserve the generated reports.
+- [ ] Run live embedding and memory LLM regression tests against the configured
+      production endpoints and preserve the generated reports.
 - [ ] Verify the preserved release evidence manifest before tagging.
-- [ ] Preserve a live UI walkthrough report or recording for the target
-      deployment.
+- [ ] Preserve `ops/ui-walkthrough.json` from the target deployment.
 
 ## Production interpretation
 

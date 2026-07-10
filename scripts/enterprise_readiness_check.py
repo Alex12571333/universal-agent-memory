@@ -54,6 +54,7 @@ def run_checks(*, static_only: bool) -> list[Check]:
         "scripts/validate_production_env.py",
         "scripts/export_audit.py",
         "scripts/agent_soak_eval.py",
+        "scripts/ui_walkthrough_eval.py",
         "scripts/real_memory_llm_eval.py",
         "scripts/vault_manifest.py",
         "scripts/restore_drill.py",
@@ -116,8 +117,19 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 and "ops/memory-llm.json" in readme,
                 "README documents live memory LLM regression evidence",
             ),
+            Check(
+                "readme:ui-walkthrough",
+                "scripts/ui_walkthrough_eval.py" in readme
+                and "ops/ui-walkthrough.json" in readme,
+                "README documents live UI walkthrough evidence",
+            ),
             Check("readme:128k", "131072" in readme, "128k context budget documented"),
-            Check("readme:dgx", "192.168.0.10" in readme, "DGX Spark .10 endpoint documented"),
+            Check(
+                "readme:openai-compatible-llm",
+                "OpenAI-compatible `/v1/chat/completions`" in readme
+                and "gpt-5.6-terra" in readme,
+                "README documents provider-neutral memory LLM endpoint",
+            ),
         ]
     )
 
@@ -247,13 +259,16 @@ def run_checks(*, static_only: bool) -> list[Check]:
         [
             Check(
                 "env:memory-llm",
-                "UAM_MEMORY_LLM_BASE_URL=http://192.168.0.10:8000/v1" in env,
-                "Qwen memory LLM endpoint",
+                "UAM_MEMORY_LLM_PROVIDER=openai-compatible" in env
+                and "UAM_MEMORY_LLM_BASE_URL=https://api.openai.com/v1" in env,
+                "OpenAI-compatible memory LLM endpoint",
             ),
             Check(
                 "env:embeddings",
-                "UAM_EMBEDDING_BASE_URL=http://192.168.0.10:8002" in env,
-                "embedding endpoint",
+                "UAM_EMBEDDING_PROVIDER=openai" in env
+                and "UAM_EMBEDDING_MODEL=text-embedding-3-large" in env
+                and "UAM_EMBEDDING_DIM=3072" in env,
+                "OpenAI-compatible embedding endpoint",
             ),
             Check("env:privacy", "UAM_PRIVACY_ACTION=redact" in env, "privacy defaults"),
             Check("env:scoped-keys", "UAM_API_KEYS=" in env, "scoped API keys documented"),
@@ -426,6 +441,7 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 in read("scripts/verify_release_evidence.py")
                 and "agent_soak" in read("scripts/verify_release_evidence.py")
                 and "branch_protection" in read("scripts/verify_release_evidence.py")
+                and "ui_walkthrough" in read("scripts/verify_release_evidence.py")
                 and "release_evidence=PASS" in read("docs/RELEASE_EVIDENCE.md"),
                 "release evidence verifier checks saved production reports",
             ),
@@ -436,6 +452,23 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 and "test_verify_release_evidence_rejects_skipped_restore_drill"
                 in read("tests/test_backup_restore_scripts.py"),
                 "release evidence verifier behavior is covered",
+            ),
+            Check(
+                "ui:walkthrough-runner",
+                "obelisk-ui-walkthrough-v1" in read("scripts/ui_walkthrough_eval.py")
+                and "vault-editable-text" in read("scripts/ui_walkthrough_eval.py")
+                and "model-settings-probe" in read("scripts/ui_walkthrough_eval.py")
+                and "FORBIDDEN_EDIT_TOKENS" in read("scripts/ui_walkthrough_eval.py"),
+                "live UI walkthrough runner validates editable vault text and operator flows",
+            ),
+            Check(
+                "tests:ui-walkthrough-runner",
+                "test_ui_walkthrough_eval_passes_operator_flows" in read(
+                    "tests/test_ui_walkthrough_eval.py"
+                )
+                and "test_ui_walkthrough_eval_fails_when_vault_editor_exposes_vectors"
+                in read("tests/test_ui_walkthrough_eval.py"),
+                "UI walkthrough runner success and vector-leak failure are covered",
             ),
             Check(
                 "agents:soak-runner",
@@ -535,8 +568,8 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 "llm:live-regression-runner",
                 "obelisk-memory-llm-eval-v1" in read("scripts/real_memory_llm_eval.py")
                 and "json-memory-curation" in read("scripts/real_memory_llm_eval.py")
-                and "fake" in read("scripts/real_memory_llm_eval.py"),
-                "live Qwen/Spark memory LLM runner validates chat and curation",
+                and "openai-compatible" in read("scripts/real_memory_llm_eval.py"),
+                "live OpenAI-compatible memory LLM runner validates chat and curation",
             ),
             Check(
                 "tests:llm-live-regression-runner",

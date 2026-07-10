@@ -3153,18 +3153,18 @@ _OPERATOR_UI_HTML = """
                 <span class="muted tiny">Провайдер</span>
                 <select id="modelProvider" aria-label="Embedding provider">
                   <option value="fake">fake / тестовый</option>
-                  <option value="tei">TEI / llama.cpp OpenAI-compatible</option>
+                  <option value="tei">TEI / llama.cpp / compatible</option>
                   <option value="ollama">Ollama</option>
-                  <option value="openai">OpenAI</option>
+                  <option value="openai">OpenAI-compatible</option>
                 </select>
               </label>
               <label>
                 <span class="muted tiny">Модель</span>
-                <input id="modelName" aria-label="Embedding model" placeholder="jina-embeddings-v4">
+                <input id="modelName" aria-label="Embedding model" placeholder="text-embedding-3-large">
               </label>
               <label>
                 <span class="muted tiny">Размерность</span>
-                <input id="modelDim" aria-label="Embedding dimension" type="number" min="1" max="65536" value="1536">
+                <input id="modelDim" aria-label="Embedding dimension" type="number" min="1" max="65536" value="3072">
               </label>
               <label>
                 <span class="muted tiny">Таймаут, сек</span>
@@ -3172,7 +3172,7 @@ _OPERATOR_UI_HTML = """
               </label>
               <label class="full">
                 <span class="muted tiny">Base URL</span>
-                <input id="modelBaseUrl" aria-label="Embedding base URL" placeholder="http://192.168.0.10:8081">
+                <input id="modelBaseUrl" aria-label="Embedding base URL" placeholder="https://api.openai.com/v1">
               </label>
               <label class="full">
                 <span class="muted tiny">API key, если нужен</span>

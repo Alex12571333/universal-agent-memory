@@ -17,7 +17,8 @@ Create `release-evidence.json` next to the referenced reports:
     "memory_llm": "ops/memory-llm.json",
     "metrics_health": "ops/metrics-health.json",
     "scheduled_backup": "backups/latest-backup-report.json",
-    "branch_protection": "ops/branch-protection.json"
+    "branch_protection": "ops/branch-protection.json",
+    "ui_walkthrough": "ops/ui-walkthrough.json"
   }
 }
 ```
@@ -42,9 +43,13 @@ UAM_API_KEY=... python scripts/agent_soak_eval.py \
   --parallel 4 \
   --json-report ./ops/agent-soak.json
 
+UAM_API_KEY=... python scripts/ui_walkthrough_eval.py \
+  --base-url http://localhost:6798 \
+  --json-report ./ops/ui-walkthrough.json
+
 python scripts/real_memory_llm_eval.py \
-  --base-url http://192.168.0.10:8000/v1 \
-  --model qwen3.6-35b-a3b \
+  --base-url https://api.openai.com/v1 \
+  --model gpt-5.6-terra \
   --json-report ./ops/memory-llm.json
 
 GITHUB_TOKEN=... python scripts/check_branch_protection.py \
@@ -77,6 +82,10 @@ The verifier requires:
 - scheduled backup report format `obelisk-scheduled-backup-report-v1`,
   `ok: true`, restore drill not skipped and audit export not skipped;
 - branch protection JSON with `passed: true`, PR requirement, required status
-  checks, strict mode and admin enforcement.
+  checks, strict mode and admin enforcement;
+- UI walkthrough report format `obelisk-ui-walkthrough-v1`, `ok: true`,
+  served UI, retain/recall, conflict decision, vault editable text,
+  vault archive, model settings probe, reindex and metrics checks. The model
+  settings probe must run; skipped probes are not accepted for release evidence.
 
 Do not call a deployment full production if this verifier fails.

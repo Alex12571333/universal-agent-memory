@@ -25,9 +25,12 @@ UAM_API_KEY=... python scripts/agent_soak_eval.py \
   --rounds 5 \
   --parallel 4 \
   --json-report ./ops/agent-soak.json
+UAM_API_KEY=... python scripts/ui_walkthrough_eval.py \
+  --base-url http://localhost:6798 \
+  --json-report ./ops/ui-walkthrough.json
 python scripts/real_memory_llm_eval.py \
-  --base-url http://192.168.0.10:8000/v1 \
-  --model qwen3.6-35b-a3b \
+  --base-url https://api.openai.com/v1 \
+  --model gpt-5.6-terra \
   --json-report ./ops/memory-llm.json
 GITHUB_TOKEN=... python scripts/check_branch_protection.py \
   --repo Alex12571333/universal-agent-memory \
@@ -55,8 +58,8 @@ Manual checks:
 - Verify conflict inbox can list and resolve at least one conflict.
 - Export vault, edit a note, run dry-run import, then apply only after review.
 - Confirm vault imports use `--require-signature` for release/operator bundles.
-- Confirm Qwen/Spark memory LLM endpoint is reachable.
-- Confirm `ops/memory-llm.json` reports `"ok": true` for Qwen/Spark `.10`.
+- Confirm the configured OpenAI-compatible memory LLM endpoint is reachable.
+- Confirm `ops/memory-llm.json` reports `"ok": true` for that endpoint/model.
 - Confirm embedding endpoint returns the configured dimension.
 - Confirm `UAM_QDRANT_PAYLOAD_TEXT=false` so Qdrant stores vectors/filter
   metadata only and memory text is hydrated from PostgreSQL.
@@ -73,6 +76,9 @@ Manual checks:
 - Confirm `ops/metrics-health.json` reports `"ok": true`.
 - Confirm `ops/agent-soak.json` reports `"ok": true` after running against the
   same server and `.14` OpenClaw/Hermes hosts used for production.
+- Confirm `ops/ui-walkthrough.json` reports `"ok": true` and includes
+  vault editable text, vault archive, conflict decision, model probe, reindex
+  and metrics checks.
 - Confirm `scripts/verify_release_evidence.py ./release-evidence.json` prints
   `release_evidence=PASS`.
 - Confirm worker logs do not show repeated NATS/Qdrant connection failures.
@@ -94,5 +100,7 @@ Do not release if:
 - branch protection or PR-only merge policy is disabled for a shared production
   repository.
 - OpenClaw/Hermes soak reports show cross-workspace leakage or missing recall.
-- Qwen/Spark memory LLM regression returns invalid JSON or keeps obsolete
+- OpenAI-compatible memory LLM regression returns invalid JSON or keeps obsolete
   memory as current truth.
+- UI walkthrough evidence is missing, skipped model probing, or shows vector /
+  embedding data in the vault editor.
