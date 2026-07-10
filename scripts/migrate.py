@@ -25,6 +25,7 @@ MIGRATIONS = (
     ROOT / "migrations/009_api_key_registry.sql",
     ROOT / "migrations/010_conflict_resolution_memory.sql",
     ROOT / "migrations/011_conversation_staging_retention.sql",
+    ROOT / "migrations/012_outbox_retry_schedule.sql",
 )
 
 

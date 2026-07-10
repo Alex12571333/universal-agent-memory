@@ -31,6 +31,8 @@ async def run() -> None:
         worker_id=os.getenv("UAM_WORKER_ID", socket.gethostname()),
         batch_size=int(os.getenv("UAM_OUTBOX_BATCH_SIZE", "50")),
         max_attempts=int(os.getenv("UAM_OUTBOX_MAX_ATTEMPTS", "8")),
+        retry_base_seconds=int(os.getenv("UAM_OUTBOX_RETRY_BASE_SECONDS", "5")),
+        retry_max_seconds=int(os.getenv("UAM_OUTBOX_RETRY_MAX_SECONDS", "300")),
     )
     try:
         while True:

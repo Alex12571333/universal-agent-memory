@@ -149,8 +149,9 @@ class OutboxRepository(Protocol):
         *,
         error: str,
         max_attempts: int,
+        retry_delay_seconds: int,
     ) -> bool:
-        """Release for retry or dead-letter after the configured attempt limit."""
+        """Schedule an exponential retry or dead-letter after the attempt limit."""
         ...
 
 

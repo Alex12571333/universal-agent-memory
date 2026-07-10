@@ -22,9 +22,9 @@ class FakeOutboxRepository:
         return True
 
     def release_outbox(
-        self, tenant_id, event_id, worker_id, *, error, max_attempts
+        self, tenant_id, event_id, worker_id, *, error, max_attempts, retry_delay_seconds
     ):
-        self.released.append((event_id, error, max_attempts))
+        self.released.append((event_id, error, max_attempts, retry_delay_seconds))
         return True
 
 
@@ -101,6 +101,23 @@ class OutboxRelayTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((1, 0, 1), (result.claimed, result.published, result.failed))
         self.assertEqual([], repository.published)
         self.assertIn("transport unavailable", repository.released[0][1])
+        self.assertEqual(20, repository.released[0][3])
+
+    async def test_transport_failure_uses_capped_exponential_backoff(self) -> None:
+        pending = event()
+        repository = FakeOutboxRepository((ClaimedEvent(pending, attempts=9),))
+        relay = OutboxRelay(
+            repository,
+            FakeSink(fail=True),
+            tenant_id=pending.tenant_id,
+            worker_id="relay-a",
+            retry_base_seconds=5,
+            retry_max_seconds=300,
+        )
+
+        await relay.run_once()
+
+        self.assertEqual(300, repository.released[0][3])
 
     async def test_consumer_skips_completed_duplicate(self) -> None:
         repository = FakeProcessedRepository([ConsumerClaim.COMPLETED])

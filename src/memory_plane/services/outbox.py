@@ -31,6 +31,8 @@ class OutboxRelay:
         batch_size: int = 50,
         lease_seconds: int = 30,
         max_attempts: int = 8,
+        retry_base_seconds: int = 5,
+        retry_max_seconds: int = 300,
     ) -> None:
         if not worker_id.strip():
             raise ValueError("worker_id must not be empty")
@@ -40,6 +42,10 @@ class OutboxRelay:
             raise ValueError("lease_seconds must be positive")
         if max_attempts < 1:
             raise ValueError("max_attempts must be positive")
+        if retry_base_seconds < 1:
+            raise ValueError("retry_base_seconds must be positive")
+        if retry_max_seconds < retry_base_seconds:
+            raise ValueError("retry_max_seconds must be >= retry_base_seconds")
         self._repository = repository
         self._sink = sink
         self._tenant_id = tenant_id
@@ -47,6 +53,8 @@ class OutboxRelay:
         self._batch_size = batch_size
         self._lease_seconds = lease_seconds
         self._max_attempts = max_attempts
+        self._retry_base_seconds = retry_base_seconds
+        self._retry_max_seconds = retry_max_seconds
 
     async def run_once(self) -> RelayResult:
         """Claim a batch, publish each event and ack only confirmed sends."""
@@ -71,6 +79,7 @@ class OutboxRelay:
                     self._worker_id,
                     error=f"{type(error).__name__}: {error}"[:2000],
                     max_attempts=self._max_attempts,
+                    retry_delay_seconds=self._retry_delay(row.attempts),
                 )
                 continue
             acknowledged = await asyncio.to_thread(
@@ -81,3 +90,7 @@ class OutboxRelay:
             )
             published += int(acknowledged)
         return RelayResult(claimed=len(claimed), published=published, failed=failed)
+
+    def _retry_delay(self, attempts: int) -> int:
+        """Return capped exponential delay after the claimed delivery attempt."""
+        return min(self._retry_max_seconds, self._retry_base_seconds * (2 ** (attempts - 1)))

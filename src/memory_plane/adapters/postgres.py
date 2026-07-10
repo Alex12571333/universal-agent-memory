@@ -435,6 +435,7 @@ class PostgresMemoryLedger:
                   from outbox_events
                   where published_at is null
                     and dead_lettered_at is null
+                    and available_at <= clock_timestamp()
                     and (lease_until is null or lease_until < clock_timestamp())
                   order by occurred_at, id
                   for update skip locked
@@ -499,6 +500,7 @@ class PostgresMemoryLedger:
         *,
         error: str,
         max_attempts: int,
+        retry_delay_seconds: int,
     ) -> bool:
         """Release a failed lease or dead-letter an exhausted event."""
         with self._connection() as connection:
@@ -509,6 +511,10 @@ class PostgresMemoryLedger:
                 set lease_owner = null,
                     lease_until = null,
                     last_error = %s,
+                    available_at = case
+                      when attempts >= %s then clock_timestamp()
+                      else clock_timestamp() + make_interval(secs => %s)
+                    end,
                     dead_lettered_at = case
                       when attempts >= %s then clock_timestamp()
                       else dead_lettered_at
@@ -518,7 +524,7 @@ class PostgresMemoryLedger:
                   and published_at is null
                 returning id
                 """,
-                (error, max_attempts, event_id, worker_id),
+                (error, max_attempts, retry_delay_seconds, max_attempts, event_id, worker_id),
             ).fetchone()
         return row is not None
 

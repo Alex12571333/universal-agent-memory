@@ -501,6 +501,7 @@ class PostgresMemoryLedgerTest(unittest.TestCase):
             "relay-a",
             error="poison",
             max_attempts=1,
+            retry_delay_seconds=5,
         )
 
         self.assertTrue(released)
