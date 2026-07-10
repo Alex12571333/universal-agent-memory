@@ -73,6 +73,7 @@ def run_checks(*, static_only: bool) -> list[Check]:
         "scripts/audit_retention.py",
         "scripts/verify_release_evidence.py",
         "scripts/migrate_vector_collection.py",
+        "scripts/purge_expired_conversations.py",
         "docs/assets/obelisk-memory-hero.png",
         "docs/GITHUB_BRANCH_PROTECTION.md",
         "docs/OPERATIONS_RUNBOOK.md",
@@ -876,6 +877,12 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 and "purge_expired_turns" in read("src/memory_plane/services/conversations.py")
                 and "test_curated_only_staging_ttl_purges_abandoned_raw_text" in tests,
                 "curated-only staging has bounded TTL and operator purge coverage",
+            ),
+            Check(
+                "conversation:retention-schedule",
+                "purge_expired_conversations.py" in read("deploy/ops/conversation-retention.cron")
+                and "UAM_RETENTION_OPERATOR_KEY" in read("deploy/ops/conversation-retention.cron"),
+                "hourly transcript-staging retention schedule is supplied",
             ),
             Check(
                 "proposals:atomic-accept",
