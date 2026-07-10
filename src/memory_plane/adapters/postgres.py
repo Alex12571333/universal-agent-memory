@@ -69,6 +69,31 @@ def _is_foreign_key_violation(exc: Exception) -> bool:
     return isinstance(exc, ForeignKeyViolation)
 
 
+def _parse_text_encryption_scopes(raw: str) -> frozenset[MemoryScope] | None:
+    """Parse UAM_MEMORY_TEXT_ENCRYPTION_SCOPES.
+
+    `all` means every canonical memory row is encrypted. Otherwise the value is a
+    comma-separated list of MemoryScope values such as `private,thread`.
+    """
+    normalized = raw.strip().lower()
+    if not normalized or normalized == "all":
+        return None
+    scopes: set[MemoryScope] = set()
+    valid = {scope.value for scope in MemoryScope}
+    for value in (part.strip().lower() for part in normalized.split(",")):
+        if not value:
+            continue
+        if value not in valid:
+            raise ValueError(
+                "UAM_MEMORY_TEXT_ENCRYPTION_SCOPES must be all or a comma-separated "
+                f"list of memory scopes: {', '.join(sorted(valid))}"
+            )
+        scopes.add(MemoryScope(value))
+    if not scopes:
+        raise ValueError("UAM_MEMORY_TEXT_ENCRYPTION_SCOPES must not be empty")
+    return frozenset(scopes)
+
+
 class PostgresMemoryLedger:
     """Psycopg implementation of the retention store and canonical ledger."""
 
@@ -79,6 +104,9 @@ class PostgresMemoryLedger:
         self.dsn = dsn
         self._text_encryption_mode = os.getenv("UAM_MEMORY_TEXT_ENCRYPTION", "off").lower()
         self._text_encryption_key = read_secret_env("UAM_MEMORY_TEXT_ENCRYPTION_KEY") or ""
+        self._text_encryption_scopes = _parse_text_encryption_scopes(
+            os.getenv("UAM_MEMORY_TEXT_ENCRYPTION_SCOPES", "all")
+        )
         if self._text_encryption_mode not in {"off", "pgcrypto"}:
             raise ValueError("UAM_MEMORY_TEXT_ENCRYPTION must be off or pgcrypto")
         if self._text_encryption_enabled and not self._text_encryption_key:
@@ -1360,7 +1388,7 @@ class PostgresMemoryLedger:
     def _insert_item(self, connection: Any, item: MemoryItem) -> None:
         from psycopg.types.json import Jsonb
 
-        stored_text = self._stored_memory_text(connection, item.text)
+        stored_text = self._stored_memory_text(connection, item)
         connection.execute(
             """
             insert into memory_items (
@@ -1417,10 +1445,10 @@ class PostgresMemoryLedger:
             ),
         )
 
-    def _stored_memory_text(self, connection: Any, text: str) -> str:
+    def _stored_memory_text(self, connection: Any, item: MemoryItem) -> str:
         """Return plaintext or pgcrypto ciphertext for memory_items.text."""
-        if not self._text_encryption_enabled:
-            return text
+        if not self._should_encrypt_item(item):
+            return item.text
         row = connection.execute(
             """
             select %s || encode(
@@ -1428,11 +1456,17 @@ class PostgresMemoryLedger:
               'base64'
             ) as encrypted_text
             """,
-            (_PGCRYPTO_TEXT_PREFIX, text, self._text_encryption_key),
+            (_PGCRYPTO_TEXT_PREFIX, item.text, self._text_encryption_key),
         ).fetchone()
         if row is None:
             raise RuntimeError("pgcrypto did not return encrypted memory text")
         return str(row["encrypted_text"])
+
+    def _should_encrypt_item(self, item: MemoryItem) -> bool:
+        """Return whether canonical text for this item must be encrypted at rest."""
+        if not self._text_encryption_enabled:
+            return False
+        return self._text_encryption_scopes is None or item.scope in self._text_encryption_scopes
 
     @staticmethod
     def _insert_event(connection: Any, event: IntegrationEvent) -> None:

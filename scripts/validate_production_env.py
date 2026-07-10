@@ -18,6 +18,7 @@ PLACEHOLDER_PATTERNS = (
     "password",
 )
 VALID_SCOPES = {"admin", "operator", "agent", "read", "write"}
+VALID_MEMORY_SCOPES = {"private", "thread", "team", "workspace", "organization"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -185,7 +186,23 @@ def _check_memory_text_encryption(values: dict[str, str]) -> EnvCheck:
     )
     if not secret_check.ok:
         return secret_check
-    return EnvCheck("UAM_MEMORY_TEXT_ENCRYPTION", True, "pgcrypto enabled")
+    scopes = values.get("UAM_MEMORY_TEXT_ENCRYPTION_SCOPES", "all").strip().lower()
+    if scopes != "all":
+        selected = {scope.strip() for scope in scopes.split(",") if scope.strip()}
+        if not selected:
+            return EnvCheck(
+                "UAM_MEMORY_TEXT_ENCRYPTION_SCOPES",
+                False,
+                "must be all or at least one memory scope",
+            )
+        unknown = sorted(selected - VALID_MEMORY_SCOPES)
+        if unknown:
+            return EnvCheck(
+                "UAM_MEMORY_TEXT_ENCRYPTION_SCOPES",
+                False,
+                "unknown scopes: " + ", ".join(unknown),
+            )
+    return EnvCheck("UAM_MEMORY_TEXT_ENCRYPTION", True, f"pgcrypto enabled for {scopes}")
 
 
 def _check_public_tls(values: dict[str, str]) -> EnvCheck:

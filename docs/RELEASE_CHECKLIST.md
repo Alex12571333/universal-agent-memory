@@ -76,6 +76,8 @@ Manual checks:
 - Confirm `UAM_MEMORY_TEXT_ENCRYPTION=pgcrypto` and
   `UAM_MEMORY_TEXT_ENCRYPTION_KEY` are supplied from a secret manager, not from
   the repository.
+- Confirm `UAM_MEMORY_TEXT_ENCRYPTION_SCOPES=all` or a documented selective
+  scope policy such as `private,thread`.
 - Confirm non-local deployments use HTTPS through the reverse proxy and direct
   backend port `6798` is localhost-only or blocked by firewall/security group.
 - Confirm `audit-export/manifest.sha256` verifies before preserving release

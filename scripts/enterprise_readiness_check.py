@@ -135,7 +135,9 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 "OpenAI-compatible means the API shape" in readme
                 and "`/v1/chat/completions`" in readme
                 and "provider lock-in" in readme
-                and "gpt-5.6-terra" in readme,
+                and "OpenRouter" in readme
+                and "LiteLLM" in readme
+                and "llama.cpp" in readme,
                 "README documents provider-neutral memory LLM endpoint",
             ),
         ]
@@ -178,6 +180,8 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 )
                 >= 2
                 and prod_compose.count("UAM_MEMORY_TEXT_ENCRYPTION_KEY_FILE: ")
+                >= 2
+                and prod_compose.count("UAM_MEMORY_TEXT_ENCRYPTION_SCOPES: ")
                 >= 2,
                 "production API and embedding worker receive canonical text encryption settings",
             ),
@@ -290,6 +294,12 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 and "UAM_MEMORY_LLM_API_KEY_FILE=" in env
                 and "UAM_EMBEDDING_API_KEY_FILE=" in env,
                 "mounted secret-file env alternatives are documented",
+            ),
+            Check(
+                "env:text-encryption-scopes",
+                "UAM_MEMORY_TEXT_ENCRYPTION_SCOPES=all" in env
+                and "private,thread,team,workspace,organization" in env,
+                "canonical memory text encryption scopes are documented",
             ),
             Check(
                 "env:signing-keys",
@@ -642,8 +652,11 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 "postgres:pgcrypto-text",
                 "enc:pgcrypto:v1:" in read("src/memory_plane/adapters/postgres.py")
                 and "pgp_sym_encrypt" in read("src/memory_plane/adapters/postgres.py")
-                and "pgp_sym_decrypt" in read("src/memory_plane/adapters/postgres.py"),
-                "PostgreSQL canonical memory text can be encrypted with pgcrypto",
+                and "pgp_sym_decrypt" in read("src/memory_plane/adapters/postgres.py")
+                and "UAM_MEMORY_TEXT_ENCRYPTION_SCOPES"
+                in read("src/memory_plane/adapters/postgres.py")
+                and "_should_encrypt_item" in read("src/memory_plane/adapters/postgres.py"),
+                "PostgreSQL canonical memory text can be encrypted with pgcrypto by scope",
             ),
             Check(
                 "tests:postgres-pgcrypto-text",
@@ -651,6 +664,9 @@ def run_checks(*, static_only: bool) -> list[Check]:
                     "tests/test_postgres_encryption.py"
                 )
                 and "test_postgres_encrypts_memory_text_before_insert" in read(
+                    "tests/test_postgres_encryption.py"
+                )
+                and "test_postgres_encrypts_only_selected_memory_scopes" in read(
                     "tests/test_postgres_encryption.py"
                 ),
                 "PostgreSQL memory text encryption behavior is covered",

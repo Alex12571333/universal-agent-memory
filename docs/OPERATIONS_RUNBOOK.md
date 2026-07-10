@@ -55,6 +55,8 @@ Healthy production means:
 - `memory-server` is healthy;
 - `UAM_MEMORY_TEXT_ENCRYPTION=pgcrypto` is enabled and its key is delivered by
   the deployment secret manager;
+- `UAM_MEMORY_TEXT_ENCRYPTION_SCOPES=all` unless the deployment has an explicit
+  row-level policy such as `private,thread`;
 - `UAM_QDRANT_PAYLOAD_TEXT=false`, so Qdrant stores vectors/filter metadata and
   recall hydrates memory text from PostgreSQL;
 - `postgres` is healthy;
