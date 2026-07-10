@@ -819,27 +819,27 @@ function SettingsPanel({ settings, setStatus, refresh }: {
   setStatus: (status: string) => void;
   refresh: () => Promise<void>;
 }) {
-  const openAiCompatiblePreset = {
+  const compatibleGatewayTemplate = {
     provider: "openai-compatible",
-    model_name: "text-embedding-3-large",
-    dimension: 3072,
-    base_url: "https://api.openai.com/v1",
+    model_name: "provider/embedding-model",
+    dimension: 1536,
+    base_url: "https://embedding-gateway.example.com/v1",
     api_key: "",
     timeout_seconds: 30
   };
-  const dgxSparkPreset = {
-    provider: "tei",
+  const selfHostedPreset = {
+    provider: "openai-compatible",
     model_name: "jina-embeddings-v4",
     dimension: 2048,
-    base_url: "http://192.168.0.10:8002",
+    base_url: "http://127.0.0.1:8002/v1",
     api_key: "",
     timeout_seconds: 30
   };
   const [form, setForm] = useState({
     provider: settings?.desired.provider ?? "openai-compatible",
-    model_name: settings?.desired.model_name ?? "text-embedding-3-large",
-    dimension: settings?.desired.dimension ?? 3072,
-    base_url: settings?.desired.base_url ?? "https://api.openai.com/v1",
+    model_name: settings?.desired.model_name ?? "provider/embedding-model",
+    dimension: settings?.desired.dimension ?? 1536,
+    base_url: settings?.desired.base_url ?? "",
     api_key: "",
     timeout_seconds: settings?.desired.timeout_seconds ?? 30
   });
@@ -855,14 +855,14 @@ function SettingsPanel({ settings, setStatus, refresh }: {
     }));
   }, [settings]);
 
-  function applyOpenAiCompatiblePreset() {
-    setForm(openAiCompatiblePreset);
-    setStatus("Выбран production preset OpenAI-compatible. Укажи API key и проверь endpoint.");
+  function applyCompatibleGatewayTemplate() {
+    setForm(compatibleGatewayTemplate);
+    setStatus("Выбран универсальный OpenAI-compatible шаблон. Укажи URL, имя модели, её реальную размерность и ключ выбранного провайдера.");
   }
 
-  function applyDgxSparkPreset() {
-    setForm(dgxSparkPreset);
-    setStatus("Выбран self-hosted preset DGX Spark Q8. Проверь endpoint, затем сохрани конфиг модели.");
+  function applySelfHostedPreset() {
+    setForm(selfHostedPreset);
+    setStatus("Выбран шаблон self-hosted OpenAI-compatible. Укажи адрес шлюза и проверь endpoint.");
   }
 
   async function save(testOnly: boolean) {
@@ -882,19 +882,19 @@ function SettingsPanel({ settings, setStatus, refresh }: {
     <div className="settings-grid">
       <div className="preset-card">
         <div>
-          <span className="eyebrow">Production preset векторов</span>
-          <b>OpenAI-compatible · text-embedding-3-large · 3072 измерения</b>
-          <p>Endpoint: <code>https://api.openai.com/v1/embeddings</code>; совместимый шлюз можно заменить своим.</p>
+          <span className="eyebrow">Универсальный шлюз векторов</span>
+          <b>OpenAI-compatible · любой совместимый провайдер</b>
+          <p>Укажи свой <code>base_url</code>, model ID, размерность и отдельный ключ. Это протокол, а не привязка к OpenAI.</p>
         </div>
-        <button onClick={applyOpenAiCompatiblePreset}>Использовать production preset</button>
+        <button onClick={applyCompatibleGatewayTemplate}>Заполнить шаблон</button>
       </div>
       <div className="preset-card">
         <div>
           <span className="eyebrow">Self-hosted preset</span>
-          <b>DGX Spark · Jina v4 Q8 · 2048 измерений</b>
-          <p>OpenAI-compatible endpoint: <code>http://192.168.0.10:8002/v1/embeddings</code></p>
+          <b>OpenAI-compatible · Jina v4 · 2048 измерений</b>
+          <p>Шаблон локального шлюза: <code>http://127.0.0.1:8002/v1/embeddings</code></p>
         </div>
-        <button onClick={applyDgxSparkPreset}>Использовать preset</button>
+        <button onClick={applySelfHostedPreset}>Использовать шаблон</button>
       </div>
       {(["provider", "model_name", "base_url", "api_key"] as const).map((key) => (
         <label key={key}>

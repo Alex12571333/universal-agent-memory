@@ -20,13 +20,26 @@ def _load_script(name: str):
 
 
 ui_walkthrough_eval = _load_script("ui_walkthrough_eval")
+BUILD_IDENTITY = {
+    "version": "0.1.0",
+    "source_commit": "a" * 40,
+    "image_digest": "sha256:" + "b" * 64,
+    "deployment_id": "ui-walkthrough-test",
+    "build_time": "2026-07-10T00:00:00+00:00",
+}
 
 
 class FakeWalkthroughApi:
-    def __init__(self, *, leak_vector_in_editable: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        leak_vector_in_editable: bool = False,
+        include_build_identity: bool = True,
+    ) -> None:
         self._items: list[dict[str, Any]] = []
         self._leak_vector_in_editable = leak_vector_in_editable
         self._conflict_status = "unresolved"
+        self._build_identity = BUILD_IDENTITY if include_build_identity else None
 
     def request(
         self,
@@ -38,6 +51,8 @@ class FakeWalkthroughApi:
         auth: bool = True,
     ) -> Any:
         del auth
+        if method == "GET" and path == "/v1/system/status":
+            return {"status": "ok", "version": "0.1.0", "build": self._build_identity}
         if method == "GET" and path == "/ui":
             return """
             <h1>Универсальная память агентов</h1>
@@ -135,7 +150,10 @@ def test_ui_walkthrough_eval_passes_operator_flows() -> None:
 
     assert report.ok is True
     assert report.format == "obelisk-ui-walkthrough-v1"
+    assert report.generated_at
+    assert report.build == BUILD_IDENTITY
     assert {check.name for check in report.checks} >= {
+        "build-identity",
         "ui-served",
         "retain-recall",
         "conflict-decision",
@@ -160,11 +178,25 @@ def test_ui_walkthrough_eval_fails_when_vault_editor_exposes_vectors() -> None:
     assert "system/vector fields" in check.detail
 
 
+def test_ui_walkthrough_eval_fails_without_verified_build_identity() -> None:
+    report = ui_walkthrough_eval.run_walkthrough(
+        ui_walkthrough_eval.WalkthroughConfig(base_url="http://memory.example"),
+        client=FakeWalkthroughApi(include_build_identity=False),
+        run_id="no-build",
+    )
+
+    assert report.ok is False
+    assert report.build == {}
+    check = next(item for item in report.checks if item.name == "build-identity")
+    assert check.ok is False
+
+
 def test_ui_walkthrough_eval_writes_json_report(tmp_path: Path) -> None:
     report = ui_walkthrough_eval.WalkthroughReport(
         format="obelisk-ui-walkthrough-v1",
         ok=True,
         generated_at="2026-07-10T00:00:00+00:00",
+        build=BUILD_IDENTITY,
         base_url="http://memory.example",
         tenant_id="00000000-0000-0000-0000-000000000001",
         workspace_id="00000000-0000-0000-0000-000000000002",

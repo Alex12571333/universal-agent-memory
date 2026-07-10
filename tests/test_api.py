@@ -879,7 +879,16 @@ def test_model_settings_endpoints_save_and_probe_fake_provider() -> None:
     assert resaved.json()["desired"]["api_key"] == "loca…cret"
 
 
-def test_system_status_endpoint_reports_real_process_fields() -> None:
+def test_system_status_endpoint_reports_real_process_fields(monkeypatch) -> None:
+    expected_build = {
+        "version": "1.2.3",
+        "source_commit": "a" * 40,
+        "image_digest": "sha256:" + "b" * 64,
+        "deployment_id": "api-status-test",
+        "build_time": "2026-07-10T00:00:00Z",
+    }
+    for field, value in expected_build.items():
+        monkeypatch.setenv(f"UAM_{field.upper()}", value)
     client = TestClient(create_app(build_in_memory_container()))
 
     response = client.get("/v1/system/status")
@@ -887,6 +896,8 @@ def test_system_status_endpoint_reports_real_process_fields() -> None:
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "ok"
+    assert data["version"] == expected_build["version"]
+    assert data["build"] == expected_build
     assert data["uptime_seconds"] >= 0
     assert data["storage"]["total_bytes"] > 0
     assert data["storage"]["used_bytes"] > 0

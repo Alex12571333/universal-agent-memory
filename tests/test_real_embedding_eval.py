@@ -35,25 +35,25 @@ def test_real_embedding_eval_accepts_root_or_v1_base_url() -> None:
 def _fake_embedding(_base_url: str, _model: str, text: str, _api_key: str | None) -> list[float]:
     vectors = {
         "storage-postgres": [1.0, 0.0, 0.0, 0.0, 0.0],
-        "embedding-openai-compatible": [0.0, 1.0, 0.0, 0.0, 0.0],
-        "current-openai-compatible-embeddings": [0.0, 0.0, 1.0, 0.0, 0.0],
+        "embedding-release-policy": [0.0, 1.0, 0.0, 0.0, 0.0],
+        "current-audit-retention": [0.0, 0.0, 1.0, 0.0, 0.0],
         "openclaw-plugin": [0.0, 0.0, 0.0, 1.0, 0.0],
         "hermes-plugin": [0.0, 0.0, 0.0, 0.0, 1.0],
-        "obsolete-fake-embeddings": [-1.0, -1.0, -1.0, -1.0, -1.0],
+        "superseded-audit-retention": [-1.0, -1.0, -1.0, -1.0, -1.0],
     }
     for doc in real_embedding_eval.DOCS:
         if text == doc.text:
             return vectors[doc.doc_id]
     if "где хранится" in text:
         return vectors["storage-postgres"]
-    if "какую embedding модель" in text:
-        return vectors["embedding-openai-compatible"]
+    if "что нужно зафиксировать" in text:
+        return vectors["embedding-release-policy"]
     if "openclaw" in text.lower():
         return vectors["openclaw-plugin"]
     if "hermes" in text.lower():
         return vectors["hermes-plugin"]
-    if "semantic recall" in text:
-        return vectors["current-openai-compatible-embeddings"]
+    if "срок хранения audit events" in text:
+        return vectors["current-audit-retention"]
     raise AssertionError(text)
 
 
@@ -70,6 +70,7 @@ def test_real_embedding_eval_passes_semantic_contract(monkeypatch) -> None:
 
     assert report.format == "obelisk-embedding-eval-v1"
     assert report.ok is True
+    assert report.generated_at
     assert {check.name for check in report.checks} == {
         "endpoint-reachable",
         "dimension",
@@ -105,7 +106,7 @@ def test_real_embedding_eval_fails_wrong_semantic_top(monkeypatch) -> None:
         text: str,
         api_key: str | None,
     ) -> list[float]:
-        if "какую embedding модель" in text:
+        if "что нужно зафиксировать" in text:
             return [1.0, 0.0, 0.0, 0.0, 0.0]
         return _fake_embedding(base_url, model, text, api_key)
 
@@ -142,3 +143,4 @@ def test_real_embedding_eval_writes_json_report(monkeypatch, tmp_path: Path) -> 
     assert payload["format"] == "obelisk-embedding-eval-v1"
     assert payload["ok"] is True
     assert payload["provider"] == "openai-compatible"
+    assert payload["generated_at"]

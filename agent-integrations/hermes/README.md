@@ -3,8 +3,14 @@
 Goal: integrate Obelisk Memory as a Hermes runtime/plugin extension,
 not as a skill and not only as an MCP tool.
 
-The installable provider lives in `universal_agent_memory/` and matches the
-Hermes memory provider interface verified against the `.14` runtime:
+> **Engineering preview:** stable Hermes agent/thread IDs are not yet provisioned
+> automatically in the PostgreSQL ledger. A fresh persistent deployment can
+> reject provider writes with foreign-key violations. Use this adapter with the
+> in-memory development server, or pre-provision matching identities, until the
+> production identity blocker is resolved.
+
+The installable provider lives in `universal_agent_memory/` and implements the
+Hermes memory provider contract:
 
 - provider directory contains `__init__.py` and `plugin.yaml`;
 - Hermes discovers user providers from `$HERMES_HOME/plugins/<name>/`;

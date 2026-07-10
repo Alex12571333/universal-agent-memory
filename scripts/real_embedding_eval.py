@@ -9,7 +9,9 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from urllib.request import Request, urlopen
@@ -41,6 +43,7 @@ class EvalCheck:
 class EvalReport:
     format: str
     ok: bool
+    generated_at: str
     provider: str
     base_url: str
     model: str
@@ -58,9 +61,9 @@ DOCS = (
         "Qdrant используется как векторный индекс для semantic recall.",
     ),
     MemoryDoc(
-        "embedding-openai-compatible",
-        "Для production embeddings используется OpenAI-compatible endpoint "
-        "с моделью text-embedding-3-large и размерностью 3072.",
+        "embedding-release-policy",
+        "Для production semantic recall фиксируют embedding model ID и размерность "
+        "векторов; при их изменении выполняют полную безопасную переиндексацию.",
     ),
     MemoryDoc(
         "openclaw-plugin",
@@ -73,13 +76,12 @@ DOCS = (
         "sync_turn после ответа и session summary при завершении.",
     ),
     MemoryDoc(
-        "obsolete-fake-embeddings",
-        "Устаревшая инструкция: использовать deterministic fake embeddings в production.",
+        "superseded-audit-retention",
+        "Устаревшая политика: хранить audit events 30 дней.",
     ),
     MemoryDoc(
-        "current-openai-compatible-embeddings",
-        "Актуальная инструкция: использовать OpenAI-compatible embeddings endpoint "
-        "для production semantic recall.",
+        "current-audit-retention",
+        "Актуальная политика: хранить audit events 365 дней.",
     ),
 )
 
@@ -92,8 +94,8 @@ CASES = (
     ),
     Case(
         "production embedding model",
-        "какую embedding модель использовать в production?",
-        "embedding-openai-compatible",
+        "что нужно зафиксировать и сделать при смене embedding модели в production?",
+        "embedding-release-policy",
     ),
     Case(
         "openclaw integration",
@@ -107,8 +109,8 @@ CASES = (
     ),
     Case(
         "freshness preference",
-        "какие embeddings использовать в production semantic recall?",
-        "current-openai-compatible-embeddings",
+        "какой актуальный срок хранения audit events?",
+        "current-audit-retention",
     ),
 )
 
@@ -159,8 +161,7 @@ def run_eval(
     checks: list[EvalCheck] = []
     try:
         doc_vectors = {
-            doc.doc_id: post_embedding(base_url, model, doc.text, api_key)
-            for doc in DOCS
+            doc.doc_id: post_embedding(base_url, model, doc.text, api_key) for doc in DOCS
         }
         sample_vector = next(iter(doc_vectors.values()))
         checks.append(EvalCheck("endpoint-reachable", True, f"docs={len(DOCS)}"))
@@ -176,6 +177,7 @@ def run_eval(
         return EvalReport(
             format=REPORT_FORMAT,
             ok=False,
+            generated_at=datetime.now(UTC).isoformat(),
             provider=provider,
             base_url=base_url,
             model=model,
@@ -186,10 +188,7 @@ def run_eval(
     for case in CASES:
         query_vector = post_embedding(base_url, model, case.query, api_key)
         ranked = sorted(
-            (
-                (doc.doc_id, cosine(query_vector, doc_vectors[doc.doc_id]))
-                for doc in DOCS
-            ),
+            ((doc.doc_id, cosine(query_vector, doc_vectors[doc.doc_id])) for doc in DOCS),
             key=lambda item: item[1],
             reverse=True,
         )
@@ -209,6 +208,7 @@ def run_eval(
     return EvalReport(
         format=REPORT_FORMAT,
         ok=all(check.ok for check in checks),
+        generated_at=datetime.now(UTC).isoformat(),
         provider=provider,
         base_url=base_url,
         model=model,
@@ -228,14 +228,27 @@ def write_report(report: EvalReport, path: Path) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--provider", default="openai-compatible")
-    parser.add_argument("--base-url", default="https://api.openai.com")
-    parser.add_argument("--model", default="text-embedding-3-large")
-    parser.add_argument("--dimension", type=int, default=3072)
+    parser.add_argument(
+        "--provider",
+        default=os.getenv("UAM_EMBEDDING_PROVIDER", "openai-compatible"),
+    )
+    parser.add_argument(
+        "--base-url",
+        default=os.getenv("UAM_EMBEDDING_BASE_URL", "http://localhost:8000/v1"),
+    )
+    parser.add_argument(
+        "--model",
+        default=os.getenv("UAM_EMBEDDING_MODEL", "embedding-model"),
+    )
+    parser.add_argument(
+        "--dimension",
+        type=int,
+        default=int(os.getenv("UAM_EMBEDDING_DIM", "1536")),
+    )
     parser.add_argument("--json-report", type=Path)
     parser.add_argument(
         "--api-key",
-        default=read_secret_env("UAM_EMBEDDING_API_KEY", "OPENAI_API_KEY"),
+        default=read_secret_env("UAM_EMBEDDING_API_KEY"),
     )
     args = parser.parse_args()
 

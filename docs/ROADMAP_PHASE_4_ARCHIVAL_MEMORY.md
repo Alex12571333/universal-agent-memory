@@ -1,15 +1,11 @@
 # Phase 4 roadmap: archival-grade eternal memory
 
-This phase turns Obelisk Memory from a strong self-hosted memory server
-into an archival memory plane for long-running agents and agent swarms.
+This phase defines the archival memory plane for long-running agents and agent
+swarms: Docker-first deployment, PostgreSQL/Qdrant/NATS, explicit permissions,
+immutable revisions, human-readable vault projections and native
+OpenClaw/Hermes integrations.
 
-The ideas below were informed by the public `ArchiveOfHeresy` architecture in
-`AdmiralPinguin/shushunya`, but they are intentionally adapted to this project:
-Docker-first deployment, Postgres/Qdrant/NATS, explicit permissions, revisions,
-human-readable vault projections and deep OpenClaw/Hermes integrations.
-
-We should not copy ArchiveOfHeresy names or file-based implementation. The
-Obelisk Memory roles are:
+Obelisk Memory maintenance roles are:
 
 - **Навигатор памяти** (`Memory Navigator`) — pre-answer recall planner. It
   reads candidate memory layers and returns a compact, grounded context bundle.
@@ -22,13 +18,12 @@ Obelisk Memory roles are:
 - **Хранитель фокуса** (`Focus Keeper`) — manages active working topics and
   short-lived task context.
 
-Memory LLM requirement: Навигатор памяти, Куратор памяти and future graph
-extraction workers must use Qwen through the DGX Spark `.10` OpenAI-compatible
-endpoint configured by `UAM_MEMORY_LLM_*`. See
-[DGX_SPARK_MEMORY_LLM.md](DGX_SPARK_MEMORY_LLM.md). This is separate from the
-Jina embedding endpoint on `.10:8002`. The runtime adapter is
-`MemoryLLMClient` in `src/memory_plane/adapters/llm.py`; workers should call it
-through `chat_json()` when they need machine-checkable curation decisions.
+Навигатор памяти, Куратор памяти and graph extraction workers use the
+provider-neutral OpenAI-compatible endpoint configured by `UAM_MEMORY_LLM_*`.
+The configured provider and model are deployment choices. The runtime adapter
+is `MemoryLLMClient` in `src/memory_plane/adapters/llm.py`; workers call
+`chat_json()` for machine-checkable curation decisions. Embeddings remain a
+separate OpenAI-compatible endpoint and configuration.
 
 ## Design principles
 
@@ -90,8 +85,8 @@ Example output:
 
 Add a safe gateway for deep agent integrations.
 
-Initial implementation note: the project now has `POST /v1/memory/proposals`
-and `GET /v1/memory/proposals`. Proposals are sanitized by PrivacyGuard, stored
+Implemented foundation: `POST /v1/memory/proposals` and
+`GET /v1/memory/proposals`. Proposals are sanitized by PrivacyGuard, stored
 with namespace/requester/evidence/confidence/importance, and remain separate
 from recallable `MemoryItem` records until curated. It also has
 `POST /v1/memory/proposals/{proposal_id}/accept` and `/reject`: accept creates a
@@ -143,7 +138,7 @@ Rules:
 Add an explicit raw conversation ledger for runtimes that want complete
 transcript retention.
 
-Current behavior is selective: the server stores only what enters
+Capture is explicit: the server stores only what enters
 `/v1/memory/retain`, `/v1/ingest/*`, vault import or agent integration hooks.
 It does not automatically intercept every user/assistant message.
 
@@ -247,8 +242,8 @@ Add an asynchronous post-answer worker.
 The Куратор should consume outbox/NATS events and maintain durable memory after
 agent/user turns.
 
-Initial implementation note: the project now has an explicit deterministic
-curation bridge, `POST /v1/conversations/turns/{turn_id}/curate`, that converts
+Implemented foundation: the deterministic curation bridge
+`POST /v1/conversations/turns/{turn_id}/curate` converts
 one raw transcript turn into a recallable memory item with
 `conversation://{turn_id}` provenance. The full WP-26 worker should build on
 this path instead of inventing a second write pipeline.
@@ -418,8 +413,8 @@ Recommended order:
 
 ## Explicit non-goals
 
-- Do not copy ArchiveOfHeresy persona-specific prompts, model paths or local
-  Shushunya/TG/Warmaster assumptions.
+- Do not embed provider-specific persona prompts, machine paths or deployment
+  addresses in core memory contracts.
 - Do not use hashed token embeddings as the primary semantic layer.
 - Do not add a global request lock.
 - Do not allow direct agent mutation of durable memory records.

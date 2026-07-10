@@ -4,8 +4,9 @@ The benchmark suite validates runtime behavior. This script validates the
 production envelope: docs, compose hardening, CI, generated assets, and the
 latest benchmark report. It intentionally has no third-party dependencies.
 
-Passing this gate means "ready for a trusted self-hosted pilot", not "fully
-production-complete". The full gap list lives in the production gap audit.
+Passing this gate proves repository envelope artifacts are present. It does not
+certify runtime correctness, a trusted pilot, or a production deployment. The
+full blocker list lives in the production gap audit.
 """
 
 from __future__ import annotations
@@ -81,13 +82,14 @@ def run_checks(*, static_only: bool) -> list[Check]:
         "docs/RELEASE_CHECKLIST.md",
         "docs/RELEASE_EVIDENCE.md",
         "docs/DGX_SPARK_MEMORY_LLM.md",
-        "docs/BENCHMARK_RESULTS_2026_07_09.md",
         "deploy/observability/grafana-dashboard.json",
         "deploy/observability/prometheus-alerts.yml",
     ]
     checks.extend(check_file(path) for path in required_files)
 
     readme = read("README.md")
+    release_checklist = read("docs/RELEASE_CHECKLIST.md")
+    release_evidence = read("docs/RELEASE_EVIDENCE.md")
     checks.extend(
         [
             Check("readme:brand", "Obelisk Memory" in readme, "README uses product name"),
@@ -96,11 +98,16 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 "docs/assets/obelisk-memory-hero.png" in readme,
                 "README references generated hero asset",
             ),
-            Check("readme:production", "Production deployment" in readme, "prod path documented"),
+            Check(
+                "readme:production-reference",
+                "Production reference deployment" in readme
+                and "not an approved production deployment" in readme,
+                "README documents the reference topology without approving production",
+            ),
             Check(
                 "readme:honest-status",
-                "trusted local/team pilot" in readme
-                and "Full production still requires" in readme,
+                "engineering preview" in readme
+                and "must not be used for a trusted production pilot" in readme,
                 "README does not over-claim full production readiness",
             ),
             Check(
@@ -115,35 +122,38 @@ def run_checks(*, static_only: bool) -> list[Check]:
             ),
             Check(
                 "readme:agent-soak",
-                "scripts/agent_soak_eval.py" in readme
-                and "cross-workspace leakage" in readme,
+                "scripts/agent_soak_eval.py" in readme and "cross-workspace leakage" in readme,
                 "README documents live agent soak evidence",
             ),
             Check(
                 "readme:env-validation",
-                "scripts/validate_production_env.py" in readme
-                and "--require-public-tls" in readme,
+                "scripts/validate_production_env.py" in readme and "--require-public-tls" in readme,
                 "README documents strict production env validation",
             ),
             Check(
-                "readme:memory-llm-eval",
-                "scripts/real_memory_llm_eval.py" in readme
-                and "ops/memory-llm.json" in readme,
-                "README documents live memory LLM regression evidence",
+                "readme:release-memory-llm-eval",
+                "docs/RELEASE_CHECKLIST.md" in readme
+                and "docs/RELEASE_EVIDENCE.md" in readme
+                and "scripts/real_memory_llm_eval.py" in release_checklist
+                and "ops/memory-llm.json" in release_evidence,
+                "README delegates live memory LLM evidence to release documentation",
             ),
             Check(
-                "readme:ui-walkthrough",
-                "scripts/ui_walkthrough_eval.py" in readme
-                and "ops/ui-walkthrough.json" in readme,
-                "README documents live UI walkthrough evidence",
+                "readme:release-ui-walkthrough",
+                "docs/RELEASE_CHECKLIST.md" in readme
+                and "docs/RELEASE_EVIDENCE.md" in readme
+                and "scripts/ui_walkthrough_eval.py" in release_checklist
+                and "ops/ui-walkthrough.json" in release_evidence,
+                "README delegates live UI walkthrough evidence to release documentation",
             ),
             Check("readme:128k", "131072" in readme, "128k context budget documented"),
             Check(
                 "readme:openai-compatible-llm",
-                "OpenAI-compatible means the API shape" in readme
+                "OpenAI-compatible means the wire protocol, not the company" in readme
                 and "`/v1/chat/completions`" in readme
-                and "provider lock-in" in readme
-                and "OpenRouter" in readme
+                and "any provider" in readme
+                and "UAM_MEMORY_LLM_PROVIDER=openai-compatible" in readme
+                and "provider/model-id" in readme
                 and "LiteLLM" in readme
                 and "llama.cpp" in readme,
                 "README documents provider-neutral memory LLM endpoint",
@@ -175,17 +185,17 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 "prod-compose:secret-files",
                 "UAM_API_KEY_FILE: ${UAM_API_KEY_FILE:-}" in prod_compose
                 and "UAM_API_KEYS_FILE: ${UAM_API_KEYS_FILE:-}" in prod_compose
-                and "UAM_MEMORY_LLM_API_KEY_FILE: ${UAM_MEMORY_LLM_API_KEY_FILE:-}"
-                in prod_compose
-                and "UAM_EMBEDDING_API_KEY_FILE: ${UAM_EMBEDDING_API_KEY_FILE:-}"
-                in prod_compose,
-                "production compose supports mounted secret files",
+                and "UAM_MEMORY_LLM_API_KEY_FILE: ${UAM_MEMORY_LLM_API_KEY_FILE:-}" in prod_compose
+                and "UAM_EMBEDDING_API_KEY_FILE: ${UAM_EMBEDDING_API_KEY_FILE:-}" in prod_compose,
+                (
+                    "production compose passes *_FILE paths; external secret "
+                    "mounts remain deployment work"
+                ),
             ),
             Check(
                 "prod-compose:provider-neutral-embeddings",
                 prod_compose.count(
-                    "UAM_EMBEDDING_PROVIDER: "
-                    "${UAM_EMBEDDING_PROVIDER:-openai-compatible}"
+                    "UAM_EMBEDDING_PROVIDER: ${UAM_EMBEDDING_PROVIDER:-openai-compatible}"
                 )
                 >= 2
                 and prod_compose.count("UAM_EMBEDDING_SEND_DIMENSIONS: ") >= 2,
@@ -197,17 +207,13 @@ def run_checks(*, static_only: bool) -> list[Check]:
                     "UAM_MEMORY_TEXT_ENCRYPTION: ${UAM_MEMORY_TEXT_ENCRYPTION:-pgcrypto}"
                 )
                 >= 2
-                and prod_compose.count("UAM_MEMORY_TEXT_ENCRYPTION_KEY_FILE: ")
-                >= 2
-                and prod_compose.count("UAM_MEMORY_TEXT_ENCRYPTION_SCOPES: ")
-                >= 2,
+                and prod_compose.count("UAM_MEMORY_TEXT_ENCRYPTION_KEY_FILE: ") >= 2
+                and prod_compose.count("UAM_MEMORY_TEXT_ENCRYPTION_SCOPES: ") >= 2,
                 "production API and embedding worker receive canonical text encryption settings",
             ),
             Check(
                 "prod-compose:qdrant-redacted-payload",
-                prod_compose.count(
-                    "UAM_QDRANT_PAYLOAD_TEXT: ${UAM_QDRANT_PAYLOAD_TEXT:-false}"
-                )
+                prod_compose.count("UAM_QDRANT_PAYLOAD_TEXT: ${UAM_QDRANT_PAYLOAD_TEXT:-false}")
                 >= 2,
                 "production API and embedding worker keep raw text out of Qdrant payloads",
             ),
@@ -215,26 +221,17 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 "reverse-proxy:caddy-overlay",
                 "caddy:2.8-alpine" in read("deploy/reverse-proxy/docker-compose.caddy.yml")
                 and '"443:443"' in read("deploy/reverse-proxy/docker-compose.caddy.yml")
-                and "ports: !override" in read(
-                    "deploy/reverse-proxy/docker-compose.caddy.yml"
-                )
-                and "127.0.0.1:6798:8080" in read(
-                    "deploy/reverse-proxy/docker-compose.caddy.yml"
-                )
-                and "reverse_proxy memory-server:8080" in read(
-                    "deploy/reverse-proxy/Caddyfile"
-                )
-                and "Strict-Transport-Security" in read(
-                    "deploy/reverse-proxy/Caddyfile"
-                ),
+                and "ports: !override" in read("deploy/reverse-proxy/docker-compose.caddy.yml")
+                and "127.0.0.1:6798:8080" in read("deploy/reverse-proxy/docker-compose.caddy.yml")
+                and "reverse_proxy memory-server:8080" in read("deploy/reverse-proxy/Caddyfile")
+                and "Strict-Transport-Security" in read("deploy/reverse-proxy/Caddyfile"),
                 "Caddy TLS reverse proxy example exists",
             ),
             Check(
                 "docs:tls-reverse-proxy",
                 "UAM_PUBLIC_HOST" in read("docs/TLS_REVERSE_PROXY.md")
-                and "Do not call the deployment production-hardened" in read(
-                    "docs/TLS_REVERSE_PROXY.md"
-                )
+                and "Do not call the deployment production-hardened"
+                in read("docs/TLS_REVERSE_PROXY.md")
                 and "6798" in read("docs/TLS_REVERSE_PROXY.md"),
                 "TLS reverse proxy guide documents backend exposure limits",
             ),
@@ -292,7 +289,8 @@ def run_checks(*, static_only: bool) -> list[Check]:
             Check(
                 "env:memory-llm",
                 "UAM_MEMORY_LLM_PROVIDER=openai-compatible" in env
-                and "UAM_MEMORY_LLM_BASE_URL=https://api.openai.com/v1" in env
+                and "UAM_MEMORY_LLM_MODEL=provider/memory-model-id" in env
+                and "UAM_MEMORY_LLM_BASE_URL=https://model-gateway.example.com/v1" in env
                 and "OpenRouter" in env
                 and "LiteLLM" in env
                 and "Spark/DGX" in env,
@@ -301,8 +299,9 @@ def run_checks(*, static_only: bool) -> list[Check]:
             Check(
                 "env:embeddings",
                 "UAM_EMBEDDING_PROVIDER=openai-compatible" in env
-                and "UAM_EMBEDDING_MODEL=text-embedding-3-large" in env
-                and "UAM_EMBEDDING_DIM=3072" in env
+                and "UAM_EMBEDDING_MODEL=provider/embedding-model-id" in env
+                and "UAM_EMBEDDING_DIM=" in env
+                and "UAM_EMBEDDING_BASE_URL=https://embedding-gateway.example.com/v1" in env
                 and "UAM_EMBEDDING_SEND_DIMENSIONS=false" in env
                 and "not a provider lock-in" in env,
                 "OpenAI-compatible embedding endpoint",
@@ -315,7 +314,8 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 and "UAM_API_KEYS_FILE=" in env
                 and "UAM_MEMORY_TEXT_ENCRYPTION_KEY_FILE=" in env
                 and "UAM_MEMORY_LLM_API_KEY_FILE=" in env
-                and "UAM_EMBEDDING_API_KEY_FILE=" in env,
+                and "UAM_EMBEDDING_API_KEY_FILE=" in env
+                and "UAM_RELEASE_SIGNING_KEY_FILE=" in env,
                 "mounted secret-file env alternatives are documented",
             ),
             Check(
@@ -326,7 +326,9 @@ def run_checks(*, static_only: bool) -> list[Check]:
             ),
             Check(
                 "env:signing-keys",
-                "UAM_AUDIT_SIGNING_KEY=" in env and "UAM_VAULT_SIGNING_KEY=" in env,
+                "UAM_AUDIT_SIGNING_KEY=" in env
+                and "UAM_VAULT_SIGNING_KEY=" in env
+                and "UAM_RELEASE_SIGNING_KEY=" in env,
                 "operator-held signing keys are documented",
             ),
             Check(
@@ -374,43 +376,32 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 "outbox_dead_letter_total" in read("scripts/check_metrics_health.py")
                 and "outbox_lag_seconds" in read("scripts/check_metrics_health.py")
                 and "embedding_failures_total" in read("src/memory_plane/services/embedding.py")
-                and "embedding_last_duration_seconds" in read(
-                    "src/memory_plane/services/embedding.py"
-                )
+                and "embedding_last_duration_seconds"
+                in read("src/memory_plane/services/embedding.py")
                 and "UAM_METRICS_ALERT_WEBHOOK" in read("scripts/check_metrics_health.py"),
                 (
-                    "metrics health script evaluates outbox lag/dead letters; "
-                    "embedding exposes failure/latency metrics"
+                    "static metrics contracts cover outbox and embedding counters; "
+                    "worker export remains a runtime gap"
                 ),
             ),
             Check(
                 "ops:observability-artifacts",
-                "uam_outbox_dead_letter_total" in read(
-                    "deploy/observability/prometheus-alerts.yml"
-                )
-                and "uam_outbox_lag_seconds" in read(
-                    "deploy/observability/prometheus-alerts.yml"
-                )
-                and "uam_embedding_failures_total" in read(
-                    "deploy/observability/prometheus-alerts.yml"
-                )
-                and "uam_embedding_reindex_failures_total" in read(
-                    "deploy/observability/prometheus-alerts.yml"
-                )
-                and "uam_memory_items_total" in read(
-                    "deploy/observability/grafana-dashboard.json"
-                )
+                "uam_outbox_dead_letter_total" in read("deploy/observability/prometheus-alerts.yml")
+                and "uam_outbox_lag_seconds" in read("deploy/observability/prometheus-alerts.yml")
+                and "uam_embedding_failures_total"
+                in read("deploy/observability/prometheus-alerts.yml")
+                and "uam_embedding_reindex_failures_total"
+                in read("deploy/observability/prometheus-alerts.yml")
+                and "uam_memory_items_total" in read("deploy/observability/grafana-dashboard.json")
                 and "docs/OBSERVABILITY.md" in read("README.md"),
                 "Prometheus alerts and Grafana dashboard cover production metrics",
             ),
             Check(
                 "tests:observability-artifacts",
-                "test_grafana_dashboard_uses_real_exposed_metrics" in read(
-                    "tests/test_observability_artifacts.py"
-                )
-                and "test_prometheus_alerts_cover_production_failure_modes" in read(
-                    "tests/test_observability_artifacts.py"
-                ),
+                "test_grafana_dashboard_uses_real_exposed_metrics"
+                in read("tests/test_observability_artifacts.py")
+                and "test_prometheus_alerts_cover_production_failure_modes"
+                in read("tests/test_observability_artifacts.py"),
                 "observability artifacts are covered by tests",
             ),
             Check(
@@ -430,8 +421,7 @@ def run_checks(*, static_only: bool) -> list[Check]:
             ),
             Check(
                 "audit:operator-export",
-                '@app.get("/v1/audit/events")' in api
-                and 'path.startswith("/v1/audit")' in api,
+                '@app.get("/v1/audit/events")' in api and 'path.startswith("/v1/audit")' in api,
                 "audit export endpoint is operator-scoped",
             ),
             Check(
@@ -457,15 +447,12 @@ def run_checks(*, static_only: bool) -> list[Check]:
             ),
             Check(
                 "tests:audit-export-bundle",
-                "test_export_audit_writes_jsonl_manifest_and_checksum" in read(
-                    "tests/test_backup_restore_scripts.py"
-                )
-                and "test_export_audit_signs_and_verifies_bundle" in read(
-                    "tests/test_backup_restore_scripts.py"
-                )
-                and "test_export_audit_can_export_all_pages_with_time_range" in read(
-                    "tests/test_backup_restore_scripts.py"
-                ),
+                "test_export_audit_writes_jsonl_manifest_and_checksum"
+                in read("tests/test_backup_restore_scripts.py")
+                and "test_export_audit_signs_and_verifies_bundle"
+                in read("tests/test_backup_restore_scripts.py")
+                and "test_export_audit_can_export_all_pages_with_time_range"
+                in read("tests/test_backup_restore_scripts.py"),
                 "audit bundle checksum/signature/range behavior is covered by tests",
             ),
             Check(
@@ -479,15 +466,12 @@ def run_checks(*, static_only: bool) -> list[Check]:
             ),
             Check(
                 "tests:audit-retention-runner",
-                "test_audit_retention_apply_prunes_only_after_verify" in read(
-                    "tests/test_backup_restore_scripts.py"
-                )
-                and "test_audit_retention_does_not_prune_when_verify_fails" in read(
-                    "tests/test_backup_restore_scripts.py"
-                )
-                and "test_audit_retention_apply_requires_signed_export" in read(
-                    "tests/test_backup_restore_scripts.py"
-                ),
+                "test_audit_retention_apply_prunes_only_after_verify"
+                in read("tests/test_backup_restore_scripts.py")
+                and "test_audit_retention_does_not_prune_when_verify_fails"
+                in read("tests/test_backup_restore_scripts.py")
+                and "test_audit_retention_apply_requires_signed_export"
+                in read("tests/test_backup_restore_scripts.py"),
                 "audit retention safety behavior is covered",
             ),
             Check(
@@ -514,13 +498,12 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 "docker" in read("scripts/restore_drill.py")
                 and "pg_restore" in read("scripts/restore_drill.py")
                 and "REQUIRED_TABLES" in read("scripts/restore_drill.py"),
-                "restore drill verifies backups in isolated PostgreSQL",
+                "restore drill restores into isolated PostgreSQL and checks schema presence",
             ),
             Check(
                 "tests:restore-drill",
-                "test_restore_drill_uses_temporary_docker_target" in read(
-                    "tests/test_backup_restore_scripts.py"
-                ),
+                "test_restore_drill_uses_temporary_docker_target"
+                in read("tests/test_backup_restore_scripts.py"),
                 "restore drill command flow is covered by tests",
             ),
             Check(
@@ -541,16 +524,17 @@ def run_checks(*, static_only: bool) -> list[Check]:
             ),
             Check(
                 "release:evidence-verifier",
-                "obelisk-release-evidence-manifest-v1"
+                "obelisk-release-evidence-manifest-v2" in read("scripts/verify_release_evidence.py")
+                and 'SIGNATURE_ALGORITHM = "hmac-sha256"'
+                in read("scripts/verify_release_evidence.py")
+                and "artifact checksum verified" in read("scripts/verify_release_evidence.py")
+                and "artifact path escapes the release bundle"
                 in read("scripts/verify_release_evidence.py")
                 and "agent_soak" in read("scripts/verify_release_evidence.py")
                 and "conversation_pipeline" in read("scripts/verify_release_evidence.py")
-                and "obelisk-conversation-pipeline-v1"
-                in read("scripts/verify_release_evidence.py")
+                and "obelisk-conversation-pipeline-v1" in read("scripts/verify_release_evidence.py")
                 and "embedding" in read("scripts/verify_release_evidence.py")
-                and "obelisk-embedding-eval-v1" in read(
-                    "scripts/verify_release_evidence.py"
-                )
+                and "obelisk-embedding-eval-v1" in read("scripts/verify_release_evidence.py")
                 and "load_smoke" in read("scripts/verify_release_evidence.py")
                 and "ops_schedule" in read("scripts/verify_release_evidence.py")
                 and "obelisk-ops-schedule-preflight-v1"
@@ -560,27 +544,19 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 in read("scripts/verify_release_evidence.py")
                 and "audit_retention" in read("scripts/verify_release_evidence.py")
                 and "deployment_preflight" in read("scripts/verify_release_evidence.py")
-                and "obelisk-deployment-preflight-v1"
-                in read("scripts/verify_release_evidence.py")
+                and "obelisk-deployment-preflight-v1" in read("scripts/verify_release_evidence.py")
                 and "secret_files" in read("scripts/verify_release_evidence.py")
                 and "obelisk-secret-files-preflight-v1"
                 in read("scripts/verify_release_evidence.py")
                 and "vault_import" in read("scripts/verify_release_evidence.py")
-                and "obelisk-vault-import-report-v1"
-                in read("scripts/verify_release_evidence.py")
+                and "obelisk-vault-import-report-v1" in read("scripts/verify_release_evidence.py")
                 and "branch_protection" in read("scripts/verify_release_evidence.py")
                 and "ui_walkthrough" in read("scripts/verify_release_evidence.py")
                 and "release_notes" in read("scripts/verify_release_evidence.py")
-                and "obelisk-release-notes-v1" in read(
-                    "scripts/verify_release_evidence.py"
-                )
+                and "obelisk-release-notes-v1" in read("scripts/verify_release_evidence.py")
                 and "ops/ops-schedule.json" in read("docs/RELEASE_EVIDENCE.md")
-                and "ops/observability-preflight.json" in read(
-                    "docs/RELEASE_EVIDENCE.md"
-                )
-                and "ops/conversation-pipeline.json" in read(
-                    "docs/RELEASE_EVIDENCE.md"
-                )
+                and "ops/observability-preflight.json" in read("docs/RELEASE_EVIDENCE.md")
+                and "ops/conversation-pipeline.json" in read("docs/RELEASE_EVIDENCE.md")
                 and "ops/embedding.json" in read("docs/RELEASE_EVIDENCE.md")
                 and "ops/release-notes.json" in read("docs/RELEASE_EVIDENCE.md")
                 and "ops/deployment-preflight.json" in read("docs/RELEASE_EVIDENCE.md")
@@ -592,11 +568,12 @@ def run_checks(*, static_only: bool) -> list[Check]:
             Check(
                 "release:evidence-generator",
                 "generate_release_evidence_manifest.py" in read("docs/RELEASE_EVIDENCE.md")
-                and "REQUIRED_ARTIFACTS"
-                in read("scripts/generate_release_evidence_manifest.py")
+                and "REQUIRED_ARTIFACTS" in read("scripts/generate_release_evidence_manifest.py")
                 and "DEFAULT_ARTIFACT_PATHS"
-                in read("scripts/generate_release_evidence_manifest.py"),
-                "release evidence manifest generator is documented and verifier-bound",
+                in read("scripts/generate_release_evidence_manifest.py")
+                and "image_digest" in read("scripts/generate_release_evidence_manifest.py")
+                and "sign_manifest" in read("scripts/generate_release_evidence_manifest.py"),
+                "release evidence generator hashes, identifies and signs the bundle",
             ),
             Check(
                 "release:notes-generator",
@@ -628,8 +605,18 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 and "test_verify_release_evidence_rejects_failed_embedding_eval"
                 in read("tests/test_backup_restore_scripts.py")
                 and "test_verify_release_evidence_rejects_conversation_pipeline_leak"
+                in read("tests/test_backup_restore_scripts.py")
+                and "test_verify_release_evidence_rejects_artifact_tampering"
+                in read("tests/test_backup_restore_scripts.py")
+                and "test_verify_release_evidence_rejects_manifest_tampering"
+                in read("tests/test_backup_restore_scripts.py")
+                and "test_verify_release_evidence_rejects_path_escape_even_when_signed"
+                in read("tests/test_backup_restore_scripts.py")
+                and "test_verify_release_evidence_rejects_stale_manifest"
+                in read("tests/test_backup_restore_scripts.py")
+                and "test_verify_release_evidence_rejects_report_from_other_target"
                 in read("tests/test_backup_restore_scripts.py"),
-                "release evidence verifier behavior is covered",
+                "release evidence semantics, tamper resistance and identity are covered",
             ),
             Check(
                 "tests:release-evidence-generator",
@@ -649,8 +636,7 @@ def run_checks(*, static_only: bool) -> list[Check]:
             ),
             Check(
                 "ops:observability-preflight-runner",
-                "obelisk-observability-preflight-v1"
-                in read("scripts/observability_preflight.py")
+                "obelisk-observability-preflight-v1" in read("scripts/observability_preflight.py")
                 and "grafana-dashboard:required-metrics"
                 in read("scripts/observability_preflight.py")
                 and "prometheus-alerts:required-alerts"
@@ -668,8 +654,7 @@ def run_checks(*, static_only: bool) -> list[Check]:
             ),
             Check(
                 "ops:schedule-preflight-runner",
-                "obelisk-ops-schedule-preflight-v1"
-                in read("scripts/ops_schedule_preflight.py")
+                "obelisk-ops-schedule-preflight-v1" in read("scripts/ops_schedule_preflight.py")
                 and "scheduled_backup.py" in read("scripts/ops_schedule_preflight.py")
                 and "audit_retention.py" in read("scripts/ops_schedule_preflight.py")
                 and "check_metrics_health.py" in read("scripts/ops_schedule_preflight.py")
@@ -702,8 +687,7 @@ def run_checks(*, static_only: bool) -> list[Check]:
             ),
             Check(
                 "secrets:preflight-runner",
-                "obelisk-secret-files-preflight-v1"
-                in read("scripts/secret_files_preflight.py")
+                "obelisk-secret-files-preflight-v1" in read("scripts/secret_files_preflight.py")
                 and "raw-empty" in read("scripts/secret_files_preflight.py")
                 and "file-configured" in read("scripts/secret_files_preflight.py")
                 and "file-readable" in read("scripts/secret_files_preflight.py")
@@ -728,9 +712,8 @@ def run_checks(*, static_only: bool) -> list[Check]:
             ),
             Check(
                 "tests:ui-walkthrough-runner",
-                "test_ui_walkthrough_eval_passes_operator_flows" in read(
-                    "tests/test_ui_walkthrough_eval.py"
-                )
+                "test_ui_walkthrough_eval_passes_operator_flows"
+                in read("tests/test_ui_walkthrough_eval.py")
                 and "test_ui_walkthrough_eval_fails_when_vault_editor_exposes_vectors"
                 in read("tests/test_ui_walkthrough_eval.py"),
                 "UI walkthrough runner success and vector-leak failure are covered",
@@ -752,12 +735,10 @@ def run_checks(*, static_only: bool) -> list[Check]:
             ),
             Check(
                 "tests:load-smoke-runner",
-                "test_load_smoke_eval_passes_parallel_retain_recall" in read(
-                    "tests/test_load_smoke_eval.py"
-                )
-                and "test_load_smoke_eval_fails_on_backlog_metrics" in read(
-                    "tests/test_load_smoke_eval.py"
-                ),
+                "test_load_smoke_eval_passes_parallel_retain_recall"
+                in read("tests/test_load_smoke_eval.py")
+                and "test_load_smoke_eval_fails_on_backlog_metrics"
+                in read("tests/test_load_smoke_eval.py"),
                 "load smoke runner behavior is covered",
             ),
             Check(
@@ -770,12 +751,8 @@ def run_checks(*, static_only: bool) -> list[Check]:
             ),
             Check(
                 "vault:signed-manifest",
-                "MANIFEST_FORMAT = \"obelisk-vault-manifest-v1\"" in read(
-                    "scripts/vault_manifest.py"
-                )
-                and "SIGNATURE_ALGORITHM = \"hmac-sha256\"" in read(
-                    "scripts/vault_manifest.py"
-                )
+                'MANIFEST_FORMAT = "obelisk-vault-manifest-v1"' in read("scripts/vault_manifest.py")
+                and 'SIGNATURE_ALGORITHM = "hmac-sha256"' in read("scripts/vault_manifest.py")
                 and "--require-signature" in read("scripts/import_vault.py")
                 and "--json-report" in read("scripts/import_vault.py")
                 and "obelisk-vault-import-report-v1" in read("scripts/import_vault.py")
@@ -784,15 +761,12 @@ def run_checks(*, static_only: bool) -> list[Check]:
             ),
             Check(
                 "tests:vault-signed-manifest",
-                "test_export_vault_can_sign_manifest" in read(
-                    "tests/test_backup_restore_scripts.py"
-                )
-                and "test_import_vault_verifies_signed_manifest_before_apply" in read(
-                    "tests/test_backup_restore_scripts.py"
-                )
-                and "test_import_vault_rejects_tampered_signed_manifest" in read(
-                    "tests/test_backup_restore_scripts.py"
-                ),
+                "test_export_vault_can_sign_manifest"
+                in read("tests/test_backup_restore_scripts.py")
+                and "test_import_vault_verifies_signed_manifest_before_apply"
+                in read("tests/test_backup_restore_scripts.py")
+                and "test_import_vault_rejects_tampered_signed_manifest"
+                in read("tests/test_backup_restore_scripts.py"),
                 "signed vault manifest behavior is covered by tests",
             ),
             Check(
@@ -801,28 +775,22 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 and "--require-public-tls" in read("scripts/validate_production_env.py")
                 and "--require-real-embeddings" in read("scripts/validate_production_env.py")
                 and "UAM_QDRANT_PAYLOAD_TEXT" in read("scripts/validate_production_env.py")
-                and "UAM_MEMORY_TEXT_ENCRYPTION" in read(
-                    "scripts/validate_production_env.py"
-                ),
+                and "UAM_MEMORY_TEXT_ENCRYPTION" in read("scripts/validate_production_env.py"),
                 "production env validator rejects placeholder/local-only config",
             ),
             Check(
                 "tests:env-validator",
-                "test_validate_production_env_accepts_strict_real_config" in read(
-                    "tests/test_backup_restore_scripts.py"
-                )
-                and "test_validate_production_env_rejects_placeholders" in read(
-                    "tests/test_backup_restore_scripts.py"
-                ),
+                "test_validate_production_env_accepts_strict_real_config"
+                in read("tests/test_backup_restore_scripts.py")
+                and "test_validate_production_env_rejects_placeholders"
+                in read("tests/test_backup_restore_scripts.py"),
                 "production env validator behavior is covered",
             ),
             Check(
                 "qdrant:redacted-payload",
                 "payload_text" in read("src/memory_plane/adapters/qdrant.py")
                 and "text_redacted" in read("src/memory_plane/adapters/qdrant.py")
-                and "_payload_to_candidate_item" in read(
-                    "src/memory_plane/adapters/qdrant.py"
-                ),
+                and "_payload_to_candidate_item" in read("src/memory_plane/adapters/qdrant.py"),
                 "Qdrant can store vectors/filter metadata without raw memory text",
             ),
             Check(
@@ -844,24 +812,19 @@ def run_checks(*, static_only: bool) -> list[Check]:
             ),
             Check(
                 "tests:postgres-pgcrypto-text",
-                "test_postgres_pgcrypto_mode_requires_key" in read(
-                    "tests/test_postgres_encryption.py"
-                )
-                and "test_postgres_encrypts_memory_text_before_insert" in read(
-                    "tests/test_postgres_encryption.py"
-                )
-                and "test_postgres_encrypts_only_selected_memory_scopes" in read(
-                    "tests/test_postgres_encryption.py"
-                ),
+                "test_postgres_pgcrypto_mode_requires_key"
+                in read("tests/test_postgres_encryption.py")
+                and "test_postgres_encrypts_memory_text_before_insert"
+                in read("tests/test_postgres_encryption.py")
+                and "test_postgres_encrypts_only_selected_memory_scopes"
+                in read("tests/test_postgres_encryption.py"),
                 "PostgreSQL memory text encryption behavior is covered",
             ),
             Check(
                 "conversation:pipeline-runner",
-                "obelisk-conversation-pipeline-v1"
-                in read("scripts/conversation_pipeline_eval.py")
+                "obelisk-conversation-pipeline-v1" in read("scripts/conversation_pipeline_eval.py")
                 and "raw-turn-not-recalled" in read("scripts/conversation_pipeline_eval.py")
-                and "curated-memory-recalled"
-                in read("scripts/conversation_pipeline_eval.py"),
+                and "curated-memory-recalled" in read("scripts/conversation_pipeline_eval.py"),
                 "conversation pipeline runner validates raw capture, curation and recall",
             ),
             Check(
@@ -898,9 +861,8 @@ def run_checks(*, static_only: bool) -> list[Check]:
             ),
             Check(
                 "tests:llm-live-regression-runner",
-                "test_real_memory_llm_eval_passes_memory_contract" in read(
-                    "tests/test_real_memory_llm_eval.py"
-                )
+                "test_real_memory_llm_eval_passes_memory_contract"
+                in read("tests/test_real_memory_llm_eval.py")
                 and "test_real_memory_llm_eval_fails_when_model_keeps_obsolete_claim"
                 in read("tests/test_real_memory_llm_eval.py"),
                 "memory LLM live regression runner behavior is covered",
@@ -926,23 +888,6 @@ def run_checks(*, static_only: bool) -> list[Check]:
         ]
     )
 
-    if not static_only:
-        benchmark = read("docs/BENCHMARK_RESULTS_2026_07_09.md")
-        checks.extend(
-            [
-                Check(
-                    "benchmark:passed",
-                    "Passed: 12" in benchmark or "12 passed" in benchmark.lower(),
-                    "latest benchmark pass count",
-                ),
-                Check(
-                    "benchmark:no-failures",
-                    "Failed: 0" in benchmark or "0 failed" in benchmark.lower(),
-                    "latest benchmark failure count",
-                ),
-            ]
-        )
-
     return checks
 
 
@@ -967,12 +912,13 @@ def render_report(checks: list[Check]) -> str:
             "## Verdict",
             "",
             (
-                "Obelisk Memory passes the repository-level trusted self-hosted pilot gate. "
-                "This is not a full-production certification; see the production gap audit."
+                "Obelisk Memory passes repository-level envelope checks. This does not "
+                "certify runtime correctness, a trusted pilot, or production readiness; "
+                "see the production gap audit."
                 if failed == 0
                 else (
-                    "Obelisk Memory is not ready for the trusted self-hosted "
-                    "pilot gate until failed checks are fixed."
+                    "Obelisk Memory does not pass repository-level envelope checks "
+                    "until failed checks are fixed."
                 )
             ),
             "",

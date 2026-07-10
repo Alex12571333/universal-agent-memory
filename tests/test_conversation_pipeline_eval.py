@@ -21,15 +21,23 @@ def _load_script(name: str):
 
 
 conversation_pipeline_eval = _load_script("conversation_pipeline_eval")
+BUILD_IDENTITY = {
+    "version": "0.1.0",
+    "source_commit": "a" * 40,
+    "image_digest": "sha256:" + "b" * 64,
+    "deployment_id": "conversation-pipeline-test",
+    "build_time": "2026-07-10T00:00:00+00:00",
+}
 
 
 class FakeConversationClient:
-    def __init__(self, *, leak_raw: bool = False) -> None:
+    def __init__(self, *, leak_raw: bool = False, include_build_identity: bool = True) -> None:
         self.leak_raw = leak_raw
         self.turn_id = "00000000-0000-0000-0000-000000000111"
         self.memory_id = "00000000-0000-0000-0000-000000000222"
         self.curated = False
         self.marker = ""
+        self.build_identity = BUILD_IDENTITY if include_build_identity else None
 
     def request(
         self,
@@ -41,6 +49,8 @@ class FakeConversationClient:
         auth: bool = True,
     ) -> Any:
         del expect_status, auth
+        if method == "GET" and path == "/v1/system/status":
+            return {"status": "ok", "version": "0.1.0", "build": self.build_identity}
         if method == "POST" and path == "/v1/conversations/turns":
             assert body is not None
             self.marker = str(body["messages"][0]["content"]).split("проверку ")[1].split(":")[0]
@@ -78,7 +88,10 @@ def test_conversation_pipeline_eval_passes_full_pipeline() -> None:
 
     assert report.format == "obelisk-conversation-pipeline-v1"
     assert report.ok is True
+    assert report.generated_at
+    assert report.build == BUILD_IDENTITY
     assert {check.name for check in report.checks} == {
+        "build-identity",
         "raw-turn-stored",
         "raw-turn-listed",
         "raw-turn-not-recalled",
@@ -100,6 +113,18 @@ def test_conversation_pipeline_eval_fails_when_raw_turn_leaks_into_recall() -> N
     assert raw_check.ok is False
 
 
+def test_conversation_pipeline_eval_fails_without_verified_build_identity() -> None:
+    report = conversation_pipeline_eval.run_eval(
+        FakeConversationClient(include_build_identity=False),
+        _config(),
+    )
+
+    assert report.ok is False
+    assert report.build == {}
+    check = next(item for item in report.checks if item.name == "build-identity")
+    assert check.ok is False
+
+
 def test_conversation_pipeline_eval_writes_json_report(tmp_path: Path) -> None:
     report = conversation_pipeline_eval.run_eval(FakeConversationClient(), _config())
     path = tmp_path / "ops" / "conversation-pipeline.json"
@@ -109,4 +134,6 @@ def test_conversation_pipeline_eval_writes_json_report(tmp_path: Path) -> None:
     payload = json.loads(path.read_text(encoding="utf-8"))
     assert payload["format"] == "obelisk-conversation-pipeline-v1"
     assert payload["ok"] is True
+    assert payload["generated_at"]
+    assert payload["build"] == BUILD_IDENTITY
     assert payload["run_id"] == "abc123"

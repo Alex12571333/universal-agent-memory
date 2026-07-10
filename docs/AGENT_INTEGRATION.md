@@ -4,6 +4,14 @@ Obelisk Memory is designed to be embedded into an agent runtime, not
 used as a sidecar chat tool. The intended integration point is the agent
 lifecycle.
 
+> **Persistent-runtime blocker:** the current PostgreSQL bootstrap does not
+> provision the stable agent and thread identities emitted by these adapters. A
+> fresh PostgreSQL deployment can reject retain/checkpoint calls with foreign-key
+> violations. Use the adapters with the in-memory development server only, or
+> explicitly provision matching database identities, until the P0 identity work
+> in [PRODUCTION_GAP_AUDIT_2026_07_10.md](PRODUCTION_GAP_AUDIT_2026_07_10.md) is
+> complete. Do not treat the installation outlines below as production-ready.
+
 ## Runtime flow
 
 ```text
@@ -29,15 +37,13 @@ native plugin adapters.
 
 Use the native plugin scaffold in `agent-integrations/openclaw/`.
 
-Expected hooks:
+Registered hooks:
 
-- `beforeRun` — derive agent identity and workspace identity.
-- `beforeModelCall` — call `/v1/memory/recall` and inject the returned
-  `context.markdown`.
-- `afterToolCall` — retain durable tool outcomes, failures and environment
+- `agent_turn_prepare` — derive runtime identity, call `/v1/memory/recall` and
+  prepend the returned `context.markdown` before the model turn.
+- `after_tool_call` — retain durable tool outcomes, failures and environment
   facts.
-- `afterMessage` — retain stable preferences or decisions.
-- `onRunComplete` — retain a compact run summary and optionally call
+- `agent_end` — retain a compact run summary and optionally call
   `/v1/workspaces/{workspace}/reflect`.
 
 Minimal env:
@@ -56,27 +62,28 @@ UAM_MEMORY_RECALL_TOP_K=8
 
 Use `agent-integrations/hermes/` as a MemoryProvider-style adapter.
 
-Expected hooks:
+Provider lifecycle:
 
-- `load_context()` before model invocation.
-- `observe_message()` after user/assistant messages.
-- `observe_tool_result()` after tools.
-- `checkpoint()` for long-running plans.
-- `finalize_run()` for summary retention and reflection.
+- `prefetch()` before model invocation;
+- `sync_turn()` after a completed user/assistant turn;
+- `on_session_end()` for summary retention and optional reflection;
+- `system_prompt_block()`, `get_tool_schemas()` and `handle_tool_call()` for
+  native Hermes context/tool integration.
 
 Hermes should treat UAM as the canonical long-term memory store while keeping
 its own short-term scratchpad ephemeral.
 
 ## Real embedding runtime
 
-The production embedding target is OpenAI-compatible. That means the API
-contract, not provider lock-in. One deployable profile is:
+The production embedding target is OpenAI-compatible. That means the wire
+contract, not provider lock-in. Configure the endpoint selected for the target
+deployment:
 
 ```text
 provider=openai-compatible
-model=text-embedding-3-large
-dimension=3072
-base_url=https://api.openai.com/v1
+model=<provider-embedding-model-id>
+dimension=<actual-output-dimension>
+base_url=https://embedding-gateway.example/v1
 send_dimensions=false
 ```
 
@@ -91,40 +98,39 @@ Safe switch procedure:
 2. Click **Test endpoint**. Expected vector dimension must match the configured model.
 3. Save model config.
 4. Restart `memory-server` and `embedding-worker` with matching env.
-5. Run **Reindex** so Qdrant is recreated with 2048-dimensional vectors.
+5. Run **Reindex** so Qdrant is rebuilt using the configured dimension.
 
-Do not mix fake 1536-dimensional vectors, OpenAI 3072-dimensional vectors and
-self-hosted 2048-dimensional vectors in one Qdrant collection. Reindex is the
-boundary that makes the switch clean.
+Do not mix vectors from different models or dimensions in one Qdrant
+collection. Reindex is the boundary that makes the switch clean.
 
 ## Memory LLM runtime
 
 Memory maintenance has its own LLM config. It is not the embedding model and not
 the agent runtime model.
 
-Production target shape:
+Provider-neutral target shape:
 
 ```text
 provider=openai-compatible
-model=gpt-5.6-terra
-base_url=https://api.openai.com/v1
+model=<provider-model-id>
+base_url=https://llm-gateway.example/v1
 ```
 
 Env:
 
 ```text
 UAM_MEMORY_LLM_PROVIDER=openai-compatible
-UAM_MEMORY_LLM_MODEL=gpt-5.6-terra
-UAM_MEMORY_LLM_BASE_URL=https://api.openai.com/v1
+UAM_MEMORY_LLM_MODEL=<provider-model-id>
+UAM_MEMORY_LLM_BASE_URL=https://llm-gateway.example/v1
 UAM_MEMORY_LLM_API_KEY=...
 UAM_MEMORY_LLM_CONTEXT_TOKENS=131072
 UAM_MEMORY_LLM_MAX_TOKENS=1600
-UAM_MEMORY_LLM_ENABLE_THINKING=false
+UAM_MEMORY_LLM_EXTRA_BODY_JSON={}
 ```
 
 Навигатор памяти, Куратор памяти and future graph extraction workers should use
 this OpenAI-compatible contract. The base URL/model can point at OpenAI,
-OpenRouter, LiteLLM, vLLM, llama.cpp, Spark/DGX, or another compatible gateway.
+OpenRouter, LiteLLM, vLLM, llama.cpp, or another compatible gateway.
 Agents such as OpenClaw/Hermes still use their own runtime models; they only
 call UAM for memory.
 
@@ -169,8 +175,8 @@ UAM_API_KEY=... python scripts/agent_soak_eval.py \
 It simulates OpenClaw and Hermes as separate native integrations, writes durable
 agent memories, retries the same idempotency keys, recalls each agent's own
 workspace, and probes the opposite workspace for leakage. A production rollout
-must preserve the JSON report as evidence after running it against the real
-server and the `.14` agent environment.
+must preserve the JSON report as evidence after running it through the deployed
+OpenClaw and Hermes runtime hooks against the release server.
 
 This runner validates the memory server side of the contract. It does not prove
 that OpenClaw/Hermes loaded the plugin correctly unless it is run as part of the

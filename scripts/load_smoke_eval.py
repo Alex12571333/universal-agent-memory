@@ -12,12 +12,14 @@ import json
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 from uuid import UUID, uuid4
 
+from memory_plane.build_info import require_status_build_identity
 from memory_plane.config.secrets import read_secret_env
 
 DEFAULT_TENANT = UUID("00000000-0000-0000-0000-000000000001")
@@ -117,6 +119,8 @@ class LoadReport:
 
     format: str
     ok: bool
+    generated_at: str
+    build: dict[str, str]
     base_url: str
     tenant_id: str
     workspace_id: str
@@ -145,6 +149,8 @@ def run_load_smoke(config: LoadConfig, client: LoadClient | None = None) -> Load
     api = client or ApiClient(config.base_url, config.api_key, config.timeout_seconds)
     checks: list[CheckResult] = []
     checks.append(_check("health", lambda: _check_health(api)))
+    build, build_check = _capture_build_identity(api)
+    checks.append(build_check)
 
     results = _run_parallel_operations(api, config)
     total = len(results)
@@ -184,6 +190,8 @@ def run_load_smoke(config: LoadConfig, client: LoadClient | None = None) -> Load
     return LoadReport(
         format="obelisk-load-smoke-v1",
         ok=ok,
+        generated_at=datetime.now(UTC).isoformat(),
+        build=build,
         base_url=config.base_url,
         tenant_id=str(config.tenant_id),
         workspace_id=str(config.workspace_id),
@@ -255,6 +263,22 @@ def _check_health(api: LoadClient) -> None:
     health = api.request("GET", "/health", auth=False)
     if not isinstance(health, dict) or health.get("status") != "ok":
         raise AssertionError(f"health failed: {health!r}")
+
+
+def _capture_build_identity(api: LoadClient) -> tuple[dict[str, str], CheckResult]:
+    try:
+        status = api.request("GET", "/v1/system/status")
+        identity = require_status_build_identity(status)
+    except Exception as exc:  # noqa: BLE001 - evidence report captures the failure.
+        return {}, CheckResult("build-identity", False, f"{type(exc).__name__}: {exc}")
+    return identity, CheckResult(
+        "build-identity",
+        True,
+        (
+            f"version={identity['version']} source_commit={identity['source_commit']} "
+            f"image_digest={identity['image_digest']} deployment_id={identity['deployment_id']}"
+        ),
+    )
 
 
 def _check_metrics(api: LoadClient, config: LoadConfig) -> None:

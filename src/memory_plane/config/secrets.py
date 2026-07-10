@@ -2,8 +2,7 @@
 
 Production deployments should prefer secret files mounted from Docker secrets,
 Kubernetes secrets, Vault Agent, SOPS, or another external secret manager.
-Direct environment variables remain supported for local development and
-backward compatibility.
+Direct environment variables are supported for local development.
 """
 
 from __future__ import annotations
@@ -15,7 +14,7 @@ from pathlib import Path
 def read_secret_env(name: str, *fallback_names: str) -> str | None:
     """Read a secret from `NAME` or `NAME_FILE`.
 
-    Resolution order is intentionally compatibility-first:
+    Resolution order:
 
     1. non-empty direct environment variable;
     2. non-empty file referenced by `<NAME>_FILE`;

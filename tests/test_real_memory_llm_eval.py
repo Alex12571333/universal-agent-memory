@@ -41,12 +41,12 @@ class FakeMemoryLLMClient:
         return {
             "action": "retain",
             "proposal": (
-                "production использует fake embeddings"
+                "Резервные копии проекта хранят 30 дней."
                 if self.bad_proposal
-                else "production использует OpenAI-compatible embeddings endpoint"
+                else "Резервные копии проекта хранят 365 дней."
             ),
             "confidence": 0.91,
-            "tags": ["embeddings", "openai-compatible"],
+            "tags": ["backup", "retention-policy"],
         }
 
 
@@ -57,6 +57,8 @@ def test_real_memory_llm_eval_passes_memory_contract() -> None:
 
     assert report.ok is True
     assert report.format == "obelisk-memory-llm-eval-v1"
+    assert report.generated_at
+    assert len(report.config_fingerprint) == 64
     assert {check.name for check in report.checks} == {
         "chat-completions",
         "json-memory-curation",
@@ -70,7 +72,7 @@ def test_real_memory_llm_eval_fails_when_model_keeps_obsolete_claim() -> None:
     failed = [check for check in report.checks if not check.ok]
     assert len(failed) == 1
     assert failed[0].name == "json-memory-curation"
-    assert "fake embeddings" in failed[0].detail
+    assert "superseded retention value" in failed[0].detail
 
 
 def test_real_memory_llm_eval_writes_json_report(tmp_path: Path) -> None:
@@ -82,3 +84,4 @@ def test_real_memory_llm_eval_writes_json_report(tmp_path: Path) -> None:
     text = path.read_text(encoding="utf-8")
     assert '"format": "obelisk-memory-llm-eval-v1"' in text
     assert '"ok": true' in text
+    assert '"generated_at":' in text

@@ -21,14 +21,27 @@ def _load_script(name: str):
 
 
 agent_soak_eval = _load_script("agent_soak_eval")
+BUILD_IDENTITY = {
+    "version": "0.1.0",
+    "source_commit": "a" * 40,
+    "image_digest": "sha256:" + "b" * 64,
+    "deployment_id": "agent-soak-test",
+    "build_time": "2026-07-10T00:00:00+00:00",
+}
 
 
 class FakeSoakApi:
-    def __init__(self, *, leak_foreign_marker: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        leak_foreign_marker: bool = False,
+        include_build_identity: bool = True,
+    ) -> None:
         self._lock = Lock()
         self._items_by_key: dict[str, dict[str, Any]] = {}
         self._items: list[dict[str, Any]] = []
         self._leak_foreign_marker = leak_foreign_marker
+        self._build_identity = BUILD_IDENTITY if include_build_identity else None
 
     def request(
         self,
@@ -42,6 +55,8 @@ class FakeSoakApi:
         if method == "GET" and path == "/health":
             assert expect_status == 200
             return {"status": "ok"}
+        if method == "GET" and path == "/v1/system/status":
+            return {"status": "ok", "version": "0.1.0", "build": self._build_identity}
         if method == "POST" and path == "/v1/memory/retain":
             return self._retain(body or {}, expect_status=expect_status)
         if method == "POST" and path == "/v1/memory/recall":
@@ -111,8 +126,11 @@ def test_agent_soak_eval_passes_parallel_agent_lifecycle() -> None:
 
     assert report.ok is True
     assert report.format == "obelisk-agent-soak-v1"
+    assert report.generated_at
+    assert report.build == BUILD_IDENTITY
     assert {check.name for check in report.checks} >= {
         "health",
+        "build-identity",
         "openclaw:retain:0",
         "openclaw:idempotent-retry:0",
         "openclaw:recall:0",
@@ -139,10 +157,24 @@ def test_agent_soak_eval_fails_on_cross_workspace_leakage() -> None:
     assert "leaked foreign marker" in leakage.detail
 
 
+def test_agent_soak_eval_fails_without_verified_build_identity() -> None:
+    config = agent_soak_eval.SoakConfig(rounds=1, parallel=1, run_id="no-build")
+
+    report = agent_soak_eval.run_soak(config, FakeSoakApi(include_build_identity=False))
+
+    assert report.ok is False
+    assert report.build == {}
+    check = next(item for item in report.checks if item.name == "build-identity")
+    assert check.ok is False
+    assert "build identity is missing" in check.detail
+
+
 def test_agent_soak_eval_writes_json_report(tmp_path: Path) -> None:
     report = agent_soak_eval.SoakReport(
         format="obelisk-agent-soak-v1",
         ok=True,
+        generated_at="2026-07-10T00:00:00+00:00",
+        build=BUILD_IDENTITY,
         base_url="http://memory.example",
         tenant_id="00000000-0000-0000-0000-000000000001",
         run_id="write",

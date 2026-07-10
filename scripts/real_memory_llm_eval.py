@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import os
 import time
 from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -29,8 +32,11 @@ class LLMReport:
 
     format: str
     ok: bool
+    generated_at: str
+    provider: str
     base_url: str
     model: str
+    config_fingerprint: str
     checks: tuple[LLMCheck, ...]
 
 
@@ -43,10 +49,29 @@ def run_eval(client: MemoryLLMClient) -> LLMReport:
     return LLMReport(
         format="obelisk-memory-llm-eval-v1",
         ok=all(check.ok for check in checks),
+        generated_at=datetime.now(UTC).isoformat(),
+        provider=client.config.provider,
         base_url=client.config.base_url,
         model=client.config.model_name,
+        config_fingerprint=_config_fingerprint(client.config),
         checks=checks,
     )
+
+
+def _config_fingerprint(config: MemoryLLMConfig) -> str:
+    """Hash non-secret routing and generation settings used by the live eval."""
+    payload = {
+        "provider": config.provider,
+        "base_url": config.base_url,
+        "model": config.model_name,
+        "timeout_seconds": config.timeout_seconds,
+        "temperature": config.temperature,
+        "context_window_tokens": config.context_window_tokens,
+        "max_tokens": config.max_tokens,
+        "extra_body": config.extra_body or {},
+    }
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def _check_chat(client: MemoryLLMClient) -> None:
@@ -84,13 +109,14 @@ def _check_json_curation(client: MemoryLLMClient) -> None:
                 "role": "user",
                 "content": (
                     "Контекст:\n"
-                    "- Старое: production использует fake embeddings.\n"
-                    "- Новое: production использует OpenAI-compatible embeddings endpoint.\n"
-                    "- OpenClaw и Hermes подключаются через native plugin hooks.\n\n"
-                    "Задача: выбери, что сохранить как актуальную память. "
-                    "JSON schema: {\"action\":\"retain|reject\","
-                    "\"proposal\":\"строка\", \"confidence\": число от 0 до 1, "
-                    "\"tags\":[\"строки\"]}"
+                    "- Старое: резервные копии проекта хранят 30 дней.\n"
+                    "- Новое: резервные копии проекта хранят 365 дней.\n"
+                    "- Новое утверждение явно заменяет старое.\n\n"
+                    "Задача: выбери, что сохранить как актуальную память. В поле "
+                    "proposal верни только актуальный факт, без старого значения. "
+                    'JSON schema: {"action":"retain|reject",'
+                    '"proposal":"строка", "confidence": число от 0 до 1, '
+                    '"tags":["строки"]}'
                 ),
             },
         ],
@@ -103,10 +129,10 @@ def _check_json_curation(client: MemoryLLMClient) -> None:
     tags = payload.get("tags")
     if action != "retain":
         raise AssertionError(f"expected action=retain, got {action!r}")
-    if "OpenAI" not in proposal and "openai" not in proposal:
-        raise AssertionError(f"proposal missed current embedding endpoint: {proposal!r}")
-    if "fake" in proposal.lower():
-        raise AssertionError(f"proposal preserved obsolete fake embedding claim: {proposal!r}")
+    if "30 " in proposal or "30 д" in proposal.lower():
+        raise AssertionError(f"proposal preserved superseded retention value: {proposal!r}")
+    if "365" not in proposal:
+        raise AssertionError(f"proposal missed current retention value: {proposal!r}")
     if not isinstance(confidence, int | float) or not 0 <= float(confidence) <= 1:
         raise AssertionError(f"invalid confidence: {confidence!r}")
     if not isinstance(tags, list) or not tags:
@@ -142,16 +168,40 @@ def write_report(report: LLMReport, path: Path) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--base-url", default="https://api.openai.com/v1")
-    parser.add_argument("--model", default="gpt-5.6-terra")
+    parser.add_argument(
+        "--base-url",
+        default=os.getenv("UAM_MEMORY_LLM_BASE_URL", "http://localhost:8000/v1"),
+    )
+    parser.add_argument(
+        "--model",
+        default=os.getenv("UAM_MEMORY_LLM_MODEL", "memory-model"),
+    )
     parser.add_argument(
         "--api-key",
-        default=read_secret_env("UAM_MEMORY_LLM_API_KEY", "OPENAI_API_KEY", "SPARK_API_KEY"),
+        default=read_secret_env("UAM_MEMORY_LLM_API_KEY"),
     )
-    parser.add_argument("--provider", default="openai-compatible")
-    parser.add_argument("--timeout-seconds", type=float, default=60.0)
+    parser.add_argument(
+        "--provider",
+        default=os.getenv("UAM_MEMORY_LLM_PROVIDER", "openai-compatible"),
+    )
+    parser.add_argument(
+        "--timeout-seconds",
+        type=float,
+        default=float(os.getenv("UAM_MEMORY_LLM_TIMEOUT_SECONDS", "60")),
+    )
+    parser.add_argument(
+        "--extra-body-json",
+        default=os.getenv("UAM_MEMORY_LLM_EXTRA_BODY_JSON", "{}"),
+    )
     parser.add_argument("--json-report", type=Path)
     args = parser.parse_args()
+
+    try:
+        extra_body = json.loads(args.extra_body_json)
+    except json.JSONDecodeError as exc:
+        parser.error(f"--extra-body-json must be valid JSON: {exc}")
+    if not isinstance(extra_body, dict):
+        parser.error("--extra-body-json must be a JSON object")
 
     client = MemoryLLMClient(
         MemoryLLMConfig(
@@ -163,7 +213,7 @@ def main() -> int:
             temperature=0.0,
             context_window_tokens=131072,
             max_tokens=1600,
-            enable_thinking=False,
+            extra_body=extra_body or None,
         )
     )
     report = run_eval(client)

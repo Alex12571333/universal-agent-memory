@@ -2,41 +2,22 @@
 
 ## Unreleased
 
-- Added a non-destructive restore drill script that restores backups into an
-  isolated PostgreSQL Docker container and verifies production tables.
-- Added non-secret API-key registry with scoped-key fingerprints, last-used
-  tracking, revocation API, metrics and auth enforcement.
-- Added durable audit events with PostgreSQL RLS, operator export API, metrics
-  and API coverage for memory, vault, conflict and model-setting actions.
-- Added `EmbeddingService` to coordinate generation and indexing of dense memory representations (WP-04).
-- Added `EmbeddingClient` port protocol and `FakeEmbeddingClient` adapter for test-driven embedding workflows.
-- Added an executable `embedding-worker` daemon to process retention events and generate vector embeddings asynchronously.
-- Added support for full workspace reindexing via `EmbeddingService.reindex_all`.
-
-- Added deterministic Markdown/PDF extraction with binary checksum and page provenance.
-- Added a base64 document-ingestion endpoint with stable retry identities.
-- Added optional constant-time bearer API-key protection with public health checks.
-- Added dependency-free Python and platform-fetch TypeScript SDKs.
-- Added stable retain idempotency keys, bounded retries and typed SDK errors.
-- Added leased PostgreSQL outbox delivery to NATS JetStream.
-- Added retry/dead-letter state and durable per-consumer event deduplication.
-- Added a standalone `outbox-relay` Docker service and end-to-end coverage.
-- Added idempotent forward-only migrations for existing Docker volumes.
-- Added Qdrant dense+sparse `CandidateSource` adapter with hybrid search, upsert,
-  delete and full reindex (WP-02).
-- Bootstrap optionally connects Qdrant via `UAM_QDRANT_URL` / `UAM_EMBEDDING_DIM`.
-- Docker Compose forwards Qdrant env vars to `memory-server`.
-- Reframed the project as a self-hosted Docker memory server rather than a SaaS.
-- Added the `memory-server` image, durable runtime composition and standalone API defaults.
-- Added GitHub issue claiming, live agent status and auto-merge collaboration scripts.
-- Added PostgreSQL lexical recall for the default Docker profile.
-- Implemented PostgreSQL canonical memory, provenance, idempotency and transactional outbox.
-- Forced tenant RLS even for table owners and added PostgreSQL integration coverage.
-- Replaced the split ledger/event retention boundary with one atomic port.
+- Signed, content-addressed release evidence v2 with source commit, immutable
+  image digest, deployment identity, artifact SHA-256 checks, safe paths,
+  freshness enforcement and operator HMAC verification.
+- Provider-neutral OpenAI-compatible embedding and memory-LLM configuration.
+- Canonical production-readiness audit with explicit runtime blockers and
+  required target-environment evidence.
 
 ## 0.1.0
 
-- Создан модульный memory-plane foundation.
-- Добавлены модели восьми слоёв памяти и scope-модель.
-- Реализованы retain, recall, context compile и reflection.
-- Добавлены in-memory adapters, REST API, SQL/RLS и тесты.
+- Self-hosted FastAPI memory server with PostgreSQL canonical storage,
+  transactional outbox and tenant RLS.
+- Qdrant vector indexing, NATS JetStream relay and asynchronous embedding
+  worker.
+- Append-only retain/supersede, provenance, raw conversation ledger, explicit
+  curation, proposals, conflicts, graph edges, reflection and checkpoints.
+- React operator dashboard, human-readable Markdown vault and safe CAS import.
+- Native OpenClaw and Hermes integration adapters plus Python/TypeScript SDKs.
+- Privacy redaction, scoped API keys, audit export/retention, backup/restore,
+  observability templates and production preflight tooling.

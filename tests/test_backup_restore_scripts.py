@@ -7,7 +7,7 @@ import subprocess
 import sys
 import urllib.error
 from contextlib import contextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import ModuleType
 from unittest.mock import Mock
@@ -16,6 +16,11 @@ from uuid import uuid4
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
+RELEASE_SIGNING_KEY = "release-test-key-" + "x" * 40
+RELEASE_SOURCE_COMMIT = "1" * 40
+RELEASE_IMAGE_DIGEST = "sha256:" + "2" * 64
+RELEASE_API_URL = "http://localhost:6798"
+RELEASE_PUBLIC_URL = "https://memory.example.com"
 
 
 def _load_script(name: str) -> ModuleType:
@@ -52,14 +57,14 @@ def test_migration_runner_includes_every_versioned_sql_file() -> None:
     expected = {
         "001_initial.sql",
         "002_app_role.sql",
-            "003_outbox_delivery.sql",
-            "004_conflict_reviews.sql",
-            "005_memory_status.sql",
-            "006_conversation_ledger.sql",
-            "007_memory_proposals.sql",
-            "008_audit_events.sql",
-            "009_api_key_registry.sql",
-        }
+        "003_outbox_delivery.sql",
+        "004_conflict_reviews.sql",
+        "005_memory_status.sql",
+        "006_conversation_ledger.sql",
+        "007_memory_proposals.sql",
+        "008_audit_events.sql",
+        "009_api_key_registry.sql",
+    }
     configured = {path.name for path in migrate.MIGRATIONS}
 
     assert configured == expected
@@ -90,6 +95,7 @@ def test_validate_production_env_accepts_strict_real_config(tmp_path: Path) -> N
                 "UAM_MEMORY_TEXT_ENCRYPTION_KEY=memtext_" + "f" * 40,
                 "UAM_AUDIT_SIGNING_KEY=audit_" + "b" * 40,
                 "UAM_VAULT_SIGNING_KEY=vault_" + "c" * 40,
+                "UAM_RELEASE_SIGNING_KEY=release_" + "d" * 40,
                 "UAM_EMBEDDING_PROVIDER=openai-compatible",
                 "UAM_EMBEDDING_MODEL=text-embedding-3-large",
                 "UAM_EMBEDDING_BASE_URL=https://api.openai.com/v1",
@@ -97,6 +103,9 @@ def test_validate_production_env_accepts_strict_real_config(tmp_path: Path) -> N
                 "UAM_EMBEDDING_DIM=3072",
                 "UAM_EMBEDDING_SEND_DIMENSIONS=false",
                 "UAM_QDRANT_PAYLOAD_TEXT=false",
+                "UAM_MEMORY_LLM_PROVIDER=openai-compatible",
+                "UAM_MEMORY_LLM_MODEL=gateway-memory-model",
+                "UAM_MEMORY_LLM_BASE_URL=https://llm-gateway.internal/v1",
             ]
         ),
         encoding="utf-8",
@@ -125,6 +134,7 @@ def test_validate_production_env_accepts_secret_files(tmp_path: Path) -> None:
         "UAM_MEMORY_TEXT_ENCRYPTION_KEY": "memtext_" + "f" * 40,
         "UAM_AUDIT_SIGNING_KEY": "audit_" + "b" * 40,
         "UAM_VAULT_SIGNING_KEY": "vault_" + "c" * 40,
+        "UAM_RELEASE_SIGNING_KEY": "release_" + "d" * 40,
     }
     secret_lines: list[str] = []
     for key, value in secret_values.items():
@@ -152,6 +162,9 @@ def test_validate_production_env_accepts_secret_files(tmp_path: Path) -> None:
                 "UAM_EMBEDDING_DIM=3072",
                 "UAM_EMBEDDING_SEND_DIMENSIONS=false",
                 "UAM_QDRANT_PAYLOAD_TEXT=false",
+                "UAM_MEMORY_LLM_PROVIDER=openai-compatible",
+                "UAM_MEMORY_LLM_MODEL=gateway-memory-model",
+                "UAM_MEMORY_LLM_BASE_URL=https://llm-gateway.internal/v1",
             ]
         ),
         encoding="utf-8",
@@ -167,8 +180,7 @@ def test_validate_production_env_accepts_secret_files(tmp_path: Path) -> None:
 
     assert all(check.ok for check in checks)
     assert any(
-        check.name == "UAM_API_KEY" and "UAM_API_KEY_FILE" in check.detail
-        for check in checks
+        check.name == "UAM_API_KEY" and "UAM_API_KEY_FILE" in check.detail for check in checks
     )
 
 
@@ -192,8 +204,37 @@ def test_validate_production_env_rejects_placeholders_and_missing_public_tls() -
         "public-tls",
         "UAM_AUDIT_SIGNING_KEY",
         "UAM_VAULT_SIGNING_KEY",
+        "UAM_RELEASE_SIGNING_KEY",
         "UAM_MEMORY_TEXT_ENCRYPTION_KEY",
     } <= failed
+
+
+def test_validate_production_env_rejects_unsafe_memory_llm_gateway() -> None:
+    checks = validate_production_env.validate_env(
+        {
+            "UAM_MEMORY_LLM_PROVIDER": "openai-compatible",
+            "UAM_MEMORY_LLM_MODEL": "memory-model",
+            "UAM_MEMORY_LLM_BASE_URL": "https://user:secret@gateway.internal/v1",
+        }
+    )
+
+    memory_llm = next(check for check in checks if check.name == "memory-llm")
+    assert memory_llm.ok is False
+    assert "credentials" in memory_llm.detail
+
+
+def test_validate_production_env_requires_key_for_explicit_openai_profile() -> None:
+    checks = validate_production_env.validate_env(
+        {
+            "UAM_MEMORY_LLM_PROVIDER": "openai",
+            "UAM_MEMORY_LLM_MODEL": "hosted-model",
+            "UAM_MEMORY_LLM_BASE_URL": "https://api.openai.com/v1",
+        }
+    )
+
+    memory_llm = next(check for check in checks if check.name == "memory-llm")
+    assert memory_llm.ok is False
+    assert "requires an API key" in memory_llm.detail
 
 
 def test_validate_production_env_rejects_plaintext_memory_storage() -> None:
@@ -251,23 +292,12 @@ def test_validate_production_env_rejects_unknown_memory_encryption_scope() -> No
 def test_production_compose_wires_memory_text_encryption() -> None:
     compose = (ROOT / "docker-compose.prod.yml").read_text(encoding="utf-8")
 
-    assert (
-        compose.count(
-            "UAM_MEMORY_TEXT_ENCRYPTION: ${UAM_MEMORY_TEXT_ENCRYPTION:-pgcrypto}"
-        )
-        >= 2
-    )
+    assert compose.count("UAM_MEMORY_TEXT_ENCRYPTION: ${UAM_MEMORY_TEXT_ENCRYPTION:-pgcrypto}") >= 2
     assert compose.count("UAM_MEMORY_TEXT_ENCRYPTION_SCOPES: ") >= 2
-    assert (
-        compose.count("UAM_MEMORY_TEXT_ENCRYPTION_KEY_FILE: ")
-        >= 2
-    )
+    assert compose.count("UAM_MEMORY_TEXT_ENCRYPTION_KEY_FILE: ") >= 2
     assert "UAM_API_KEY_FILE: ${UAM_API_KEY_FILE:-}" in compose
     assert "UAM_API_KEYS_FILE: ${UAM_API_KEYS_FILE:-}" in compose
-    assert (
-        compose.count("UAM_QDRANT_PAYLOAD_TEXT: ${UAM_QDRANT_PAYLOAD_TEXT:-false}")
-        >= 2
-    )
+    assert compose.count("UAM_QDRANT_PAYLOAD_TEXT: ${UAM_QDRANT_PAYLOAD_TEXT:-false}") >= 2
 
 
 def test_validate_production_env_rejects_qdrant_text_payloads(tmp_path: Path) -> None:
@@ -934,7 +964,10 @@ def test_scheduled_backup_alerts_on_failure(
 def test_verify_release_evidence_accepts_complete_manifest(tmp_path: Path) -> None:
     manifest = _write_release_evidence_bundle(tmp_path)
 
-    checks = verify_release_evidence.verify_manifest(manifest)
+    checks = verify_release_evidence.verify_manifest(
+        manifest,
+        signing_key=RELEASE_SIGNING_KEY,
+    )
 
     assert all(check.passed for check in checks)
     assert {check.name for check in checks} >= {
@@ -953,6 +986,13 @@ def test_verify_release_evidence_accepts_complete_manifest(tmp_path: Path) -> No
         "vault_import:verified-signed-manifest",
         "branch_protection:passed",
         "ui_walkthrough:model-probe-not-skipped",
+        "manifest:signature",
+        "identity:release-notes-commit",
+        "identity:agent_soak-target",
+        "identity:agent_soak-build",
+        "identity:runtime-build-consistency",
+        "identity:embedding-model",
+        "identity:memory-llm-model",
     }
 
 
@@ -965,7 +1005,7 @@ def test_verify_release_evidence_rejects_skipped_restore_drill(tmp_path: Path) -
             step["skipped"] = True
     backup_path.write_text(json.dumps(backup), encoding="utf-8")
 
-    checks = verify_release_evidence.verify_manifest(manifest)
+    checks = verify_release_evidence.verify_manifest(manifest, signing_key=RELEASE_SIGNING_KEY)
 
     restore_check = next(
         check for check in checks if check.name == "scheduled_backup:restore-drill"
@@ -982,7 +1022,7 @@ def test_verify_release_evidence_rejects_unsigned_vault_import(tmp_path: Path) -
     payload["manifest_signed"] = False
     vault_import_path.write_text(json.dumps(payload), encoding="utf-8")
 
-    checks = verify_release_evidence.verify_manifest(manifest)
+    checks = verify_release_evidence.verify_manifest(manifest, signing_key=RELEASE_SIGNING_KEY)
 
     signature_check = next(
         check for check in checks if check.name == "vault_import:require-signature"
@@ -1007,7 +1047,7 @@ def test_verify_release_evidence_rejects_reachable_backend(tmp_path: Path) -> No
             check["detail"] = "direct backend reachable with status=200"
     preflight_path.write_text(json.dumps(payload), encoding="utf-8")
 
-    checks = verify_release_evidence.verify_manifest(manifest)
+    checks = verify_release_evidence.verify_manifest(manifest, signing_key=RELEASE_SIGNING_KEY)
 
     backend_check = next(
         check for check in checks if check.name == "deployment_preflight:backend-not-public"
@@ -1027,7 +1067,7 @@ def test_verify_release_evidence_rejects_raw_secret_env(tmp_path: Path) -> None:
             check["detail"] = "raw secret env is set"
     secret_files_path.write_text(json.dumps(payload), encoding="utf-8")
 
-    checks = verify_release_evidence.verify_manifest(manifest)
+    checks = verify_release_evidence.verify_manifest(manifest, signing_key=RELEASE_SIGNING_KEY)
 
     ok_check = next(check for check in checks if check.name == "secret_files:ok")
     assert ok_check.passed is False
@@ -1045,7 +1085,7 @@ def test_verify_release_evidence_rejects_missing_ops_alert_route(tmp_path: Path)
             check["detail"] = "UAM_BACKUP_ALERT_WEBHOOK missing"
     ops_path.write_text(json.dumps(payload), encoding="utf-8")
 
-    checks = verify_release_evidence.verify_manifest(manifest)
+    checks = verify_release_evidence.verify_manifest(manifest, signing_key=RELEASE_SIGNING_KEY)
 
     ok_check = next(check for check in checks if check.name == "ops_schedule:ok")
     assert ok_check.passed is False
@@ -1063,7 +1103,7 @@ def test_verify_release_evidence_rejects_missing_observability_alert(tmp_path: P
             check["detail"] = "missing: ObeliskReindexFailures"
     observability_path.write_text(json.dumps(payload), encoding="utf-8")
 
-    checks = verify_release_evidence.verify_manifest(manifest)
+    checks = verify_release_evidence.verify_manifest(manifest, signing_key=RELEASE_SIGNING_KEY)
 
     ok_check = next(check for check in checks if check.name == "observability:ok")
     assert ok_check.passed is False
@@ -1077,11 +1117,9 @@ def test_verify_release_evidence_rejects_missing_rollback_steps(tmp_path: Path) 
     payload["rollback"] = ["Restart the services."]
     release_notes_path.write_text(json.dumps(payload), encoding="utf-8")
 
-    checks = verify_release_evidence.verify_manifest(manifest)
+    checks = verify_release_evidence.verify_manifest(manifest, signing_key=RELEASE_SIGNING_KEY)
 
-    rollback_check = next(
-        check for check in checks if check.name == "release_notes:rollback"
-    )
+    rollback_check = next(check for check in checks if check.name == "release_notes:rollback")
     assert rollback_check.passed is False
     assert not all(check.passed for check in checks)
 
@@ -1097,7 +1135,7 @@ def test_verify_release_evidence_rejects_failed_embedding_eval(tmp_path: Path) -
             check["detail"] = "expected=3072 actual=2048"
     embedding_path.write_text(json.dumps(payload), encoding="utf-8")
 
-    checks = verify_release_evidence.verify_manifest(manifest)
+    checks = verify_release_evidence.verify_manifest(manifest, signing_key=RELEASE_SIGNING_KEY)
 
     ok_check = next(check for check in checks if check.name == "embedding:ok")
     assert ok_check.passed is False
@@ -1117,7 +1155,7 @@ def test_verify_release_evidence_rejects_conversation_pipeline_leak(
             check["detail"] = "raw transcript leaked into recall"
     conversation_path.write_text(json.dumps(payload), encoding="utf-8")
 
-    checks = verify_release_evidence.verify_manifest(manifest)
+    checks = verify_release_evidence.verify_manifest(manifest, signing_key=RELEASE_SIGNING_KEY)
 
     ok_check = next(check for check in checks if check.name == "conversation_pipeline:ok")
     assert ok_check.passed is False
@@ -1130,6 +1168,7 @@ def test_verify_release_evidence_json_cli_output(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     manifest = _write_release_evidence_bundle(tmp_path)
+    monkeypatch.setenv("UAM_RELEASE_SIGNING_KEY", RELEASE_SIGNING_KEY)
     monkeypatch.setattr(
         "sys.argv",
         ["verify_release_evidence.py", str(manifest), "--json"],
@@ -1140,6 +1179,211 @@ def test_verify_release_evidence_json_cli_output(
     payload = json.loads(capsys.readouterr().out)
     assert payload["passed"] is True
     assert any(check["name"] == "branch_protection:passed" for check in payload["checks"])
+
+
+def test_verify_release_evidence_rejects_artifact_tampering(tmp_path: Path) -> None:
+    manifest = _write_release_evidence_bundle(tmp_path)
+    artifact = tmp_path / "memory-llm.json"
+    payload = json.loads(artifact.read_text(encoding="utf-8"))
+    payload["operator_note"] = "changed after sealing"
+    _write_json(artifact, payload)
+
+    checks = verify_release_evidence.verify_manifest(manifest, signing_key=RELEASE_SIGNING_KEY)
+
+    checksum = next(check for check in checks if check.name == "memory_llm:sha256")
+    assert checksum.passed is False
+
+
+def test_verify_release_evidence_rejects_manifest_tampering(tmp_path: Path) -> None:
+    manifest = _write_release_evidence_bundle(tmp_path)
+    payload = json.loads(manifest.read_text(encoding="utf-8"))
+    payload["target"]["deployment_id"] = "other-deployment"
+    _write_json(manifest, payload)
+
+    checks = verify_release_evidence.verify_manifest(manifest, signing_key=RELEASE_SIGNING_KEY)
+
+    signature = next(check for check in checks if check.name == "manifest:signature")
+    assert signature.passed is False
+
+
+def test_verify_release_evidence_rejects_signature_key_id_tampering(
+    tmp_path: Path,
+) -> None:
+    manifest = _write_release_evidence_bundle(tmp_path)
+    payload = json.loads(manifest.read_text(encoding="utf-8"))
+    payload["signature"]["key_id"] = "forged-release-key"
+    _write_json(manifest, payload)
+
+    checks = verify_release_evidence.verify_manifest(manifest, signing_key=RELEASE_SIGNING_KEY)
+
+    signature = next(check for check in checks if check.name == "manifest:signature")
+    assert signature.passed is False
+
+
+def test_verify_release_evidence_rejects_path_escape_even_when_signed(
+    tmp_path: Path,
+) -> None:
+    manifest = _write_release_evidence_bundle(tmp_path)
+    payload = json.loads(manifest.read_text(encoding="utf-8"))
+    payload["artifacts"]["memory_llm"]["path"] = "../memory-llm.json"
+    payload["signature"]["value"] = verify_release_evidence.sign_manifest(
+        payload, RELEASE_SIGNING_KEY
+    )
+    _write_json(manifest, payload)
+
+    checks = verify_release_evidence.verify_manifest(manifest, signing_key=RELEASE_SIGNING_KEY)
+
+    path_check = next(check for check in checks if check.name == "memory_llm:path")
+    assert path_check.passed is False
+    assert "escapes" in path_check.detail
+
+
+def test_verify_release_evidence_rejects_stale_manifest(tmp_path: Path) -> None:
+    manifest = _write_release_evidence_bundle(tmp_path)
+    payload = json.loads(manifest.read_text(encoding="utf-8"))
+    payload["generated_at"] = (datetime.now(UTC) - timedelta(days=2)).isoformat()
+    payload["signature"]["value"] = verify_release_evidence.sign_manifest(
+        payload, RELEASE_SIGNING_KEY
+    )
+    _write_json(manifest, payload)
+
+    checks = verify_release_evidence.verify_manifest(
+        manifest,
+        signing_key=RELEASE_SIGNING_KEY,
+        max_age_hours=24,
+    )
+
+    freshness = next(check for check in checks if check.name == "manifest:freshness")
+    assert freshness.passed is False
+
+
+@pytest.mark.parametrize("max_age_hours", [-1.0, float("nan"), float("inf")])
+def test_verify_release_evidence_rejects_invalid_max_age(
+    tmp_path: Path,
+    max_age_hours: float,
+) -> None:
+    manifest = _write_release_evidence_bundle(tmp_path)
+
+    checks = verify_release_evidence.verify_manifest(
+        manifest,
+        signing_key=RELEASE_SIGNING_KEY,
+        max_age_hours=max_age_hours,
+    )
+
+    max_age = next(check for check in checks if check.name == "manifest:max-age")
+    assert max_age.passed is False
+
+
+def test_verify_release_evidence_rejects_report_from_other_target(
+    tmp_path: Path,
+) -> None:
+    manifest = _write_release_evidence_bundle(tmp_path)
+    agent_report = tmp_path / "agent-soak.json"
+    agent_payload = json.loads(agent_report.read_text(encoding="utf-8"))
+    agent_payload["base_url"] = "https://other-memory.example.com"
+    _write_json(agent_report, agent_payload)
+
+    manifest_payload = json.loads(manifest.read_text(encoding="utf-8"))
+    manifest_payload["artifacts"]["agent_soak"]["sha256"] = hashlib.sha256(
+        agent_report.read_bytes()
+    ).hexdigest()
+    manifest_payload["signature"]["value"] = verify_release_evidence.sign_manifest(
+        manifest_payload, RELEASE_SIGNING_KEY
+    )
+    _write_json(manifest, manifest_payload)
+
+    checks = verify_release_evidence.verify_manifest(manifest, signing_key=RELEASE_SIGNING_KEY)
+
+    target = next(check for check in checks if check.name == "identity:agent_soak-target")
+    assert target.passed is False
+
+
+def test_verify_release_evidence_rejects_report_from_other_build(
+    tmp_path: Path,
+) -> None:
+    manifest = _write_release_evidence_bundle(tmp_path)
+    agent_report = tmp_path / "agent-soak.json"
+    agent_payload = json.loads(agent_report.read_text(encoding="utf-8"))
+    agent_payload["build"]["source_commit"] = "3" * 40
+    _write_json(agent_report, agent_payload)
+
+    manifest_payload = json.loads(manifest.read_text(encoding="utf-8"))
+    manifest_payload["artifacts"]["agent_soak"]["sha256"] = hashlib.sha256(
+        agent_report.read_bytes()
+    ).hexdigest()
+    manifest_payload["signature"]["value"] = verify_release_evidence.sign_manifest(
+        manifest_payload, RELEASE_SIGNING_KEY
+    )
+    _write_json(manifest, manifest_payload)
+
+    checks = verify_release_evidence.verify_manifest(manifest, signing_key=RELEASE_SIGNING_KEY)
+
+    build = next(check for check in checks if check.name == "identity:agent_soak-build")
+    assert build.passed is False
+
+
+def test_verify_release_evidence_rejects_stale_live_report(
+    tmp_path: Path,
+) -> None:
+    manifest = _write_release_evidence_bundle(tmp_path)
+    agent_report = tmp_path / "agent-soak.json"
+    agent_payload = json.loads(agent_report.read_text(encoding="utf-8"))
+    agent_payload["generated_at"] = (datetime.now(UTC) - timedelta(days=2)).isoformat()
+    _write_json(agent_report, agent_payload)
+
+    manifest_payload = json.loads(manifest.read_text(encoding="utf-8"))
+    manifest_payload["artifacts"]["agent_soak"]["sha256"] = hashlib.sha256(
+        agent_report.read_bytes()
+    ).hexdigest()
+    manifest_payload["signature"]["value"] = verify_release_evidence.sign_manifest(
+        manifest_payload, RELEASE_SIGNING_KEY
+    )
+    _write_json(manifest, manifest_payload)
+
+    checks = verify_release_evidence.verify_manifest(
+        manifest,
+        signing_key=RELEASE_SIGNING_KEY,
+        max_age_hours=24,
+    )
+
+    freshness = next(check for check in checks if check.name == "identity:agent_soak-freshness")
+    assert freshness.passed is False
+
+
+def test_release_evidence_explicit_signing_key_file_has_priority(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    explicit_key = tmp_path / "explicit-release-key"
+    explicit_key.write_text("explicit-" + "e" * 40, encoding="utf-8")
+    environment_key = tmp_path / "environment-release-key"
+    environment_key.write_text("environment-" + "f" * 40, encoding="utf-8")
+    monkeypatch.setenv("UAM_RELEASE_SIGNING_KEY", "direct-" + "d" * 40)
+    monkeypatch.setenv("UAM_RELEASE_SIGNING_KEY_FILE", str(environment_key))
+
+    assert generate_release_evidence_manifest._read_signing_key(
+        explicit_key
+    ) == explicit_key.read_text(encoding="utf-8")
+    assert verify_release_evidence._read_signing_key(explicit_key) == explicit_key.read_text(
+        encoding="utf-8"
+    )
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://user@memory.example.com/v1",
+        "https://:password@memory.example.com/v1",
+        "https://memory.example.com/v1?tenant=other",
+        "https://memory.example.com/v1#other",
+    ],
+)
+def test_release_evidence_rejects_urls_with_userinfo_query_or_fragment(
+    url: str,
+) -> None:
+    assert generate_release_evidence_manifest._valid_url(url, https_only=False) is False
+    assert verify_release_evidence._valid_http_url(url, require_https=False) is False
+    assert verify_release_evidence._normalize_url(url) is None
 
 
 def test_generate_release_evidence_manifest_contains_required_artifacts() -> None:
@@ -1158,26 +1402,49 @@ def test_generate_release_evidence_manifest_cli_writes_manifest(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    manifest = tmp_path / "release-evidence.json"
+    _write_release_evidence_bundle(tmp_path)
+    manifest = tmp_path / "sealed-release-evidence.json"
+    artifacts = _release_artifact_paths()
+    argv = [
+        "generate_release_evidence_manifest.py",
+        "--release",
+        "test",
+        "--source-commit",
+        RELEASE_SOURCE_COMMIT,
+        "--image-digest",
+        RELEASE_IMAGE_DIGEST,
+        "--deployment-id",
+        "test-deployment",
+        "--api-url",
+        RELEASE_API_URL,
+        "--public-url",
+        RELEASE_PUBLIC_URL,
+        "--signing-key-id",
+        "test-release-key",
+        "--output",
+        str(manifest),
+    ]
+    for name, path in artifacts.items():
+        argv.extend(["--artifact", f"{name}={path}"])
+    monkeypatch.setenv("UAM_RELEASE_SIGNING_KEY", RELEASE_SIGNING_KEY)
     monkeypatch.setattr(
         "sys.argv",
-        [
-            "generate_release_evidence_manifest.py",
-            "--release",
-            "test-release",
-            "--output",
-            str(manifest),
-            "--artifact",
-            "memory_llm=ops/custom-memory-llm.json",
-        ],
+        argv,
     )
 
     assert generate_release_evidence_manifest.main() == 0
 
     payload = json.loads(manifest.read_text(encoding="utf-8"))
     assert payload["format"] == verify_release_evidence.MANIFEST_FORMAT
-    assert payload["release"] == "test-release"
-    assert payload["artifacts"]["memory_llm"] == "ops/custom-memory-llm.json"
+    assert payload["release"] == "test"
+    assert payload["source_commit"] == RELEASE_SOURCE_COMMIT
+    assert payload["image_digest"] == RELEASE_IMAGE_DIGEST
+    assert payload["artifacts"]["memory_llm"]["path"] == "memory-llm.json"
+    assert payload["models"]["embedding"]["provider"] == "openai-compatible"
+    assert payload["models"]["embedding"]["dimension"] == 3072
+    assert payload["models"]["memory_llm"]["model"] == "memory-model"
+    assert len(payload["artifacts"]["memory_llm"]["sha256"]) == 64
+    assert payload["signature"]["algorithm"] == "hmac-sha256"
     assert set(payload["artifacts"]) == verify_release_evidence.REQUIRED_ARTIFACTS
     assert "release_evidence_manifest=" in capsys.readouterr().out
 
@@ -1250,13 +1517,27 @@ def test_generate_release_notes_cli_writes_report(
 
 
 def _write_release_evidence_bundle(tmp_path: Path) -> Path:
+    generated_at = datetime.now(UTC).isoformat()
+    runtime_evidence = {
+        "generated_at": generated_at,
+        "build": {
+            "version": "0.1.0",
+            "source_commit": RELEASE_SOURCE_COMMIT,
+            "image_digest": RELEASE_IMAGE_DIGEST,
+            "deployment_id": "test-deployment",
+            "build_time": generated_at,
+        },
+    }
     _write_json(
         tmp_path / "agent-soak.json",
         {
             "format": "obelisk-agent-soak-v1",
             "ok": True,
+            **runtime_evidence,
+            "base_url": RELEASE_API_URL,
             "checks": [
                 {"name": "health", "ok": True},
+                {"name": "build-identity", "ok": True},
                 {"name": "openclaw:recall:0", "ok": True},
                 {"name": "hermes:recall:0", "ok": True},
                 {"name": "cross-workspace-leakage", "ok": True},
@@ -1268,6 +1549,11 @@ def _write_release_evidence_bundle(tmp_path: Path) -> Path:
         {
             "format": "obelisk-memory-llm-eval-v1",
             "ok": True,
+            "generated_at": generated_at,
+            "provider": "openai-compatible",
+            "base_url": "https://llm-gateway.internal/v1",
+            "model": "memory-model",
+            "config_fingerprint": "4" * 64,
             "checks": [
                 {"name": "chat-completions", "ok": True},
                 {"name": "json-memory-curation", "ok": True},
@@ -1279,6 +1565,7 @@ def _write_release_evidence_bundle(tmp_path: Path) -> Path:
         {
             "format": "obelisk-conversation-pipeline-v1",
             "ok": True,
+            **runtime_evidence,
             "base_url": "http://localhost:6798",
             "tenant_id": "00000000-0000-0000-0000-000000000001",
             "workspace_id": "00000000-0000-0000-0000-000000000002",
@@ -1288,6 +1575,7 @@ def _write_release_evidence_bundle(tmp_path: Path) -> Path:
             "turn_id": "00000000-0000-0000-0000-000000000111",
             "memory_id": "00000000-0000-0000-0000-000000000222",
             "checks": [
+                {"name": "build-identity", "ok": True, "detail": "matched"},
                 {"name": "raw-turn-stored", "ok": True, "detail": "created"},
                 {"name": "raw-turn-listed", "ok": True, "detail": "count=1"},
                 {"name": "raw-turn-not-recalled", "ok": True, "detail": "safe"},
@@ -1301,6 +1589,7 @@ def _write_release_evidence_bundle(tmp_path: Path) -> Path:
         {
             "format": "obelisk-embedding-eval-v1",
             "ok": True,
+            "generated_at": generated_at,
             "provider": "openai-compatible",
             "base_url": "https://api.openai.com/v1",
             "model": "text-embedding-3-large",
@@ -1373,10 +1662,13 @@ def _write_release_evidence_bundle(tmp_path: Path) -> Path:
         {
             "format": "obelisk-load-smoke-v1",
             "ok": True,
+            **runtime_evidence,
+            "base_url": RELEASE_API_URL,
             "agents": 4,
             "total_operations": 20,
             "checks": [
                 {"name": "health", "ok": True},
+                {"name": "build-identity", "ok": True},
                 {"name": "concurrent-retain-recall", "ok": True},
                 {"name": "error-rate", "ok": True},
                 {"name": "retain-p95", "ok": True},
@@ -1500,7 +1792,10 @@ def _write_release_evidence_bundle(tmp_path: Path) -> Path:
         {
             "format": "obelisk-ui-walkthrough-v1",
             "ok": True,
+            **runtime_evidence,
+            "base_url": RELEASE_API_URL,
             "checks": [
+                {"name": "build-identity", "ok": True, "detail": "matched"},
                 {"name": "ui-served", "ok": True, "detail": "fallback UI served"},
                 {"name": "retain-recall", "ok": True, "detail": "marker recalled"},
                 {"name": "conflict-decision", "ok": True, "detail": "decision persisted"},
@@ -1517,32 +1812,41 @@ def _write_release_evidence_bundle(tmp_path: Path) -> Path:
         },
     )
     manifest = tmp_path / "release-evidence.json"
-    _write_json(
-        manifest,
-        {
-            "format": "obelisk-release-evidence-manifest-v1",
-            "release": "test",
-            "artifacts": {
-                "agent_soak": "agent-soak.json",
-                "conversation_pipeline": "conversation-pipeline.json",
-                "embedding": "embedding.json",
-                "memory_llm": "memory-llm.json",
-                "load_smoke": "load-smoke.json",
-                "metrics_health": "metrics-health.json",
-                "ops_schedule": "ops-schedule.json",
-                "observability": "observability.json",
-                "release_notes": "release-notes.json",
-                "scheduled_backup": "scheduled-backup.json",
-                "audit_retention": "audit-retention.json",
-                "deployment_preflight": "deployment-preflight.json",
-                "secret_files": "secret-files.json",
-                "vault_import": "vault-import.json",
-                "branch_protection": "branch-protection.json",
-                "ui_walkthrough": "ui-walkthrough.json",
-            },
-        },
+    payload = generate_release_evidence_manifest.build_manifest(
+        release="test",
+        source_commit=RELEASE_SOURCE_COMMIT,
+        image_digest=RELEASE_IMAGE_DIGEST,
+        deployment_id="test-deployment",
+        api_url=RELEASE_API_URL,
+        public_url=RELEASE_PUBLIC_URL,
+        signing_key_id="test-release-key",
+        signing_key=RELEASE_SIGNING_KEY,
+        output_path=manifest,
+        artifacts=_release_artifact_paths(),
     )
+    _write_json(manifest, payload)
     return manifest
+
+
+def _release_artifact_paths() -> dict[str, str]:
+    return {
+        "agent_soak": "agent-soak.json",
+        "conversation_pipeline": "conversation-pipeline.json",
+        "embedding": "embedding.json",
+        "memory_llm": "memory-llm.json",
+        "load_smoke": "load-smoke.json",
+        "metrics_health": "metrics-health.json",
+        "ops_schedule": "ops-schedule.json",
+        "observability": "observability.json",
+        "release_notes": "release-notes.json",
+        "scheduled_backup": "scheduled-backup.json",
+        "audit_retention": "audit-retention.json",
+        "deployment_preflight": "deployment-preflight.json",
+        "secret_files": "secret-files.json",
+        "vault_import": "vault-import.json",
+        "branch_protection": "branch-protection.json",
+        "ui_walkthrough": "ui-walkthrough.json",
+    }
 
 
 def test_observability_preflight_accepts_repository_artifacts() -> None:
@@ -1791,13 +2095,9 @@ def test_export_vault_builds_postgres_exporter(
     assert (tmp_path / ".uam-vault-manifest.sha256").exists()
 
 
-def test_export_vault_can_sign_manifest(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_export_vault_can_sign_manifest(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     vault = Mock()
-    vault.export.return_value = Mock(
-        files=(Mock(path="semantic/mem-alpha.md", content="Alpha\n"),)
-    )
+    vault.export.return_value = Mock(files=(Mock(path="semantic/mem-alpha.md", content="Alpha\n"),))
     container = Mock(vault=vault)
     monkeypatch.setattr(export_vault, "build_postgres_container", Mock(return_value=container))
     monkeypatch.setenv("UAM_DATABASE_URL", "postgresql://example/db")
@@ -1812,9 +2112,7 @@ def test_export_vault_can_sign_manifest(
     assert signature.startswith("hmac-sha256:")
 
 
-def test_import_vault_defaults_to_dry_run(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_import_vault_defaults_to_dry_run(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     (tmp_path / "semantic").mkdir()
     (tmp_path / "semantic" / "mem-alpha.md").write_text("Alpha\n", encoding="utf-8")
     vault = Mock()

@@ -4,7 +4,7 @@ Obelisk Memory — один self-hosted HTTP-сервер в Docker. Он обс
 агентов пользователя или команды и не содержит SaaS control plane, billing,
 customer onboarding или облачной оркестрации.
 
-## Принципы из исследований
+## Архитектурные принципы
 
 1. **PostgreSQL — единственный source of truth.** Qdrant, граф и FTS являются
    перестраиваемыми индексами.
@@ -101,7 +101,8 @@ cross-encoder и freshness verification без изменения `RecallQuery`.
 
 - PostgreSQL commit означает «память принята».
 - Индексы обновляются eventually consistent.
-- API должен отдавать `index_stale`, когда outbox lag выше порога.
+- `RecallResult.index_stale` является transport contract; runtime wiring к
+  фактическому outbox lag ещё является обязательным production hardening.
 - Consumer хранит processed event IDs и выдерживает повторную доставку.
 - Outbox relay арендует события через PostgreSQL lease и подтверждает их только
   после JetStream persistence acknowledgement.
@@ -118,17 +119,35 @@ flowchart LR
   PG -. "outbox" .-> W["workers"]
 ```
 
-Default Compose запускает `memory-server` и PostgreSQL на одной машине.
-Дополнительные индексы и workers включаются профилем `advanced`, но не образуют
-отдельную SaaS-платформу.
+Development Compose запускает `memory-server` и PostgreSQL, а профиль
+`advanced` добавляет Qdrant, NATS, outbox relay, embedding worker и MinIO.
+Production Compose включает эти компоненты во внутренней Docker-сети и
+публикует только API/UI.
 
-## Что намеренно не реализовано
+## Реализованные runtime-компоненты
 
-- LLM extraction и модельный routing;
-- реальные Postgres/Qdrant/NATS/S3 adapters;
-- сложный policy engine и identity provider;
-- graph database;
-- distributed worker leases;
-- hosted/SaaS-grade metrics stack и managed backup automation.
+- PostgreSQL ledger, RLS, append/CAS, provenance, conversations, proposals,
+  checkpoints, audit и transactional outbox;
+- Qdrant adapter и асинхронный embedding worker;
+- NATS JetStream relay с leases, retries, dead-letter и consumer deduplication;
+- OpenAI-compatible embedding и memory-LLM adapters;
+- evidence-backed graph storage, reflection/conflict services и React UI;
+- Markdown vault, signed import/export, backup/restore and release gates.
 
-Для каждого пункта есть независимый work package.
+## Production boundaries
+
+Текущий Docker deployment является single-node appliance, а не HA-кластером.
+Полный production rollout дополнительно требует:
+
+- identity policy, которая связывает ключ с tenant/workspace/agent и memory
+  visibility;
+- active-head semantics для supersede/archive/conflict decisions во всех
+  candidate sources;
+- fail-soft source isolation и отдельный readiness endpoint;
+- безопасный multi-workspace reindex без удаления общей collection;
+- полное шифрование чувствительных raw/provenance/checkpoint данных и backups;
+- connection pooling, bounded queues, worker metrics, disaster recovery and
+  target-environment release evidence.
+
+Канонический список блокеров находится в
+[PRODUCTION_GAP_AUDIT_2026_07_10.md](PRODUCTION_GAP_AUDIT_2026_07_10.md).

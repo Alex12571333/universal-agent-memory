@@ -40,12 +40,22 @@ which writes the current workspace projection to `./vault`.
 
 ## Opening in Obsidian
 
-1. Run the Docker export command above.
+1. For an editable trusted-environment export, omit the integrity manifest:
+
+   ```bash
+   docker compose --profile ops run --rm vault-export \
+     python scripts/export_vault.py /vault --no-manifest
+   ```
+
 2. In Obsidian, choose **Open folder as vault** and select `./vault`.
 3. Edit only `mem-*` memory notes when you want to propose memory changes.
 4. Keep the YAML frontmatter intact, especially `id`, `type`, `tenant_id`,
    `workspace_id` and `revision`.
 5. Re-import with dry-run first, then apply if the plan is safe.
+
+This manifest-free path is not signed production evidence. A normal export writes
+a manifest, and the importer verifies it whenever it is present; editing any
+covered file intentionally invalidates that bundle.
 
 ## Layout
 
@@ -80,6 +90,7 @@ layer: "semantic"
 scope: "workspace"
 kind: "fact"
 revision: 1
+status: "active"
 labels: ["architecture"]
 confidence: 0.91
 supersedes_id: null
@@ -95,10 +106,11 @@ for revision chains.
 
 ## Status semantics
 
-The current export preserves lifecycle signals already present in the memory
-server: `revision`, `supersedes_id`, `valid_from`, `valid_to`, confidence and
-reflection `stale`. A later lifecycle/status work package should add explicit
-`active`, `superseded`, `disputed` and `rejected` status fields.
+The current export preserves `revision`, `supersedes_id`, `valid_from`,
+`valid_to`, confidence, memory status and reflection `stale`. A memory note can
+carry `active`, `stale`, `deprecated`, `disputed`, `hypothesis`, `rejected`,
+`archived` or `pinned`; an item with a newer revision is projected as
+`superseded`.
 
 The export never hides superseded/stale data. Obsidian should show both the
 current belief and the audit trail that explains how it changed.
@@ -189,7 +201,8 @@ For production exports, sign the bundle with an operator-held key:
 UAM_VAULT_SIGNING_KEY=... python scripts/export_vault.py ./vault
 ```
 
-For production imports, require the signature before planning or applying:
+For integrity-only production imports, require the signature before planning or
+applying:
 
 ```bash
 UAM_VAULT_SIGNING_KEY=... python scripts/import_vault.py ./vault \
@@ -201,8 +214,17 @@ UAM_VAULT_SIGNING_KEY=... python scripts/import_vault.py ./vault \
 ```
 
 If any Markdown file is edited after export, verification fails before the
-import service is called. This keeps vault review human-editable while making
-the release/import boundary auditable.
+import service is called. The current CLI has no operator command for reviewing
+an edited vault and re-signing its manifest. Consequently, a signed bundle can
+prove the integrity of an unchanged export, but it cannot currently carry a
+human edit through a signature-required production import.
+
+Human editing remains available through a manifest-free export followed by
+dry-run/apply import in a trusted development or controlled operator environment.
+Do not describe that path as a signed production workflow. A production-grade
+editable bundle still needs an explicit review-and-re-sign command, signer
+authorization policy and audit event before `--require-signature` can be combined
+with edited Markdown.
 
 The workflow is:
 

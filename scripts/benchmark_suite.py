@@ -129,7 +129,8 @@ def bench_config_contracts() -> tuple[str, dict[str, Any]]:
         "context_budget_env": "UAM_CONTEXT_BUDGET_TOKENS=131072" in env,
         "context_per_layer_limit_env": "UAM_CONTEXT_PER_LAYER_LIMIT=1000" in env,
         "llm_context_env": "UAM_MEMORY_LLM_CONTEXT_TOKENS=131072" in env,
-        "llm_thinking_disabled": "UAM_MEMORY_LLM_ENABLE_THINKING=false" in env,
+        "llm_provider_neutral": "UAM_MEMORY_LLM_PROVIDER=openai-compatible" in env,
+        "llm_extra_body": "UAM_MEMORY_LLM_EXTRA_BODY_JSON={}" in env,
     }
     missing = [key for key, ok in checks.items() if not ok]
     assert_true(not missing, f"missing config checks: {missing}")
@@ -139,7 +140,7 @@ def bench_config_contracts() -> tuple[str, dict[str, Any]]:
         **checks,
         "llm_context_window_tokens": config.context_window_tokens,
         "llm_model": config.model_name,
-        "llm_enable_thinking": config.enable_thinking,
+        "llm_extra_body_configured": bool(config.extra_body),
     }
 
 
@@ -599,13 +600,13 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--api-base-url", default="http://127.0.0.1:6798")
     parser.add_argument("--api-key")
-    parser.add_argument("--llm-base-url", default="https://api.openai.com/v1")
-    parser.add_argument("--llm-model", default="gpt-5.6-terra")
-    parser.add_argument("--embedding-base-url", default="https://api.openai.com/v1")
-    parser.add_argument("--embedding-model", default="text-embedding-3-large")
+    parser.add_argument("--llm-base-url", default="http://localhost:8000/v1")
+    parser.add_argument("--llm-model", default="memory-model")
+    parser.add_argument("--embedding-base-url", default="http://localhost:8000/v1")
+    parser.add_argument("--embedding-model", default="embedding-model")
     parser.add_argument(
         "--report",
-        default=str(ROOT / "docs" / "BENCHMARK_RESULTS_2026_07_09.md"),
+        default=str(ROOT / "ops" / "benchmark-report.md"),
     )
     parser.add_argument("--skip-web-build", action="store_true")
     args = parser.parse_args()

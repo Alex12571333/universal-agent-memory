@@ -10,12 +10,14 @@ from __future__ import annotations
 import argparse
 import json
 from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 from uuid import UUID, uuid4
 
+from memory_plane.build_info import require_status_build_identity
 from memory_plane.config.secrets import read_secret_env
 
 REPORT_FORMAT = "obelisk-conversation-pipeline-v1"
@@ -111,6 +113,8 @@ class PipelineReport:
 
     format: str
     ok: bool
+    generated_at: str
+    build: dict[str, str]
     base_url: str
     tenant_id: str
     workspace_id: str
@@ -124,7 +128,8 @@ class PipelineReport:
 
 def run_eval(client: JsonClient, config: PipelineConfig) -> PipelineReport:
     """Run raw capture, explicit curation and recall checks."""
-    checks: list[CheckResult] = []
+    build, build_check = _capture_build_identity(client)
+    checks: list[CheckResult] = [build_check]
     marker = f"conversation-pipeline-{config.run_id}"
     turn_id: str | None = None
     memory_id: str | None = None
@@ -167,7 +172,7 @@ def run_eval(client: JsonClient, config: PipelineConfig) -> PipelineReport:
         )
     except Exception as exc:  # noqa: BLE001 - release report captures failures.
         checks.append(CheckResult("raw-turn-stored", False, f"{type(exc).__name__}: {exc}"))
-        return _report(config, checks, turn_id, memory_id)
+        return _report(config, checks, build, turn_id, memory_id)
 
     try:
         listed = client.request(
@@ -230,7 +235,7 @@ def run_eval(client: JsonClient, config: PipelineConfig) -> PipelineReport:
         checks.append(
             CheckResult("curation-created-memory", False, f"{type(exc).__name__}: {exc}")
         )
-        return _report(config, checks, turn_id, memory_id)
+        return _report(config, checks, build, turn_id, memory_id)
 
     try:
         recalled = client.request(
@@ -257,7 +262,7 @@ def run_eval(client: JsonClient, config: PipelineConfig) -> PipelineReport:
             CheckResult("curated-memory-recalled", False, f"{type(exc).__name__}: {exc}")
         )
 
-    return _report(config, checks, turn_id, memory_id)
+    return _report(config, checks, build, turn_id, memory_id)
 
 
 def write_report(report: PipelineReport, path: Path) -> None:
@@ -272,12 +277,15 @@ def write_report(report: PipelineReport, path: Path) -> None:
 def _report(
     config: PipelineConfig,
     checks: list[CheckResult],
+    build: dict[str, str],
     turn_id: str | None,
     memory_id: str | None,
 ) -> PipelineReport:
     return PipelineReport(
         format=REPORT_FORMAT,
         ok=all(check.ok for check in checks),
+        generated_at=datetime.now(UTC).isoformat(),
+        build=build,
         base_url=config.base_url,
         tenant_id=str(config.tenant_id),
         workspace_id=str(config.workspace_id),
@@ -287,6 +295,22 @@ def _report(
         turn_id=turn_id,
         memory_id=memory_id,
         checks=checks,
+    )
+
+
+def _capture_build_identity(client: JsonClient) -> tuple[dict[str, str], CheckResult]:
+    try:
+        status = client.request("GET", "/v1/system/status")
+        identity = require_status_build_identity(status)
+    except Exception as exc:  # noqa: BLE001 - evidence report captures the failure.
+        return {}, CheckResult("build-identity", False, f"{type(exc).__name__}: {exc}")
+    return identity, CheckResult(
+        "build-identity",
+        True,
+        (
+            f"version={identity['version']} source_commit={identity['source_commit']} "
+            f"image_digest={identity['image_digest']} deployment_id={identity['deployment_id']}"
+        ),
     )
 
 

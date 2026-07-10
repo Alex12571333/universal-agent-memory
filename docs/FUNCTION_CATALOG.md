@@ -164,7 +164,8 @@
 | `ops_schedule_preflight.py` | Schedule files/artifact roots/env → JSON ops gate | Requires backup/audit/metrics schedules, alert routes and durable artifact roots |
 | `secret_files_preflight.py` | `.env.production` → JSON secret-manager gate | Requires raw secret env values empty and `*_FILE` paths readable under allowed prefix |
 | `validate_production_env.py` | `.env.production` → deployment gate | Rejects placeholders, weak secrets, local TLS defaults, fake embeddings |
-| `generate_release_evidence_manifest.py` | Release id → complete `release-evidence.json` skeleton | Keeps manifest artifact keys in sync with verifier requirements |
+| `generate_release_evidence_manifest.py` | Reports + commit/image/deployment identity → signed `release-evidence.json` v2 | SHA-256 per artifact, safe relative paths, HMAC-SHA256 manifest signature |
+| `verify_release_evidence.py` | Signed release bundle → pass/fail | Verifies identity, freshness, signature, paths, hashes and report semantics |
 | `generate_release_notes.py` | Git refs → release changelog and rollback JSON evidence | Records previous/current commits plus restore/redeploy rollback steps |
 | `scheduled_backup.py` | Backup → restore drill → audit export → JSON report | Webhook alert при fail; подходит для cron/systemd |
 | `audit_retention.py` | Audit export → verify → optional prune → JSON report | Dry-run by default; `--apply` requires signed export |
@@ -214,21 +215,41 @@
 | API-key middleware | Защищает все non-health routes при `UAM_API_KEY` |
 | `GET /metrics` | Prometheus counters/lag; защищён API key |
 | `GET /ui` | Local operator console | Same API-key middleware as API routes |
+| `GET /v1/system/status` | Реальное process/storage/runtime состояние для UI | Не подменяет dependency readiness |
+| `GET /v1/settings/models` | Текущие и desired model settings | Не раскрывает API keys |
+| `PUT /v1/settings/models` | Сохраняет desired embedding settings | Требует restart/reindex для применения |
+| `POST /v1/settings/models/test` | Проверяет operator-supplied embedding endpoint | Production требует SSRF allowlist/egress policy |
 | `GET /v1/audit/events` | Operator audit export | Operator/admin scope only; tenant/workspace/action filters |
 | `GET /v1/keys` | Operator API-key registry | Non-secret fingerprints, scopes, last-used/revoked state |
 | `POST /v1/keys/{id}/revoke` | Revoke one configured key | Future requests with that bearer are denied |
 | `GET /v1/workspaces/{id}/memories` | Operator memory list | Optional layer/status/label filters |
 | `POST /v1/memory/retain` | REST boundary для retain |
+| `POST /v1/conversations/turns` | Append immutable raw transcript turn | Не создаёт recallable memory автоматически |
+| `GET /v1/conversations/turns` | Operator transcript listing | Workspace/thread/namespace filters и bounded limit |
+| `POST /v1/conversations/turns/{id}/curate` | Raw turn → curated memory | Через обычный append-only retention pipeline |
+| `POST /v1/memory/proposals` | Создаёт evidence-backed memory proposal | Proposal остаётся вне recall до accept |
+| `GET /v1/memory/proposals` | Proposal review listing | Namespace/status filters |
+| `POST /v1/memory/proposals/{id}/accept` | Accept proposal → `MemoryItem` | Идемпотентный append с provenance |
+| `POST /v1/memory/proposals/{id}/reject` | Reject proposal | Не создаёт recallable memory |
 | `PUT /v1/memory/{id}/supersede` | CAS replacement; stale revision → `409 revision_conflict` |
+| `POST /v1/memory/recall` | Recall + context compilation | Status/scope filters и token budget |
 | `POST /v1/workspaces/{id}/vault/import` | Dry-run/apply edited vault notes | Applies through `supersede`; conflicts on stale revisions |
+| `GET /v1/workspaces/{id}/vault` | Human-readable Markdown projection | PostgreSQL остаётся source of truth |
+| `POST /v1/workspaces/{id}/vault/archive` | Non-destructive archive revision | Сохраняет history и audit event |
 | `POST /v1/ingest/text` | Детерминированный text ingestion |
 | `POST /v1/ingest/document` | Base64 Markdown/PDF ingestion, лимит 20 MiB |
-| `POST /v1/memory/recall` | Recall + context compilation |
 | `POST /v1/workspaces/{id}/reflect` | Запуск baseline sleep/reflection |
 | `GET /v1/workspaces/{id}/conflicts` | Conflict review inbox | Derived cases; `include_resolved=true` optional |
 | `PUT /v1/workspaces/{id}/conflicts/{case_id}/decision` | Persist human review decision | accepted/overridden/dismissed/unresolved |
 | `POST /v1/graph/edges` | Create typed graph edge | Validates endpoint memories and workspace |
 | `GET /v1/memory/{id}/neighbors` | List graph neighbors | Optional edge type filter |
+| `POST /v1/workspaces/{id}/reindex` | Запускает workspace reindex | Текущая shared-collection реализация небезопасна для multi-workspace production |
+| `POST /v1/checkpoints` | Создаёт checkpoint revision | PostgreSQL first-save/CAS остаётся P0 blocker |
+| `GET /v1/checkpoints` | Workspace checkpoint heads | Tenant/workspace scoped |
+| `GET /v1/checkpoints/{thread_id}` | Последний checkpoint thread | Возвращает `404`, если head отсутствует |
+| `GET /v1/checkpoints/{thread_id}/revisions/{revision}` | Конкретная checkpoint revision | Историческое чтение без мутации |
+| `PUT /v1/checkpoints/{thread_id}` | CAS checkpoint update | Stale expected revision → conflict |
+| `POST /v1/checkpoints/{thread_id}/compact` | Удаляет старые checkpoint revisions | Явная bounded retention operation |
 
 ## PostgreSQL adapter
 
@@ -330,7 +351,7 @@
 
 | Класс / Функция | Назначение | Гарантия |
 |---|---|---|
-| `MemoryLLMConfig.from_env()` | Env → OpenAI-compatible memory LLM config | Defaults to `gpt-5.6-terra`, 128k context budget |
+| `MemoryLLMConfig.from_env()` | Env → OpenAI-compatible memory LLM config | Provider-neutral local default; 128k context budget |
 | `MemoryLLMConfig.public_dict()` | Safe status payload | Does not expose API key |
 | `MemoryLLMClient.chat(messages)` | Calls OpenAI-compatible `/chat/completions` | Returns assistant text or raises `MemoryLLMError` |
 | `MemoryLLMClient.chat_json(messages)` | Requests JSON object output for memory workers | Strips fenced JSON and rejects non-object JSON |

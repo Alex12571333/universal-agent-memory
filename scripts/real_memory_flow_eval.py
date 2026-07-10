@@ -10,6 +10,7 @@ The flow is intentionally small and deterministic:
 from __future__ import annotations
 
 import argparse
+import os
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -41,15 +42,14 @@ class Scenario:
 MEMORIES = {
     "storage-postgres": "Долговременная память UAM хранится в PostgreSQL ledger; "
     "Qdrant нужен как semantic vector index для recall.",
-    "embedding-openai-compatible": "Production embeddings используют OpenAI-compatible "
-    "endpoint с text-embedding-3-large и размерностью 3072.",
+    "embedding-release-policy": "Для production semantic recall фиксируют embedding "
+    "model ID и размерность; при изменении выполняют полную безопасную переиндексацию.",
     "openclaw-plugin": "OpenClaw должен получать память через глубокий plugin runtime: "
     "before run делает recall, after tool call сохраняет полезные traces.",
     "hermes-plugin": "Hermes использует Python plugin hooks: prefetch перед turn, "
     "sync_turn после ответа и session summary в конце.",
-    "obsolete-fake": "Устаревшая инструкция: использовать fake embeddings в production.",
-    "current-openai-compatible": "Актуальная инструкция: использовать "
-    "OpenAI-compatible embeddings endpoint для production semantic recall.",
+    "superseded-audit-retention": "Устаревшая политика: хранить audit events 30 дней.",
+    "current-audit-retention": "Актуальная политика: хранить audit events 365 дней.",
 }
 
 
@@ -61,8 +61,8 @@ SCENARIOS = (
     ),
     Scenario(
         "production embedding recall",
-        "какую embedding модель использовать в production?",
-        ("embedding-openai-compatible", "current-openai-compatible"),
+        "что нужно зафиксировать при смене embedding модели в production?",
+        ("embedding-release-policy",),
     ),
     Scenario(
         "openclaw recall",
@@ -76,22 +76,35 @@ SCENARIOS = (
     ),
     Scenario(
         "freshness recall",
-        "какие embeddings использовать в production semantic recall?",
-        ("current-openai-compatible",),
+        "какой актуальный срок хранения audit events?",
+        ("current-audit-retention",),
     ),
 )
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--base-url", default="https://api.openai.com/v1")
-    parser.add_argument("--model", default="text-embedding-3-large")
-    parser.add_argument("--dimension", type=int, default=3072)
+    parser.add_argument(
+        "--base-url",
+        default=os.getenv("UAM_EMBEDDING_BASE_URL", "http://localhost:8000/v1"),
+    )
+    parser.add_argument(
+        "--model",
+        default=os.getenv("UAM_EMBEDDING_MODEL", "embedding-model"),
+    )
+    parser.add_argument(
+        "--dimension",
+        type=int,
+        default=int(os.getenv("UAM_EMBEDDING_DIM", "1536")),
+    )
     parser.add_argument(
         "--api-key",
-        default=read_secret_env("UAM_EMBEDDING_API_KEY", "OPENAI_API_KEY"),
+        default=read_secret_env("UAM_EMBEDDING_API_KEY"),
     )
-    parser.add_argument("--provider", default="openai-compatible")
+    parser.add_argument(
+        "--provider",
+        default=os.getenv("UAM_EMBEDDING_PROVIDER", "openai-compatible"),
+    )
     args = parser.parse_args()
 
     client = build_embedding_client(
