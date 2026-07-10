@@ -166,6 +166,9 @@ PostgreSQL, Qdrant, NATS, and MinIO internal.
      --base-url https://api.openai.com/v1 \
      --model gpt-5.6-terra \
      --json-report ./ops/memory-llm.json
+   UAM_API_KEY=... python scripts/conversation_pipeline_eval.py \
+     --base-url http://localhost:6798 \
+     --json-report ./ops/conversation-pipeline.json
    python scripts/real_embedding_eval.py \
      --provider openai-compatible \
      --base-url https://api.openai.com/v1 \
@@ -406,6 +409,9 @@ UAM_VAULT_SIGNING_KEY=... python scripts/import_vault.py ./vault-review \
   --require-signature \
   --json-report ./ops/vault-import.json
 python scripts/real_memory_llm_eval.py --json-report ./ops/memory-llm.json
+UAM_API_KEY=... python scripts/conversation_pipeline_eval.py \
+  --base-url http://localhost:6798 \
+  --json-report ./ops/conversation-pipeline.json
 python scripts/real_embedding_eval.py \
   --provider openai-compatible \
   --base-url https://api.openai.com/v1 \

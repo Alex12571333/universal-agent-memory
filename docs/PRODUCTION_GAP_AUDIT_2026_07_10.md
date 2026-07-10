@@ -16,7 +16,7 @@ it is not enough.
 | Audit trail | Append-only `audit_events` table, RLS, operator export API, signed paginated JSONL bundle, safe retention runner, metrics, tests | Strong baseline; environment schedule, key custody and immutable storage still needed |
 | Browser/API hardening | Security headers are enforced by middleware and tests | Baseline present |
 | Data model | Append-only memory, CAS supersede, provenance, statuses, optional pgcrypto ciphertext for all or selected memory scopes | Strong foundation |
-| Conversation capture | Raw conversation ledger exists, but curation remains explicit/manual or hook-driven | Not “automatically remembers everything” yet |
+| Conversation capture | Raw conversation ledger, explicit curation endpoint and live conversation pipeline evidence runner exist | Still must install agent/plugin hooks before claiming automatic capture |
 | Embeddings | Real provider support exists; live embedding regression writes JSON evidence, Qdrant can redact raw text payloads and hydrate recall from PostgreSQL; fake remains available for CI/emergency | Production depends on preserved target-endpoint evidence, `UAM_QDRANT_PAYLOAD_TEXT=false`, and reindex discipline |
 | Memory LLM | Provider-neutral OpenAI-compatible contract, fail-soft adapter and live regression runner exist | Needs saved live endpoint regression evidence before autonomy |
 | OpenClaw/Hermes | Native adapter scaffolds, tests and live soak runner exist | Needs saved real runtime soak evidence from `.14` |
@@ -126,7 +126,9 @@ Required gates:
   alerting, signed audit retention, and real `.14` agent soak reports are
   proven.
 - “Remembers all conversations automatically” — the raw ledger can store full
-  turns, but automatic capture depends on agent/plugin hooks being installed.
+  turns and release evidence can prove capture→curate→recall on a target
+  server, but automatic capture still depends on agent/plugin hooks being
+  installed.
 - “Semantic recall is production quality” — only true when a real embedding
   model is configured, indexed, monitored, and regression-tested.
 - “GraphRAG is authoritative” — graph edges and LLM extraction need evidence and

@@ -23,6 +23,7 @@ The generated manifest contains every artifact currently required by
   "release": "2026.07.10",
   "artifacts": {
     "agent_soak": "ops/agent-soak.json",
+    "conversation_pipeline": "ops/conversation-pipeline.json",
     "embedding": "ops/embedding.json",
     "memory_llm": "ops/memory-llm.json",
     "load_smoke": "ops/load-smoke.json",
@@ -103,6 +104,10 @@ UAM_API_KEY=... python scripts/ui_walkthrough_eval.py \
   --base-url http://localhost:6798 \
   --json-report ./ops/ui-walkthrough.json
 
+UAM_API_KEY=... python scripts/conversation_pipeline_eval.py \
+  --base-url http://localhost:6798 \
+  --json-report ./ops/conversation-pipeline.json
+
 python scripts/real_embedding_eval.py \
   --provider openai-compatible \
   --base-url https://api.openai.com/v1 \
@@ -145,6 +150,9 @@ The verifier requires:
 
 - agent soak report format `obelisk-agent-soak-v1`, `ok: true`, OpenClaw recall,
   Hermes recall and cross-workspace leakage checks;
+- conversation pipeline report format `obelisk-conversation-pipeline-v1`,
+  `ok: true`, raw turn capture/listing, proof that raw turns are not recalled
+  before curation, explicit curation and curated memory recall;
 - embedding report format `obelisk-embedding-eval-v1`, `ok: true`, endpoint
   reachability, exact vector dimension, and all semantic recall scenarios;
 - memory LLM report format `obelisk-memory-llm-eval-v1`, `ok: true`,

@@ -59,6 +59,7 @@ def run_checks(*, static_only: bool) -> list[Check]:
         "scripts/validate_production_env.py",
         "scripts/export_audit.py",
         "scripts/agent_soak_eval.py",
+        "scripts/conversation_pipeline_eval.py",
         "scripts/load_smoke_eval.py",
         "scripts/ui_walkthrough_eval.py",
         "scripts/real_embedding_eval.py",
@@ -543,6 +544,9 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 "obelisk-release-evidence-manifest-v1"
                 in read("scripts/verify_release_evidence.py")
                 and "agent_soak" in read("scripts/verify_release_evidence.py")
+                and "conversation_pipeline" in read("scripts/verify_release_evidence.py")
+                and "obelisk-conversation-pipeline-v1"
+                in read("scripts/verify_release_evidence.py")
                 and "embedding" in read("scripts/verify_release_evidence.py")
                 and "obelisk-embedding-eval-v1" in read(
                     "scripts/verify_release_evidence.py"
@@ -572,6 +576,9 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 )
                 and "ops/ops-schedule.json" in read("docs/RELEASE_EVIDENCE.md")
                 and "ops/observability-preflight.json" in read(
+                    "docs/RELEASE_EVIDENCE.md"
+                )
+                and "ops/conversation-pipeline.json" in read(
                     "docs/RELEASE_EVIDENCE.md"
                 )
                 and "ops/embedding.json" in read("docs/RELEASE_EVIDENCE.md")
@@ -619,6 +626,8 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 and "test_verify_release_evidence_rejects_missing_rollback_steps"
                 in read("tests/test_backup_restore_scripts.py")
                 and "test_verify_release_evidence_rejects_failed_embedding_eval"
+                in read("tests/test_backup_restore_scripts.py")
+                and "test_verify_release_evidence_rejects_conversation_pipeline_leak"
                 in read("tests/test_backup_restore_scripts.py"),
                 "release evidence verifier behavior is covered",
             ),
@@ -845,6 +854,23 @@ def run_checks(*, static_only: bool) -> list[Check]:
                     "tests/test_postgres_encryption.py"
                 ),
                 "PostgreSQL memory text encryption behavior is covered",
+            ),
+            Check(
+                "conversation:pipeline-runner",
+                "obelisk-conversation-pipeline-v1"
+                in read("scripts/conversation_pipeline_eval.py")
+                and "raw-turn-not-recalled" in read("scripts/conversation_pipeline_eval.py")
+                and "curated-memory-recalled"
+                in read("scripts/conversation_pipeline_eval.py"),
+                "conversation pipeline runner validates raw capture, curation and recall",
+            ),
+            Check(
+                "tests:conversation-pipeline-runner",
+                "test_conversation_pipeline_eval_passes_full_pipeline"
+                in read("tests/test_conversation_pipeline_eval.py")
+                and "test_conversation_pipeline_eval_fails_when_raw_turn_leaks_into_recall"
+                in read("tests/test_conversation_pipeline_eval.py"),
+                "conversation pipeline runner behavior is covered",
             ),
             Check(
                 "embedding:live-regression-runner",

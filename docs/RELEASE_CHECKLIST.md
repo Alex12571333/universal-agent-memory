@@ -56,6 +56,9 @@ UAM_API_KEY=... python scripts/load_smoke_eval.py \
 UAM_API_KEY=... python scripts/ui_walkthrough_eval.py \
   --base-url http://localhost:6798 \
   --json-report ./ops/ui-walkthrough.json
+UAM_API_KEY=... python scripts/conversation_pipeline_eval.py \
+  --base-url http://localhost:6798 \
+  --json-report ./ops/conversation-pipeline.json
 python scripts/real_embedding_eval.py \
   --provider openai-compatible \
   --base-url https://api.openai.com/v1 \
@@ -106,6 +109,8 @@ Manual checks:
   `"manifest_signed": true`.
 - Confirm the configured OpenAI-compatible memory LLM endpoint is reachable.
 - Confirm `ops/memory-llm.json` reports `"ok": true` for that endpoint/model.
+- Confirm `ops/conversation-pipeline.json` reports `"ok": true`, proves raw
+  turns are not recalled before curation, and proves curated memory is recalled.
 - Confirm embedding endpoint returns the configured dimension.
 - Confirm `ops/embedding.json` reports `"ok": true` for the configured
   provider/base URL/model/dimension and semantic recall scenarios.
@@ -173,6 +178,8 @@ Do not release if:
 - branch protection or PR-only merge policy is disabled for a shared production
   repository.
 - OpenClaw/Hermes soak reports show cross-workspace leakage or missing recall.
+- conversation pipeline evidence is missing, raw transcript appears in recall
+  before curation, or curated memory cannot be recalled.
 - embedding evidence is missing, dimension does not match the configured model,
   or semantic recall scenarios choose the wrong top memory.
 - load smoke evidence is missing, has non-zero errors, violates p95 thresholds,

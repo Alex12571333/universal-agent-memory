@@ -940,6 +940,7 @@ def test_verify_release_evidence_accepts_complete_manifest(tmp_path: Path) -> No
     assert {check.name for check in checks} >= {
         "agent_soak:openclaw",
         "agent_soak:hermes",
+        "conversation_pipeline:required-checks",
         "embedding:required-checks",
         "load_smoke:parallelism",
         "observability:required-checks",
@@ -1103,6 +1104,26 @@ def test_verify_release_evidence_rejects_failed_embedding_eval(tmp_path: Path) -
     assert not all(check.passed for check in checks)
 
 
+def test_verify_release_evidence_rejects_conversation_pipeline_leak(
+    tmp_path: Path,
+) -> None:
+    manifest = _write_release_evidence_bundle(tmp_path)
+    conversation_path = tmp_path / "conversation-pipeline.json"
+    payload = json.loads(conversation_path.read_text(encoding="utf-8"))
+    payload["ok"] = False
+    for check in payload["checks"]:
+        if check["name"] == "raw-turn-not-recalled":
+            check["ok"] = False
+            check["detail"] = "raw transcript leaked into recall"
+    conversation_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    checks = verify_release_evidence.verify_manifest(manifest)
+
+    ok_check = next(check for check in checks if check.name == "conversation_pipeline:ok")
+    assert ok_check.passed is False
+    assert not all(check.passed for check in checks)
+
+
 def test_verify_release_evidence_json_cli_output(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -1126,6 +1147,7 @@ def test_generate_release_evidence_manifest_contains_required_artifacts() -> Non
 
     assert set(artifacts) == verify_release_evidence.REQUIRED_ARTIFACTS
     assert artifacts["observability"] == "ops/observability-preflight.json"
+    assert artifacts["conversation_pipeline"] == "ops/conversation-pipeline.json"
     assert artifacts["embedding"] == "ops/embedding.json"
     assert artifacts["ops_schedule"] == "ops/ops-schedule.json"
     assert artifacts["release_notes"] == "ops/release-notes.json"
@@ -1249,6 +1271,28 @@ def _write_release_evidence_bundle(tmp_path: Path) -> Path:
             "checks": [
                 {"name": "chat-completions", "ok": True},
                 {"name": "json-memory-curation", "ok": True},
+            ],
+        },
+    )
+    _write_json(
+        tmp_path / "conversation-pipeline.json",
+        {
+            "format": "obelisk-conversation-pipeline-v1",
+            "ok": True,
+            "base_url": "http://localhost:6798",
+            "tenant_id": "00000000-0000-0000-0000-000000000001",
+            "workspace_id": "00000000-0000-0000-0000-000000000002",
+            "thread_id": "00000000-0000-0000-0000-000000000042",
+            "namespace": "release-conversation",
+            "run_id": "abc123",
+            "turn_id": "00000000-0000-0000-0000-000000000111",
+            "memory_id": "00000000-0000-0000-0000-000000000222",
+            "checks": [
+                {"name": "raw-turn-stored", "ok": True, "detail": "created"},
+                {"name": "raw-turn-listed", "ok": True, "detail": "count=1"},
+                {"name": "raw-turn-not-recalled", "ok": True, "detail": "safe"},
+                {"name": "curation-created-memory", "ok": True, "detail": "created"},
+                {"name": "curated-memory-recalled", "ok": True, "detail": "recalled"},
             ],
         },
     )
@@ -1480,6 +1524,7 @@ def _write_release_evidence_bundle(tmp_path: Path) -> Path:
             "release": "test",
             "artifacts": {
                 "agent_soak": "agent-soak.json",
+                "conversation_pipeline": "conversation-pipeline.json",
                 "embedding": "embedding.json",
                 "memory_llm": "memory-llm.json",
                 "load_smoke": "load-smoke.json",
