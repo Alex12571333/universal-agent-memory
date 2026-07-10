@@ -24,13 +24,7 @@ async def run() -> None:
     nats_url = os.getenv("UAM_NATS_URL", "nats://nats:4222")
     poll_seconds = float(os.getenv("UAM_EMBED_POLL_SECONDS", "0.5"))
 
-    # Build container to get PostgresLedger and EmbeddingService
-    container = build_postgres_container(
-        dsn,
-        server_id=server_id,
-        project_id=project_id,
-        require_qdrant=True,
-    )
+    container = _build_container(dsn, server_id=server_id, project_id=project_id)
 
     async def handler(event: IntegrationEvent) -> None:
         if event.name != "memory.retained.v1":
@@ -75,6 +69,19 @@ async def run() -> None:
                 await asyncio.sleep(poll_seconds)
     finally:
         await worker.close()
+
+
+def _build_container(dsn: str, *, server_id: UUID, project_id: UUID):
+    """Use the same immutable Qdrant identity as the API process."""
+    return build_postgres_container(
+        dsn,
+        server_id=server_id,
+        project_id=project_id,
+        qdrant_url=os.getenv("UAM_QDRANT_URL"),
+        qdrant_dim=int(os.getenv("UAM_EMBEDDING_DIM", "1536")),
+        qdrant_collection=os.getenv("UAM_QDRANT_COLLECTION", "memory_items"),
+        require_qdrant=True,
+    )
 
 
 def main() -> None:
