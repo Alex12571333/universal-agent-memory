@@ -338,6 +338,7 @@ python scripts/validate_production_env.py .env.production \
   --require-signed-artifacts \
   --require-real-embeddings
 UAM_API_KEY=... python scripts/agent_soak_eval.py --json-report ./ops/agent-soak.json
+UAM_API_KEY=... python scripts/load_smoke_eval.py --json-report ./ops/load-smoke.json
 UAM_API_KEY=... python scripts/ui_walkthrough_eval.py --json-report ./ops/ui-walkthrough.json
 python scripts/real_memory_llm_eval.py --json-report ./ops/memory-llm.json
 UAM_AUDIT_SIGNING_KEY=... PYTHONPATH=src python scripts/audit_retention.py \

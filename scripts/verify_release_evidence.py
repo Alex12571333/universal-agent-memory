@@ -13,6 +13,7 @@ MANIFEST_FORMAT = "obelisk-release-evidence-manifest-v1"
 REQUIRED_ARTIFACTS = {
     "agent_soak",
     "memory_llm",
+    "load_smoke",
     "metrics_health",
     "scheduled_backup",
     "audit_retention",
@@ -104,6 +105,7 @@ def verify_manifest(path: Path) -> list[EvidenceCheck]:
     readers = {
         "agent_soak": _verify_agent_soak,
         "memory_llm": _verify_memory_llm,
+        "load_smoke": _verify_load_smoke,
         "metrics_health": _verify_metrics_health,
         "scheduled_backup": _verify_scheduled_backup,
         "audit_retention": _verify_audit_retention,
@@ -208,6 +210,34 @@ def _verify_metrics_health(payload: dict[str, Any]) -> list[EvidenceCheck]:
             "metrics_health:required-checks",
             not missing,
             "required checks present" if not missing else "missing: " + ", ".join(missing),
+        ),
+    ]
+
+
+def _verify_load_smoke(payload: dict[str, Any]) -> list[EvidenceCheck]:
+    names = _check_names(payload)
+    required = {
+        "health",
+        "concurrent-retain-recall",
+        "error-rate",
+        "retain-p95",
+        "recall-p95",
+        "metrics-backlog",
+    }
+    missing = sorted(required - names)
+    return [
+        _format_check("load_smoke", payload, "obelisk-load-smoke-v1"),
+        _ok_check("load_smoke", payload),
+        EvidenceCheck(
+            "load_smoke:required-checks",
+            not missing,
+            "required checks present" if not missing else "missing: " + ", ".join(missing),
+        ),
+        EvidenceCheck(
+            "load_smoke:parallelism",
+            int(payload.get("agents") or 0) >= 2
+            and int(payload.get("total_operations") or 0) >= 4,
+            "parallel load evidence present",
         ),
     ]
 

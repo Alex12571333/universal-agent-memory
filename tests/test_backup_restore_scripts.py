@@ -900,6 +900,7 @@ def test_verify_release_evidence_accepts_complete_manifest(tmp_path: Path) -> No
     assert {check.name for check in checks} >= {
         "agent_soak:openclaw",
         "agent_soak:hermes",
+        "load_smoke:parallelism",
         "scheduled_backup:restore-drill",
         "audit_retention:verified-export",
         "branch_protection:passed",
@@ -982,6 +983,23 @@ def _write_release_evidence_bundle(tmp_path: Path) -> Path:
         },
     )
     _write_json(
+        tmp_path / "load-smoke.json",
+        {
+            "format": "obelisk-load-smoke-v1",
+            "ok": True,
+            "agents": 4,
+            "total_operations": 20,
+            "checks": [
+                {"name": "health", "ok": True},
+                {"name": "concurrent-retain-recall", "ok": True},
+                {"name": "error-rate", "ok": True},
+                {"name": "retain-p95", "ok": True},
+                {"name": "recall-p95", "ok": True},
+                {"name": "metrics-backlog", "ok": True},
+            ],
+        },
+    )
+    _write_json(
         tmp_path / "scheduled-backup.json",
         {
             "format": "obelisk-scheduled-backup-report-v1",
@@ -1046,6 +1064,7 @@ def _write_release_evidence_bundle(tmp_path: Path) -> Path:
             "artifacts": {
                 "agent_soak": "agent-soak.json",
                 "memory_llm": "memory-llm.json",
+                "load_smoke": "load-smoke.json",
                 "metrics_health": "metrics-health.json",
                 "scheduled_backup": "scheduled-backup.json",
                 "audit_retention": "audit-retention.json",

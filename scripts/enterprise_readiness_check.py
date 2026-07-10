@@ -55,6 +55,7 @@ def run_checks(*, static_only: bool) -> list[Check]:
         "scripts/validate_production_env.py",
         "scripts/export_audit.py",
         "scripts/agent_soak_eval.py",
+        "scripts/load_smoke_eval.py",
         "scripts/ui_walkthrough_eval.py",
         "scripts/real_memory_llm_eval.py",
         "scripts/vault_manifest.py",
@@ -510,6 +511,7 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 "obelisk-release-evidence-manifest-v1"
                 in read("scripts/verify_release_evidence.py")
                 and "agent_soak" in read("scripts/verify_release_evidence.py")
+                and "load_smoke" in read("scripts/verify_release_evidence.py")
                 and "audit_retention" in read("scripts/verify_release_evidence.py")
                 and "branch_protection" in read("scripts/verify_release_evidence.py")
                 and "ui_walkthrough" in read("scripts/verify_release_evidence.py")
@@ -547,6 +549,24 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 and "cross-workspace-leakage" in read("scripts/agent_soak_eval.py")
                 and "obelisk-agent-soak-v1" in read("scripts/agent_soak_eval.py"),
                 "live agent soak runner validates retain/recall/leakage",
+            ),
+            Check(
+                "load:smoke-runner",
+                "obelisk-load-smoke-v1" in read("scripts/load_smoke_eval.py")
+                and "concurrent-retain-recall" in read("scripts/load_smoke_eval.py")
+                and "retain-p95" in read("scripts/load_smoke_eval.py")
+                and "metrics-backlog" in read("scripts/load_smoke_eval.py"),
+                "load smoke runner validates concurrent retain/recall, latency and backlog",
+            ),
+            Check(
+                "tests:load-smoke-runner",
+                "test_load_smoke_eval_passes_parallel_retain_recall" in read(
+                    "tests/test_load_smoke_eval.py"
+                )
+                and "test_load_smoke_eval_fails_on_backlog_metrics" in read(
+                    "tests/test_load_smoke_eval.py"
+                ),
+                "load smoke runner behavior is covered",
             ),
             Check(
                 "tests:agent-soak-runner",
