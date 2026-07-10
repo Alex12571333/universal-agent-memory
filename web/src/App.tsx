@@ -945,9 +945,15 @@ function ConflictList({
                       <small>
                         {translateStatus(candidate.status)} · уверенность {Math.round(candidate.confidence * 100)}%
                       </small>
+                      <small>evidence: {candidate.evidence_ids.length ? candidate.evidence_ids.map(shortUuid).join(", ") : "нет"}</small>
                     </div>
                     {onDecide && isOpenConflict(item) ? (
-                      <button onClick={() => void onDecide(item, "overridden", candidate.value, "operator selected this candidate")}>
+                      <button onClick={() => void onDecide(
+                        item,
+                        "overridden",
+                        candidate.value,
+                        conflictDecisionReason("Почему этот вариант правильный?", `Оператор выбрал: ${candidate.value}`)
+                      )}>
                         Выбрать
                       </button>
                     ) : null}
@@ -959,11 +965,21 @@ function ConflictList({
                   <button
                     className="primary"
                     disabled={!item.suggested_winner_value}
-                    onClick={() => void onDecide(item, "accepted", item.suggested_winner_value, "accepted server recommendation")}
+                    onClick={() => void onDecide(
+                      item,
+                      "accepted",
+                      item.suggested_winner_value,
+                      conflictDecisionReason("Почему принимаем рекомендацию?", conflictRationale(item))
+                    )}
                   >
                     Принять рекомендацию
                   </button>
-                  <button onClick={() => void onDecide(item, "dismissed", null, "dismissed as not actionable")}>
+                  <button onClick={() => void onDecide(
+                    item,
+                    "dismissed",
+                    null,
+                    conflictDecisionReason("Почему конфликт неактуален?", "Оператор скрыл конфликт как неактуальный")
+                  )}>
                     Скрыть как неактуальный
                   </button>
                 </div>
@@ -1178,6 +1194,11 @@ function conflictValues(item: ConflictCase) {
 
 function conflictRationale(item: ConflictCase) {
   return item.rationale ?? item.suggested_reason ?? "Сервер предлагает самую свежую активную версию, исходные записи остаются append-only.";
+}
+
+function conflictDecisionReason(promptText: string, fallback: string) {
+  if (typeof window === "undefined" || typeof window.prompt !== "function") return fallback;
+  return window.prompt(promptText, fallback)?.trim() || fallback;
 }
 
 function vaultReadableBody(fileOrContent: VaultFile | string | undefined) {

@@ -20,7 +20,7 @@ it is not enough.
 | Embeddings | Real provider support exists; Qdrant can redact raw text payloads and hydrate recall from PostgreSQL; fake remains available for CI/emergency | Production depends on real endpoint, `UAM_QDRANT_PAYLOAD_TEXT=false`, and reindex discipline |
 | Memory LLM | Qwen/Spark `.10` config, fail-soft adapter and live regression runner exist | Needs saved live `.10` regression evidence before autonomy |
 | OpenClaw/Hermes | Native adapter scaffolds, tests and live soak runner exist | Needs saved real runtime soak evidence from `.14` |
-| UI | React dashboard exists and is improving | Operator-grade, not yet admin-console complete |
+| UI | React dashboard and fallback `/ui` support real memory/vault editing and actionable conflict decisions | Operator-grade baseline; still needs live UI walkthrough evidence |
 | Testing | Unit, integration-style, benchmark scripts, web build | Needs load/chaos/restore/security tests |
 | Release process | `main` branch protection requires PR flow, strict `python`/`web` checks, conversation resolution, and admin enforcement | Release gate baseline is now proven by `scripts/check_branch_protection.py`; keep verifying before releases |
 | Operations | Runbook, backup/restore scripts, isolated restore-drill script, scheduler-ready backup runner, signed vault manifests, metrics health evaluator with JSON report/webhook, release checklist and release evidence verifier | Needs environment scheduler, durable/immutable storage and dashboard wiring |
@@ -93,7 +93,8 @@ Required gates:
    - Dashboard values come from real API state, not fixed mock numbers.
    - Vault editor edits normal text only; embeddings/frontmatter stay internal.
    - Delete/archive is non-destructive and visible in history.
-   - Conflict resolution is actionable from UI.
+   - Conflict resolution is actionable from UI and persists audited operator
+     decisions.
    - Graph is movable, zoomable, and reflects real nodes/edges.
    - Model settings explain restart/reindex impact before applying.
 
@@ -128,6 +129,7 @@ Required gates:
    path and preserve the JSON report as release evidence.
 4. Wire metrics and scheduled-backup health reports into the deployment
    dashboard/alerting stack.
-5. Add UI conflict-resolution flow with accept/supersede/reject actions.
+5. Preserve a release UI walkthrough showing conflict accept/override/dismiss,
+   vault edit/archive, graph movement, model settings probe and reindex.
 6. Preserve and verify the release evidence manifest in every release bundle.
 7. Add optional external secret-manager integration.

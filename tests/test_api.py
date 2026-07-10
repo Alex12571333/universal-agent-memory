@@ -690,6 +690,50 @@ def test_conflict_inbox_endpoint_lists_and_persists_review_decision() -> None:
     assert resolved.json()["cases"][0]["review_status"] == "accepted"
 
 
+def test_conflict_decision_can_dismiss_without_winner() -> None:
+    client = TestClient(create_app(build_in_memory_container()))
+    client.post(
+        "/v1/memory/retain",
+        json={
+            "layer": "semantic",
+            "scope": "workspace",
+            "kind": "fact",
+            "text": "Dismissable releases on July 15",
+        },
+    )
+    client.post(
+        "/v1/memory/retain",
+        json={
+            "layer": "semantic",
+            "scope": "workspace",
+            "kind": "fact",
+            "text": "Dismissable releases on July 16",
+        },
+    )
+    case = client.get(f"/v1/workspaces/{DEFAULT_PROJECT_ID}/conflicts").json()[
+        "cases"
+    ][0]
+
+    decision = client.put(
+        f"/v1/workspaces/{DEFAULT_PROJECT_ID}/conflicts/{case['id']}/decision",
+        json={
+            "status": "dismissed",
+            "winner_value": None,
+            "reason": "Not actionable for this workspace.",
+        },
+    )
+    unresolved = client.get(f"/v1/workspaces/{DEFAULT_PROJECT_ID}/conflicts")
+    resolved = client.get(
+        f"/v1/workspaces/{DEFAULT_PROJECT_ID}/conflicts?include_resolved=true"
+    )
+
+    assert decision.status_code == 200
+    assert decision.json()["status"] == "dismissed"
+    assert decision.json()["winner_value"] is None
+    assert unresolved.json()["count"] == 0
+    assert resolved.json()["cases"][0]["review_status"] == "dismissed"
+
+
 def test_memory_list_endpoint_and_operator_ui(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("UAM_WEB_DIST", str(tmp_path / "missing-dist"))
     client = TestClient(create_app(build_in_memory_container()))
@@ -727,6 +771,9 @@ def test_memory_list_endpoint_and_operator_ui(tmp_path, monkeypatch) -> None:
     assert "Сохранить и пересчитать embedding" in ui.text
     assert "Frontmatter, ревизии и embedding остаются под капотом" in ui.text
     assert "Сервер предлагает самую свежую активную версию" in ui.text
+    assert "Принять рекомендацию" in ui.text
+    assert "Скрыть как неактуальный" in ui.text
+    assert "decideConflict(" in ui.text
     assert "/v1/workspaces/" in ui.text
 
 

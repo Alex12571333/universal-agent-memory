@@ -3521,13 +3521,39 @@ Build a universal memory layer for AI agents that is:
       updateKpis({ conflicts: data.count });
       $("ops").innerHTML = data.count ? data.cases.map(c => `<div class="card">
           <div>
-            <span class="pill ${c.review_status === "open" ? "warn" : "ok"}">${escapeHtml(reviewName(c.review_status))}</span>
+            <span class="pill ${isOpenReview(c.review_status) ? "warn" : "ok"}">${escapeHtml(reviewName(c.review_status))}</span>
             <strong>${escapeHtml(c.subject)} / ${escapeHtml(c.predicate)}</strong>
           </div>
           <p class="muted tiny">${escapeHtml(reasonName(c.suggested_reason))}</p>
           <div class="pill ok">рекомендация: ${escapeHtml(c.suggested_winner_value || "—")}</div>
-          ${c.candidates.map(x => `<pre>${escapeHtml(statusName(x.status))} · уверенность ${Number(x.confidence).toFixed(2)}\\n${escapeHtml(x.value)}</pre>`).join("")}
+          ${c.candidates.map(x => `<div class="card compact-card">
+            <div style="display:flex;gap:10px;justify-content:space-between;align-items:center">
+              <strong>${escapeHtml(x.value)}</strong>
+              ${isOpenReview(c.review_status) ? `<button class="secondary" onclick="decideConflict(${jsString(c.id)}, 'overridden', ${jsString(x.value)}, ${jsString("Оператор выбрал: " + x.value)})">Выбрать</button>` : ""}
+            </div>
+            <div class="muted tiny">${escapeHtml(statusName(x.status))} · уверенность ${Number(x.confidence).toFixed(2)}</div>
+            <div class="muted tiny">evidence: ${escapeHtml((x.evidence_ids || []).join(", ") || "нет")}</div>
+          </div>`).join("")}
+          ${isOpenReview(c.review_status) ? `<div class="actions">
+            <button onclick="decideConflict(${jsString(c.id)}, 'accepted', ${jsString(c.suggested_winner_value)}, ${jsString(reasonName(c.suggested_reason))})">Принять рекомендацию</button>
+            <button class="secondary" onclick="decideConflict(${jsString(c.id)}, 'dismissed', null, 'Оператор скрыл конфликт как неактуальный')">Скрыть как неактуальный</button>
+          </div>` : ""}
         </div>`).join("") : `<div class="empty">Конфликтов нет. Память спокойна — подозрительно спокойна.</div>`;
+    }
+
+    async function decideConflict(caseId, status, winnerValue, defaultReason) {
+      const reason = prompt("Причина решения по конфликту", defaultReason || "") || defaultReason || "operator decision";
+      await api(`/v1/workspaces/${workspace()}/conflicts/${caseId}/decision`, {
+        method: "PUT",
+        body: JSON.stringify({
+          tenant_id: tenant(),
+          status,
+          winner_value: winnerValue,
+          reason,
+        }),
+      });
+      log(status === "dismissed" ? "конфликт скрыт" : `конфликт решён: ${winnerValue || "без победителя"}`);
+      await Promise.allSettled([loadConflicts(), listMemories()]);
     }
 
     async function loadVault() {
@@ -3691,6 +3717,10 @@ Build a universal memory layer for AI agents that is:
       return String(value).replace(/[&<>"']/g, ch => ({
         "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
       }[ch]));
+    }
+
+    function jsString(value) {
+      return JSON.stringify(value == null ? null : String(value));
     }
 
     function parseVaultNote(content) {
@@ -4187,8 +4217,12 @@ Build a universal memory layer for AI agents that is:
 
     function reviewName(value) {
       return ({
-        open: "открыто", accepted: "принято", rejected: "отклонено", overridden: "переопределено"
+        unresolved: "требует решения", open: "открыто", accepted: "принято", dismissed: "скрыто", rejected: "отклонено", overridden: "переопределено"
       })[value] || value;
+    }
+
+    function isOpenReview(value) {
+      return value === "unresolved" || value === "pending" || value === "open";
     }
 
     function actionName(value) {
