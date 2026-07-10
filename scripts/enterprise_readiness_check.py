@@ -51,6 +51,7 @@ def run_checks(*, static_only: bool) -> list[Check]:
         "scripts/check_metrics_health.py",
         "scripts/export_audit.py",
         "scripts/agent_soak_eval.py",
+        "scripts/vault_manifest.py",
         "scripts/restore_drill.py",
         "scripts/scheduled_backup.py",
         "docs/assets/obelisk-memory-hero.png",
@@ -178,6 +179,11 @@ def run_checks(*, static_only: bool) -> list[Check]:
             ),
             Check("env:privacy", "UAM_PRIVACY_ACTION=redact" in env, "privacy defaults"),
             Check("env:scoped-keys", "UAM_API_KEYS=" in env, "scoped API keys documented"),
+            Check(
+                "env:signing-keys",
+                "UAM_AUDIT_SIGNING_KEY=" in env and "UAM_VAULT_SIGNING_KEY=" in env,
+                "operator-held signing keys are documented",
+            ),
         ]
     )
 
@@ -331,6 +337,31 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 and "test_agent_soak_eval_fails_on_cross_workspace_leakage"
                 in read("tests/test_agent_soak_eval.py"),
                 "agent soak runner success and leakage failure are covered",
+            ),
+            Check(
+                "vault:signed-manifest",
+                "MANIFEST_FORMAT = \"obelisk-vault-manifest-v1\"" in read(
+                    "scripts/vault_manifest.py"
+                )
+                and "SIGNATURE_ALGORITHM = \"hmac-sha256\"" in read(
+                    "scripts/vault_manifest.py"
+                )
+                and "--require-signature" in read("scripts/import_vault.py")
+                and "UAM_VAULT_SIGNING_KEY" in read("scripts/export_vault.py"),
+                "vault export/import supports manifest checksum and HMAC signatures",
+            ),
+            Check(
+                "tests:vault-signed-manifest",
+                "test_export_vault_can_sign_manifest" in read(
+                    "tests/test_backup_restore_scripts.py"
+                )
+                and "test_import_vault_verifies_signed_manifest_before_apply" in read(
+                    "tests/test_backup_restore_scripts.py"
+                )
+                and "test_import_vault_rejects_tampered_signed_manifest" in read(
+                    "tests/test_backup_restore_scripts.py"
+                ),
+                "signed vault manifest behavior is covered by tests",
             ),
         ]
     )

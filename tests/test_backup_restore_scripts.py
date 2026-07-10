@@ -520,6 +520,29 @@ def test_export_vault_builds_postgres_exporter(
     vault.export.assert_called_once()
     assert (tmp_path / "README.md").read_text(encoding="utf-8") == "# Vault\n"
     assert (tmp_path / "semantic" / "fact-alpha.md").read_text(encoding="utf-8") == "Alpha\n"
+    assert (tmp_path / ".uam-vault-manifest.json").exists()
+    assert (tmp_path / ".uam-vault-manifest.sha256").exists()
+
+
+def test_export_vault_can_sign_manifest(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    vault = Mock()
+    vault.export.return_value = Mock(
+        files=(Mock(path="semantic/mem-alpha.md", content="Alpha\n"),)
+    )
+    container = Mock(vault=vault)
+    monkeypatch.setattr(export_vault, "build_postgres_container", Mock(return_value=container))
+    monkeypatch.setenv("UAM_DATABASE_URL", "postgresql://example/db")
+    monkeypatch.setattr(
+        "sys.argv",
+        ["export_vault.py", str(tmp_path), "--signing-key", "vault-secret"],
+    )
+
+    assert export_vault.main() == 0
+
+    signature = (tmp_path / ".uam-vault-manifest.sig").read_text(encoding="utf-8")
+    assert signature.startswith("hmac-sha256:")
 
 
 def test_import_vault_defaults_to_dry_run(
@@ -549,6 +572,84 @@ def test_import_vault_defaults_to_dry_run(
 
     build_container.assert_called_once()
     vault.plan_import.assert_called_once()
+    vault.apply_import.assert_not_called()
+
+
+def test_import_vault_verifies_signed_manifest_before_apply(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    (tmp_path / "core").mkdir()
+    (tmp_path / "core" / "mem-alpha.md").write_text("Alpha\n", encoding="utf-8")
+    export_vault.write_vault_manifest(
+        tmp_path,
+        tenant_id="00000000-0000-0000-0000-000000000001",
+        workspace_id="00000000-0000-0000-0000-000000000002",
+        signing_key="vault-secret",
+    )
+    vault = Mock()
+    vault.apply_import.return_value = Mock(
+        changes=(
+            Mock(
+                action="unchanged",
+                path="core/mem-alpha.md",
+                message="ok",
+                new_item_id=None,
+            ),
+        ),
+        supersede_count=0,
+    )
+    container = Mock(vault=vault)
+    monkeypatch.setattr(import_vault, "build_postgres_container", Mock(return_value=container))
+    monkeypatch.setenv("UAM_DATABASE_URL", "postgresql://example/db")
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "import_vault.py",
+            str(tmp_path),
+            "--apply",
+            "--require-signature",
+            "--signing-key",
+            "vault-secret",
+        ],
+    )
+
+    assert import_vault.main() == 0
+
+    vault.apply_import.assert_called_once()
+
+
+def test_import_vault_rejects_tampered_signed_manifest(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    (tmp_path / "core").mkdir()
+    note = tmp_path / "core" / "mem-alpha.md"
+    note.write_text("Alpha\n", encoding="utf-8")
+    export_vault.write_vault_manifest(
+        tmp_path,
+        tenant_id="00000000-0000-0000-0000-000000000001",
+        workspace_id="00000000-0000-0000-0000-000000000002",
+        signing_key="vault-secret",
+    )
+    note.write_text("Tampered\n", encoding="utf-8")
+    vault = Mock()
+    container = Mock(vault=vault)
+    monkeypatch.setattr(import_vault, "build_postgres_container", Mock(return_value=container))
+    monkeypatch.setenv("UAM_DATABASE_URL", "postgresql://example/db")
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "import_vault.py",
+            str(tmp_path),
+            "--apply",
+            "--require-signature",
+            "--signing-key",
+            "vault-secret",
+        ],
+    )
+
+    with pytest.raises(ValueError, match="mismatch"):
+        import_vault.main()
+
     vault.apply_import.assert_not_called()
 
 

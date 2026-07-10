@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
 from pathlib import Path
 from uuid import UUID
 
 from memory_plane.api.app import DEFAULT_PROJECT_ID, DEFAULT_SERVER_ID
 from memory_plane.bootstrap import build_postgres_container
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from vault_manifest import write_vault_manifest  # noqa: E402
 
 
 def main() -> int:
@@ -32,6 +36,16 @@ def main() -> int:
         default=UUID(os.getenv("UAM_PROJECT_ID", str(DEFAULT_PROJECT_ID))),
         help="Workspace/project UUID to export",
     )
+    parser.add_argument(
+        "--no-manifest",
+        action="store_true",
+        help="Do not write .uam-vault-manifest.json/checksum files.",
+    )
+    parser.add_argument(
+        "--signing-key",
+        default=os.getenv("UAM_VAULT_SIGNING_KEY"),
+        help="Optional HMAC key used to write .uam-vault-manifest.sig.",
+    )
     args = parser.parse_args()
     if not args.database_url:
         parser.error("database URL is required")
@@ -51,6 +65,15 @@ def main() -> int:
         target = output / relative_path
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(file.content, encoding="utf-8")
+    if not args.no_manifest:
+        manifest = write_vault_manifest(
+            output,
+            tenant_id=str(args.tenant_id),
+            workspace_id=str(args.workspace_id),
+            signing_key=args.signing_key,
+        )
+        signed = " signed" if args.signing_key else ""
+        print(f"wrote{signed} vault manifest for {len(manifest['files'])} markdown files")
     print(f"exported {len(export.files)} files to {output}")
     return 0
 

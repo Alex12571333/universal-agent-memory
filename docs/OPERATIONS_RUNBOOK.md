@@ -150,6 +150,27 @@ unless `--all-pages` is supplied. For regulated retention, protect
 `UAM_AUDIT_SIGNING_KEY` in an external secret manager, run scheduled range
 exports, and store bundles in immutable storage.
 
+## Signed vault bundles
+
+Vault export/import is human-editable, so production operators should protect
+the review boundary with a signed manifest:
+
+```bash
+UAM_VAULT_SIGNING_KEY=... PYTHONPATH=src python scripts/export_vault.py ./vault-review
+UAM_VAULT_SIGNING_KEY=... PYTHONPATH=src python scripts/import_vault.py ./vault-review \
+  --require-signature
+```
+
+The exporter writes:
+
+- `.uam-vault-manifest.json` — every Markdown path, byte count and SHA-256;
+- `.uam-vault-manifest.sha256` — checksum for the manifest;
+- `.uam-vault-manifest.sig` — HMAC-SHA256 signature when the key is provided.
+
+Use `--require-signature` for production imports, including dry-run planning,
+and keep `UAM_VAULT_SIGNING_KEY` in the same class of secret storage as
+`UAM_AUDIT_SIGNING_KEY`.
+
 ## Upgrade
 
 1. Pull/build the new image.

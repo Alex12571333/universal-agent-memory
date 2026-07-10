@@ -35,6 +35,7 @@ remaining hard requirements.
 - [x] Scheduler-ready backup runner writes JSON reports and can alert on
       failures.
 - [x] Vault export/import uses safe dry-run and CAS supersede.
+- [x] Vault CLI export/import supports manifest checksums and HMAC signatures.
 - [x] Qdrant/vector indexing is async and fail-soft.
 - [x] Memory LLM is separate from embedding endpoint.
 - [x] Qwen/Spark `.10` memory LLM defaults are documented.
@@ -54,7 +55,8 @@ remaining hard requirements.
 - [ ] Install environment-level backup schedule and immutable artifact storage.
 - [ ] Wire metrics and scheduled-backup reports into deployment dashboards/alerts.
 - [ ] Add optional row-level encryption for selected memory scopes.
-- [ ] Add signed vault import manifests.
+- [ ] Enforce signed vault import manifests in production operating procedure
+      and keep signing keys outside the repository.
 - [ ] Enforce GitHub branch protection and PR-only merges to `main`.
 - [ ] Run real OpenClaw/Hermes soak tests against the `.14` agents and preserve
       the generated report.

@@ -23,7 +23,7 @@ it is not enough.
 | UI | React dashboard exists and is improving | Operator-grade, not yet admin-console complete |
 | Testing | Unit, integration-style, benchmark scripts, web build | Needs load/chaos/restore/security tests |
 | Release process | `AGENTS.md` describes issue/PR workflow | Main branch protection and PR-only enforcement are not proven |
-| Operations | Runbook, backup/restore scripts, isolated restore-drill script, scheduler-ready backup runner, metrics health evaluator with JSON report/webhook, release checklist | Needs environment scheduler, durable/immutable storage and dashboard wiring |
+| Operations | Runbook, backup/restore scripts, isolated restore-drill script, scheduler-ready backup runner, signed vault manifests, metrics health evaluator with JSON report/webhook, release checklist | Needs environment scheduler, durable/immutable storage and dashboard wiring |
 
 ## What “full production level” means for this project
 
@@ -43,6 +43,9 @@ Required gates:
      settings-change and model-change events. Durable storage plus optional
      HMAC-signed paginated export bundles exist; regulated environments still
      need signing-key custody, retention schedule and immutable storage.
+   - Vault import bundles must use manifest checksum verification and signed
+     manifests for production operator workflows. CLI support exists; the
+     deployment must keep signing keys outside the repository.
    - Optional row-level encryption for high-risk scopes.
    - Security headers and CSP stay covered by tests.
 

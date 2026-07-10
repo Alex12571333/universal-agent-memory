@@ -1,6 +1,6 @@
 # Production envelope report — 2026-07-10
 
-Passed: 68
+Passed: 72
 Failed: 0
 
 | Check | Status | Detail |
@@ -16,6 +16,7 @@ Failed: 0
 | `file:scripts/check_metrics_health.py` | PASS | required production artifact |
 | `file:scripts/export_audit.py` | PASS | required production artifact |
 | `file:scripts/agent_soak_eval.py` | PASS | required production artifact |
+| `file:scripts/vault_manifest.py` | PASS | required production artifact |
 | `file:scripts/restore_drill.py` | PASS | required production artifact |
 | `file:scripts/scheduled_backup.py` | PASS | required production artifact |
 | `file:docs/assets/obelisk-memory-hero.png` | PASS | required production artifact |
@@ -50,6 +51,7 @@ Failed: 0
 | `env:embeddings` | PASS | embedding endpoint |
 | `env:privacy` | PASS | privacy defaults |
 | `env:scoped-keys` | PASS | scoped API keys documented |
+| `env:signing-keys` | PASS | operator-held signing keys are documented |
 | `api:security-headers` | PASS | API applies baseline security headers |
 | `tests:security-headers` | PASS | security headers are covered by API tests |
 | `ops:metrics-health-evaluator` | PASS | metrics health script evaluates outbox lag/dead letters; embedding exposes failure/latency metrics |
@@ -69,6 +71,8 @@ Failed: 0
 | `tests:scheduled-backup` | PASS | scheduled backup success/failure reporting is covered |
 | `agents:soak-runner` | PASS | live agent soak runner validates retain/recall/leakage |
 | `tests:agent-soak-runner` | PASS | agent soak runner success and leakage failure are covered |
+| `vault:signed-manifest` | PASS | vault export/import supports manifest checksum and HMAC signatures |
+| `tests:vault-signed-manifest` | PASS | signed vault manifest behavior is covered by tests |
 | `gap-audit:no-overclaim` | PASS | gap audit explicitly forbids readiness over-claims |
 | `gap-audit:full-production-gates` | PASS | gap audit defines full-production gates |
 | `benchmark:passed` | PASS | latest benchmark pass count |

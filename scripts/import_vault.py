@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
 from pathlib import Path
 from uuid import UUID
 
 from memory_plane.api.app import DEFAULT_PROJECT_ID, DEFAULT_SERVER_ID
 from memory_plane.bootstrap import build_postgres_container
 from memory_plane.services.vault import VaultImportSource
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from vault_manifest import MANIFEST_NAME, verify_vault_manifest  # noqa: E402
 
 
 def main() -> int:
@@ -38,11 +42,35 @@ def main() -> int:
         default=UUID(os.getenv("UAM_PROJECT_ID", str(DEFAULT_PROJECT_ID))),
         help="Workspace/project UUID to import",
     )
+    parser.add_argument(
+        "--require-manifest",
+        action="store_true",
+        help="Fail unless .uam-vault-manifest.json and checksum verify.",
+    )
+    parser.add_argument(
+        "--require-signature",
+        action="store_true",
+        help="Fail unless .uam-vault-manifest.sig verifies with the signing key.",
+    )
+    parser.add_argument(
+        "--signing-key",
+        default=os.getenv("UAM_VAULT_SIGNING_KEY"),
+        help="HMAC key used to verify signed vault manifests.",
+    )
     args = parser.parse_args()
     if not args.database_url:
         parser.error("database URL is required")
 
     root = Path(args.input_dir)
+    manifest_path = root / MANIFEST_NAME
+    if args.require_manifest or args.require_signature or manifest_path.exists():
+        verification = verify_vault_manifest(
+            root,
+            signing_key=args.signing_key,
+            require_signature=args.require_signature,
+        )
+        signed = "signed" if verification.signed else "unsigned"
+        print(f"verified {signed} vault manifest for {verification.file_count} markdown files")
     files = tuple(
         VaultImportSource(
             path=str(path.relative_to(root)),

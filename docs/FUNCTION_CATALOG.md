@@ -172,8 +172,9 @@
 | `VaultExporter.apply_import()` | Markdown vault files → CAS supersede writes | Creates new revisions only; never overwrites rows |
 | `VaultExporter._memory_file()` | `MemoryItem` → Obsidian note | Frontmatter + provenance + supersede backlinks |
 | `VaultExporter._observation_file()` | `Observation` → reflection note | Evidence backlinks to `mem-*` notes |
-| `export_vault.py` | PostgreSQL workspace → folder | Deterministic materialized export |
-| `import_vault.py` | Folder → dry-run/apply import | Dry-run by default; `--apply` required for writes |
+| `vault_manifest.py` | Markdown vault folder → manifest/checksum/signature verification | SHA-256 per file plus optional HMAC signature |
+| `export_vault.py` | PostgreSQL workspace → folder | Deterministic materialized export; writes manifest/checksum/signature |
+| `import_vault.py` | Folder → dry-run/apply import | Dry-run by default; can require manifest/signature before writes |
 
 ## Native integrations — `agent-integrations/`
 

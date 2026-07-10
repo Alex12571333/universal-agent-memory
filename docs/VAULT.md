@@ -169,6 +169,41 @@ docker compose --profile ops run --rm vault-import \
   python scripts/import_vault.py /vault --apply
 ```
 
+## Signed vault manifests
+
+The CLI exporter writes a tamper-evident manifest next to the Markdown files:
+
+```text
+.uam-vault-manifest.json
+.uam-vault-manifest.sha256
+.uam-vault-manifest.sig   # when UAM_VAULT_SIGNING_KEY or --signing-key is set
+```
+
+The manifest records every `*.md` path, byte size and SHA-256 checksum. The
+checksum file protects the manifest itself. The optional signature is
+`hmac-sha256` over the canonical manifest JSON.
+
+For production exports, sign the bundle with an operator-held key:
+
+```bash
+UAM_VAULT_SIGNING_KEY=... python scripts/export_vault.py ./vault
+```
+
+For production imports, require the signature before planning or applying:
+
+```bash
+UAM_VAULT_SIGNING_KEY=... python scripts/import_vault.py ./vault \
+  --require-signature
+
+UAM_VAULT_SIGNING_KEY=... python scripts/import_vault.py ./vault \
+  --apply \
+  --require-signature
+```
+
+If any Markdown file is edited after export, verification fails before the
+import service is called. This keeps vault review human-editable while making
+the release/import boundary auditable.
+
 The workflow is:
 
 1. parse Markdown frontmatter;

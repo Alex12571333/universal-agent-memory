@@ -10,6 +10,9 @@ PYTHONPATH=src python scripts/scheduled_backup.py \
   --backup-dir ./backups \
   --audit-dir ./audit-export \
   --report ./backups/latest-backup-report.json
+UAM_VAULT_SIGNING_KEY=... python scripts/export_vault.py ./vault-release
+UAM_VAULT_SIGNING_KEY=... python scripts/import_vault.py ./vault-release \
+  --require-signature
 UAM_API_KEY=... PYTHONPATH=src python scripts/check_metrics_health.py \
   --metrics-url http://localhost:6798/metrics \
   --report ./ops/metrics-health.json
@@ -34,6 +37,7 @@ Manual checks:
 - Retain and recall a Russian and English memory.
 - Verify conflict inbox can list and resolve at least one conflict.
 - Export vault, edit a note, run dry-run import, then apply only after review.
+- Confirm vault imports use `--require-signature` for release/operator bundles.
 - Confirm Qwen/Spark memory LLM endpoint is reachable.
 - Confirm embedding endpoint returns the configured dimension.
 - Confirm `audit-export/manifest.sha256` verifies before preserving release
