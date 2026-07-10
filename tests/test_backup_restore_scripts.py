@@ -81,9 +81,11 @@ def test_validate_production_env_accepts_strict_real_config(tmp_path: Path) -> N
                 "UAM_MEMORY_TEXT_ENCRYPTION_KEY=memtext_" + "f" * 40,
                 "UAM_AUDIT_SIGNING_KEY=audit_" + "b" * 40,
                 "UAM_VAULT_SIGNING_KEY=vault_" + "c" * 40,
-                "UAM_EMBEDDING_PROVIDER=tei",
-                "UAM_EMBEDDING_BASE_URL=http://192.168.0.10:8002",
-                "UAM_EMBEDDING_DIM=2048",
+                "UAM_EMBEDDING_PROVIDER=openai",
+                "UAM_EMBEDDING_MODEL=text-embedding-3-large",
+                "UAM_EMBEDDING_BASE_URL=https://api.openai.com/v1",
+                "UAM_EMBEDDING_API_KEY=emb_" + "g" * 40,
+                "UAM_EMBEDDING_DIM=3072",
                 "UAM_QDRANT_PAYLOAD_TEXT=false",
             ]
         ),
@@ -139,7 +141,7 @@ def test_validate_production_env_rejects_plaintext_memory_storage() -> None:
         "UAM_CONTEXT_BUDGET_TOKENS": "131072",
         "UAM_PRIVACY_ENABLED": "true",
         "UAM_PRIVACY_ACTION": "redact",
-        "UAM_EMBEDDING_DIM": "2048",
+        "UAM_EMBEDDING_DIM": "3072",
         "UAM_QDRANT_PAYLOAD_TEXT": "false",
         "UAM_MEMORY_TEXT_ENCRYPTION": "off",
     }
@@ -190,9 +192,11 @@ def test_validate_production_env_rejects_qdrant_text_payloads(tmp_path: Path) ->
                 "UAM_CONTEXT_BUDGET_TOKENS=131072",
                 "UAM_PRIVACY_ENABLED=true",
                 "UAM_PRIVACY_ACTION=redact",
-                "UAM_EMBEDDING_PROVIDER=tei",
-                "UAM_EMBEDDING_BASE_URL=http://192.168.0.10:8002",
-                "UAM_EMBEDDING_DIM=2048",
+                "UAM_EMBEDDING_PROVIDER=openai",
+                "UAM_EMBEDDING_MODEL=text-embedding-3-large",
+                "UAM_EMBEDDING_BASE_URL=https://api.openai.com/v1",
+                "UAM_EMBEDDING_API_KEY=emb_" + "g" * 40,
+                "UAM_EMBEDDING_DIM=3072",
                 "UAM_QDRANT_PAYLOAD_TEXT=true",
             ]
         ),
@@ -662,6 +666,7 @@ def test_verify_release_evidence_accepts_complete_manifest(tmp_path: Path) -> No
         "agent_soak:hermes",
         "scheduled_backup:restore-drill",
         "branch_protection:passed",
+        "ui_walkthrough:model-probe-not-skipped",
     }
 
 
@@ -763,6 +768,27 @@ def _write_release_evidence_bundle(tmp_path: Path) -> Path:
             ],
         },
     )
+    _write_json(
+        tmp_path / "ui-walkthrough.json",
+        {
+            "format": "obelisk-ui-walkthrough-v1",
+            "ok": True,
+            "checks": [
+                {"name": "ui-served", "ok": True, "detail": "fallback UI served"},
+                {"name": "retain-recall", "ok": True, "detail": "marker recalled"},
+                {"name": "conflict-decision", "ok": True, "detail": "decision persisted"},
+                {
+                    "name": "vault-editable-text",
+                    "ok": True,
+                    "detail": "ordinary memory text only",
+                },
+                {"name": "vault-archive", "ok": True, "detail": "archived"},
+                {"name": "model-settings-probe", "ok": True, "detail": "probe ran"},
+                {"name": "reindex", "ok": True, "detail": "reindexed"},
+                {"name": "metrics-surface", "ok": True, "detail": "metrics exposed"},
+            ],
+        },
+    )
     manifest = tmp_path / "release-evidence.json"
     _write_json(
         manifest,
@@ -775,6 +801,7 @@ def _write_release_evidence_bundle(tmp_path: Path) -> Path:
                 "metrics_health": "metrics-health.json",
                 "scheduled_backup": "scheduled-backup.json",
                 "branch_protection": "branch-protection.json",
+                "ui_walkthrough": "ui-walkthrough.json",
             },
         },
     )

@@ -69,29 +69,29 @@ its own short-term scratchpad ephemeral.
 
 ## Real embedding runtime
 
-The current production local embedding target is:
+The default production embedding target is OpenAI-compatible:
 
 ```text
-provider=tei
-model=jina-embeddings-v4
-dimension=2048
-base_url=http://192.168.0.10:8002
+provider=openai
+model=text-embedding-3-large
+dimension=3072
+base_url=https://api.openai.com/v1
 ```
 
-That endpoint is the DGX Spark wrapper documented in
-[DGX_SPARK_EMBEDDINGS.md](DGX_SPARK_EMBEDDINGS.md). It exposes
-OpenAI-compatible `/v1/embeddings` and returns one normalized vector per input.
+Self-hosted OpenAI-compatible alternatives, including the DGX Spark Jina wrapper,
+are documented in [DGX_SPARK_EMBEDDINGS.md](DGX_SPARK_EMBEDDINGS.md).
 
 Safe switch procedure:
 
-1. In `/ui` open **Settings → Use DGX preset**.
-2. Click **Test endpoint**. Expected vector dimension: `2048`.
+1. In `/ui` open **Settings** and enter the provider/model/base URL/dimension.
+2. Click **Test endpoint**. Expected vector dimension must match the configured model.
 3. Save model config.
 4. Restart `memory-server` and `embedding-worker` with matching env.
 5. Run **Reindex** so Qdrant is recreated with 2048-dimensional vectors.
 
-Do not mix fake 1536-dimensional vectors and Jina 2048-dimensional vectors in
-one Qdrant collection. Reindex is the boundary that makes the switch clean.
+Do not mix fake 1536-dimensional vectors, OpenAI 3072-dimensional vectors and
+self-hosted 2048-dimensional vectors in one Qdrant collection. Reindex is the
+boundary that makes the switch clean.
 
 ## Memory LLM runtime
 
@@ -101,26 +101,26 @@ the agent runtime model.
 Production target:
 
 ```text
-provider=spark
-model=qwen3.6-35b-a3b
-base_url=http://192.168.0.10:8000/v1
+provider=openai-compatible
+model=gpt-5.6-terra
+base_url=https://api.openai.com/v1
 ```
 
 Env:
 
 ```text
-UAM_MEMORY_LLM_PROVIDER=spark
-UAM_MEMORY_LLM_MODEL=qwen3.6-35b-a3b
-UAM_MEMORY_LLM_BASE_URL=http://192.168.0.10:8000/v1
-UAM_MEMORY_LLM_API_KEY=
+UAM_MEMORY_LLM_PROVIDER=openai-compatible
+UAM_MEMORY_LLM_MODEL=gpt-5.6-terra
+UAM_MEMORY_LLM_BASE_URL=https://api.openai.com/v1
+UAM_MEMORY_LLM_API_KEY=...
 UAM_MEMORY_LLM_CONTEXT_TOKENS=131072
 UAM_MEMORY_LLM_MAX_TOKENS=1600
 UAM_MEMORY_LLM_ENABLE_THINKING=false
 ```
 
 Навигатор памяти, Куратор памяти and future graph extraction workers should use
-this Qwen/Spark endpoint. Agents such as OpenClaw/Hermes still use their own
-runtime models; they only call UAM for memory.
+this OpenAI-compatible endpoint. Agents such as OpenClaw/Hermes still use their
+own runtime models; they only call UAM for memory.
 
 ## What gets injected into the agent
 

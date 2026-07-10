@@ -146,7 +146,7 @@ function Dashboard() {
   const kpis = [
     ["Память", memories.length.toLocaleString(), `активных: ${activeMemories.length}`, "brain"],
     ["Конфликты", openConflicts.length.toLocaleString(), "на проверку", "conflict"],
-    ["Файлы", vault.length.toLocaleString(), "редактируемый текст", "vault"],
+    ["Файлы", visibleVault.length.toLocaleString(), "редактируемый текст", "vault"],
     ["Статус", systemStatus?.status === "ok" ? "Онлайн" : "н/д", settings?.runtime.model_name ?? "движок", "status"]
   ] satisfies Array<[string, string, string, ArtName]>;
 
@@ -819,6 +819,14 @@ function SettingsPanel({ settings, setStatus, refresh }: {
   setStatus: (status: string) => void;
   refresh: () => Promise<void>;
 }) {
+  const openAiCompatiblePreset = {
+    provider: "openai",
+    model_name: "text-embedding-3-large",
+    dimension: 3072,
+    base_url: "https://api.openai.com/v1",
+    api_key: "",
+    timeout_seconds: 30
+  };
   const dgxSparkPreset = {
     provider: "tei",
     model_name: "jina-embeddings-v4",
@@ -828,10 +836,10 @@ function SettingsPanel({ settings, setStatus, refresh }: {
     timeout_seconds: 30
   };
   const [form, setForm] = useState({
-    provider: settings?.desired.provider ?? "tei",
-    model_name: settings?.desired.model_name ?? "jina-embeddings-v2-base-code",
-    dimension: settings?.desired.dimension ?? 768,
-    base_url: settings?.desired.base_url ?? "http://127.0.0.1:8081/v1",
+    provider: settings?.desired.provider ?? "openai",
+    model_name: settings?.desired.model_name ?? "text-embedding-3-large",
+    dimension: settings?.desired.dimension ?? 3072,
+    base_url: settings?.desired.base_url ?? "https://api.openai.com/v1",
     api_key: "",
     timeout_seconds: settings?.desired.timeout_seconds ?? 30
   });
@@ -847,9 +855,14 @@ function SettingsPanel({ settings, setStatus, refresh }: {
     }));
   }, [settings]);
 
+  function applyOpenAiCompatiblePreset() {
+    setForm(openAiCompatiblePreset);
+    setStatus("Выбран production preset OpenAI-compatible. Укажи API key и проверь endpoint.");
+  }
+
   function applyDgxSparkPreset() {
     setForm(dgxSparkPreset);
-    setStatus("Выбран preset DGX Spark Q8. Проверь endpoint, затем сохрани конфиг модели.");
+    setStatus("Выбран self-hosted preset DGX Spark Q8. Проверь endpoint, затем сохрани конфиг модели.");
   }
 
   async function save(testOnly: boolean) {
@@ -869,9 +882,17 @@ function SettingsPanel({ settings, setStatus, refresh }: {
     <div className="settings-grid">
       <div className="preset-card">
         <div>
-          <span className="eyebrow">Рекомендованная реальная модель векторов</span>
+          <span className="eyebrow">Production preset векторов</span>
+          <b>OpenAI-compatible · text-embedding-3-large · 3072 измерения</b>
+          <p>Endpoint: <code>https://api.openai.com/v1/embeddings</code>; совместимый шлюз можно заменить своим.</p>
+        </div>
+        <button onClick={applyOpenAiCompatiblePreset}>Использовать production preset</button>
+      </div>
+      <div className="preset-card">
+        <div>
+          <span className="eyebrow">Self-hosted preset</span>
           <b>DGX Spark · Jina v4 Q8 · 2048 измерений</b>
-          <p>OpenAI-совместимый endpoint: <code>http://192.168.0.10:8002/v1/embeddings</code></p>
+          <p>OpenAI-compatible endpoint: <code>http://192.168.0.10:8002/v1/embeddings</code></p>
         </div>
         <button onClick={applyDgxSparkPreset}>Использовать preset</button>
       </div>

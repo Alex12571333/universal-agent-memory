@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 from dataclasses import dataclass
 from typing import Any
 from urllib.request import Request, urlopen
@@ -34,9 +35,9 @@ DOCS = (
         "Qdrant используется как векторный индекс для semantic recall.",
     ),
     MemoryDoc(
-        "embedding-dgx-q8",
-        "Для production embeddings на DGX Spark .10 используется Jina embeddings v4 "
-        "text retrieval Q8_0 GGUF через llama.cpp wrapper на порту 8002.",
+        "embedding-openai-compatible",
+        "Для production embeddings используется OpenAI-compatible endpoint "
+        "с моделью text-embedding-3-large и размерностью 3072.",
     ),
     MemoryDoc(
         "openclaw-plugin",
@@ -53,8 +54,8 @@ DOCS = (
         "Устаревшая инструкция: использовать deterministic fake embeddings в production.",
     ),
     MemoryDoc(
-        "current-jina-embeddings",
-        "Актуальная инструкция: использовать Jina embeddings v4 Q8_0 на DGX Spark .10 "
+        "current-openai-compatible-embeddings",
+        "Актуальная инструкция: использовать OpenAI-compatible embeddings endpoint "
         "для production semantic recall.",
     ),
 )
@@ -67,9 +68,9 @@ CASES = (
         "storage-postgres",
     ),
     Case(
-        "dgx embedding model",
-        "какую embedding модель запускать на dgx spark .10?",
-        "embedding-dgx-q8",
+        "production embedding model",
+        "какую embedding модель использовать в production?",
+        "embedding-openai-compatible",
     ),
     Case(
         "openclaw integration",
@@ -84,21 +85,23 @@ CASES = (
     Case(
         "freshness preference",
         "какие embeddings использовать в production semantic recall?",
-        "current-jina-embeddings",
+        "current-openai-compatible-embeddings",
     ),
 )
 
 
-def post_embedding(base_url: str, model: str, text: str, input_type: str) -> list[float]:
+def post_embedding(base_url: str, model: str, text: str, api_key: str | None) -> list[float]:
     payload = {
         "model": model,
         "input": text,
-        "input_type": input_type,
     }
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
     request = Request(
         f"{base_url.rstrip('/')}/v1/embeddings",
         data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
+        headers=headers,
         method="POST",
     )
     with urlopen(request, timeout=60) as response:  # noqa: S310
@@ -115,18 +118,22 @@ def cosine(left: list[float], right: list[float]) -> float:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--base-url", default="http://192.168.0.10:8002")
-    parser.add_argument("--model", default="jina-embeddings-v4")
+    parser.add_argument("--base-url", default="https://api.openai.com")
+    parser.add_argument("--model", default="text-embedding-3-large")
+    parser.add_argument(
+        "--api-key",
+        default=os.getenv("UAM_EMBEDDING_API_KEY") or os.getenv("OPENAI_API_KEY"),
+    )
     args = parser.parse_args()
 
     doc_vectors = {
-        doc.doc_id: post_embedding(args.base_url, args.model, doc.text, "document")
+        doc.doc_id: post_embedding(args.base_url, args.model, doc.text, args.api_key)
         for doc in DOCS
     }
     failures: list[str] = []
     print(f"endpoint={args.base_url} model={args.model} docs={len(DOCS)}")
     for case in CASES:
-        query_vector = post_embedding(args.base_url, args.model, case.query, "query")
+        query_vector = post_embedding(args.base_url, args.model, case.query, args.api_key)
         ranked = sorted(
             (
                 (doc.doc_id, cosine(query_vector, doc_vectors[doc.doc_id]))

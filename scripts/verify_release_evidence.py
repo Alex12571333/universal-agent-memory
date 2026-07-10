@@ -16,6 +16,7 @@ REQUIRED_ARTIFACTS = {
     "metrics_health",
     "scheduled_backup",
     "branch_protection",
+    "ui_walkthrough",
 }
 
 
@@ -105,6 +106,7 @@ def verify_manifest(path: Path) -> list[EvidenceCheck]:
         "metrics_health": _verify_metrics_health,
         "scheduled_backup": _verify_scheduled_backup,
         "branch_protection": _verify_branch_protection,
+        "ui_walkthrough": _verify_ui_walkthrough,
     }
     for name, verifier in readers.items():
         raw_path = artifacts.get(name)
@@ -254,6 +256,45 @@ def _verify_branch_protection(payload: dict[str, Any]) -> list[EvidenceCheck]:
             "branch_protection:required-checks",
             not missing,
             "required checks present" if not missing else "missing: " + ", ".join(missing),
+        ),
+    ]
+
+
+def _verify_ui_walkthrough(payload: dict[str, Any]) -> list[EvidenceCheck]:
+    names = _check_names(payload)
+    required = {
+        "ui-served",
+        "retain-recall",
+        "conflict-decision",
+        "vault-editable-text",
+        "vault-archive",
+        "model-settings-probe",
+        "reindex",
+        "metrics-surface",
+    }
+    skipped_model_probe = any(
+        isinstance(item, dict)
+        and item.get("name") == "model-settings-probe"
+        and "skipped" in str(item.get("detail", "")).lower()
+        for item in payload.get("checks", [])
+    )
+    missing = sorted(required - names)
+    return [
+        _format_check("ui_walkthrough", payload, "obelisk-ui-walkthrough-v1"),
+        _ok_check("ui_walkthrough", payload),
+        EvidenceCheck(
+            "ui_walkthrough:required-checks",
+            not missing,
+            "required checks present" if not missing else "missing: " + ", ".join(missing),
+        ),
+        EvidenceCheck(
+            "ui_walkthrough:model-probe-not-skipped",
+            not skipped_model_probe,
+            (
+                "model settings probe ran"
+                if not skipped_model_probe
+                else "model settings probe was skipped"
+            ),
         ),
     ]
 

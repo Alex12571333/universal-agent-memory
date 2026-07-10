@@ -18,11 +18,11 @@ from urllib.request import Request, urlopen
 class MemoryLLMConfig:
     """Docker-friendly OpenAI-compatible chat model settings for memory workers."""
 
-    provider: str = "spark"
-    model_name: str = "qwen3.6-35b-a3b"
-    base_url: str = "http://192.168.0.10:8000/v1"
+    provider: str = "openai-compatible"
+    model_name: str = "gpt-5.6-terra"
+    base_url: str = "https://api.openai.com/v1"
     api_key: str | None = None
-    timeout_seconds: float = 120.0
+    timeout_seconds: float = 60.0
     temperature: float = 0.1
     context_window_tokens: int = 131072
     max_tokens: int = 1600
@@ -32,14 +32,18 @@ class MemoryLLMConfig:
     def from_env(cls) -> MemoryLLMConfig:
         """Build memory LLM config from `UAM_MEMORY_LLM_*` env vars."""
         return cls(
-            provider=os.getenv("UAM_MEMORY_LLM_PROVIDER", "spark").strip().lower(),
-            model_name=os.getenv("UAM_MEMORY_LLM_MODEL", "qwen3.6-35b-a3b").strip(),
+            provider=os.getenv("UAM_MEMORY_LLM_PROVIDER", "openai-compatible").strip().lower(),
+            model_name=os.getenv("UAM_MEMORY_LLM_MODEL", "gpt-5.6-terra").strip(),
             base_url=os.getenv(
                 "UAM_MEMORY_LLM_BASE_URL",
-                "http://192.168.0.10:8000/v1",
+                "https://api.openai.com/v1",
             ).rstrip("/"),
-            api_key=os.getenv("UAM_MEMORY_LLM_API_KEY") or os.getenv("SPARK_API_KEY"),
-            timeout_seconds=float(os.getenv("UAM_MEMORY_LLM_TIMEOUT_SECONDS", "120")),
+            api_key=(
+                os.getenv("UAM_MEMORY_LLM_API_KEY")
+                or os.getenv("OPENAI_API_KEY")
+                or os.getenv("SPARK_API_KEY")
+            ),
+            timeout_seconds=float(os.getenv("UAM_MEMORY_LLM_TIMEOUT_SECONDS", "60")),
             temperature=float(os.getenv("UAM_MEMORY_LLM_TEMPERATURE", "0.1")),
             context_window_tokens=int(
                 os.getenv("UAM_MEMORY_LLM_CONTEXT_TOKENS", "131072")

@@ -273,8 +273,8 @@ def check_real_semantic_recall(harness: Harness) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--embedding-base-url")
-    parser.add_argument("--embedding-model", default="jina-embeddings-v4")
-    parser.add_argument("--embedding-dim", type=int, default=2048)
+    parser.add_argument("--embedding-model", default="text-embedding-3-large")
+    parser.add_argument("--embedding-dim", type=int, default=3072)
     args = parser.parse_args()
 
     harness = build_harness(
