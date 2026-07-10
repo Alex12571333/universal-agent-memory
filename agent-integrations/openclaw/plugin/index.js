@@ -160,9 +160,10 @@ export default {
     },
   },
   register(api) {
-    const config = cfg(api.pluginConfig || {});
+    const configFor = (ctx) => cfg(ctx?.pluginConfig || api.pluginConfig || {});
 
     api.registerHook("agent_turn_prepare", async (event, ctx) => {
+      const config = configFor(ctx);
       if (!config.enabled) return undefined;
       const base = contextFromHook(config, event, ctx);
       try {
@@ -185,6 +186,7 @@ export default {
     }, { name: "obelisk-memory-recall", description: "Recall Obelisk context before an agent turn." });
 
     api.registerHook("after_tool_call", async (event, ctx) => {
+      const config = configFor(ctx);
       if (!config.enabled || !config.retainToolTraces) return;
       const base = contextFromHook(config, event, ctx);
       const resultText = JSON.stringify({
@@ -208,6 +210,7 @@ export default {
     }, { name: "obelisk-memory-tool-retain", description: "Retain durable tool outcomes in Obelisk." });
 
     api.registerHook("agent_end", async (event, ctx) => {
+      const config = configFor(ctx);
       if (!config.enabled || !event?.success) return;
       const summary = lastMessageText(event?.messages);
       const transcript = normalizeTranscriptMessages(event?.messages);
