@@ -252,7 +252,7 @@
 | `PUT /v1/workspaces/{id}/conflicts/{case_id}/decision` | Persist human review decision | accepted/overridden/dismissed/unresolved |
 | `POST /v1/graph/edges` | Create typed graph edge | Validates endpoint memories and workspace |
 | `GET /v1/memory/{id}/neighbors` | List graph neighbors | Optional edge type filter |
-| `POST /v1/workspaces/{id}/reindex` | Запускает workspace reindex | Текущая shared-collection реализация небезопасна для multi-workspace production |
+| `POST /v1/workspaces/{id}/reindex` | Запускает workspace reindex | Scoped sync preserves every other workspace and removes stale IDs after successful upsert |
 | `POST /v1/checkpoints` | Создаёт checkpoint revision | First save использует CAS expected head `0` |
 | `GET /v1/checkpoints` | Workspace checkpoint heads | Tenant/workspace scoped |
 | `GET /v1/checkpoints/{thread_id}` | Последний checkpoint thread | Возвращает `404`, если head отсутствует |
@@ -372,6 +372,7 @@
 | Функция | Назначение | Гарантия |
 |---|---|---|
 | `process_memory_retained(tenant, id)` | Асинхронная обработка и индексация памяти | Загружает память и делает upsert в Qdrant |
-| `reindex_all(tenant, workspace)` | Полная переиндексация воркспейса | Удаляет и заново заливает коллекцию в Qdrant |
+| `reindex_all(tenant, workspace)` | Полная переиндексация воркспейса | Precomputes vectors, serializes per workspace and calls scoped Qdrant sync |
+| `sync_workspace(tenant, workspace, items)` | Atomic-order workspace vector replacement | Upsert replacement first; delete only stale IDs from the requested boundary |
 | `collect_metrics()` | Process-local embedding health counters | Operations/failures/latency/reindex metrics for `/metrics` |
 | `_validate_dimension(vector)` | Provider output guard | Mismatch aborts before Qdrant write |

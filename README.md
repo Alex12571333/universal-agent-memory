@@ -42,8 +42,8 @@ Repository capability baseline:
 
 The repository is an engineering preview with production-shaped components. It
 must not be used for a trusted production pilot until the remaining P0 runtime
-blockers in the production audit are fixed—especially safe reindex, broader
-encryption coverage and authenticated UI delivery. Supersede/archive and
+blockers in the production audit are fixed—especially broader encryption,
+authenticated UI delivery and vector collection model migration. Supersede/archive and
 operator conflict-winner precedence are enforced through atomic PostgreSQL
 revisions and Qdrant head validation.
 Database-role and operator-controlled agent/thread provisioning are implemented

@@ -3,7 +3,7 @@
 > **Engineering preview:** the production-shaped Compose topology is available,
 > but a fresh production rollout is currently blocked by the P0 runtime issues in
 > [PRODUCTION_GAP_AUDIT_2026_07_10.md](PRODUCTION_GAP_AUDIT_2026_07_10.md),
-> including fail-soft recall, safe reindex and encryption breadth. Database-role,
+> including vector collection migration, encryption breadth and authenticated UI. Database-role,
 > operator identity provisioning and principal binding exist but need target evidence. The
 > commands below are reference operating procedures; do not use
 > them to claim or run a production deployment until those blockers are resolved

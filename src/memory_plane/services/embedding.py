@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from threading import Lock
 from typing import TYPE_CHECKING, cast
 from uuid import UUID
 
@@ -32,6 +33,8 @@ class EmbeddingService:
         self._reindex_total = 0
         self._reindex_failures_total = 0
         self._reindex_last_duration_seconds = 0.0
+        self._reindex_locks_guard = Lock()
+        self._reindex_locks: dict[tuple[UUID, UUID], Lock] = {}
 
     def process_memory_retained(self, tenant_id: UUID, memory_id: UUID) -> None:
         """Generate embedding for the retained memory and upsert it into the vector store."""
@@ -59,13 +62,11 @@ class EmbeddingService:
 
     def reindex_all(self, tenant_id: UUID, workspace_id: UUID) -> int:
         """Re-generate all embeddings using the current model and perform a full reindex."""
+        lock = self._workspace_reindex_lock(tenant_id, workspace_id)
+        lock.acquire()
         started = time.perf_counter()
         try:
             items = self._ledger.list_for_workspace(tenant_id, workspace_id)
-            if not items:
-                self._reindex_total += 1
-                return 0
-
             superseded_ids = {
                 item.supersedes_id for item in items if item.supersedes_id is not None
             }
@@ -77,7 +78,12 @@ class EmbeddingService:
                 self._validate_dimension(vector)
                 pairs.append((item, vector))
 
-            self._qdrant.reindex(pairs, model_name=self._client.model_name)
+            self._qdrant.sync_workspace(
+                tenant_id,
+                workspace_id,
+                pairs,
+                model_name=self._client.model_name,
+            )
             self._reindex_total += 1
             return len(pairs)
         except Exception:
@@ -85,6 +91,7 @@ class EmbeddingService:
             raise
         finally:
             self._reindex_last_duration_seconds = time.perf_counter() - started
+            lock.release()
 
     def collect_metrics(self) -> dict[str, float | int]:
         """Return process-local embedding health metrics."""
@@ -107,6 +114,12 @@ class EmbeddingService:
         self._embed_total += 1
         self._embed_last_duration_seconds = duration
         self._embed_duration_seconds_sum += duration
+
+    def _workspace_reindex_lock(self, tenant_id: UUID, workspace_id: UUID) -> Lock:
+        """Serialize one workspace without blocking unrelated workspace reindexes."""
+        key = (tenant_id, workspace_id)
+        with self._reindex_locks_guard:
+            return self._reindex_locks.setdefault(key, Lock())
 
     def _validate_dimension(self, vector: list[float]) -> None:
         """Reject provider output that cannot fit the configured vector index."""

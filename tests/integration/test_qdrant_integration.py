@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import unittest
+from unittest.mock import patch
 from uuid import uuid4
 
 from memory_plane.contracts.dto import RecallQuery
@@ -112,12 +113,12 @@ class QdrantIntegrationTest(unittest.TestCase):
         ).points
         self.assertEqual(0, len(result))
 
-    def test_reindex_replaces_points(self) -> None:
+    def test_workspace_sync_replaces_points(self) -> None:
         old = _item("old data")
         self.source.upsert(old, dense_vector=[0.1, 0.1, 0.1, 0.1])
 
         new = _item("new data")
-        self.source.reindex([(new, [0.9, 0.9, 0.0, 0.0])])
+        self.source.sync_workspace(_T, _W, [(new, [0.9, 0.9, 0.0, 0.0])])
 
         from qdrant_client import QdrantClient  # type: ignore[import-untyped]
 
@@ -131,6 +132,52 @@ class QdrantIntegrationTest(unittest.TestCase):
         ids = {r.id for r in result}
         self.assertIn(str(new.id), ids)
         self.assertNotIn(str(old.id), ids)
+
+    def test_workspace_sync_preserves_foreign_workspace(self) -> None:
+        other_workspace = uuid4()
+        stale = _item("workspace stale")
+        foreign = _item("workspace foreign", workspace_id=other_workspace)
+        replacement = _item("workspace replacement")
+        self.source.upsert(stale, dense_vector=[1.0, 0.0, 0.0, 0.0])
+        self.source.upsert(foreign, dense_vector=[1.0, 0.0, 0.0, 0.0])
+
+        self.source.sync_workspace(
+            _T,
+            _W,
+            [(replacement, [1.0, 0.0, 0.0, 0.0])],
+            model_name="integration-v2",
+        )
+
+        from qdrant_client import QdrantClient  # type: ignore[import-untyped]
+
+        client = QdrantClient(url=QDRANT_URL)
+        remaining = client.retrieve(
+            self.collection,
+            ids=[str(stale.id), str(foreign.id), str(replacement.id)],
+        )
+        ids = {str(point.id) for point in remaining}
+        self.assertEqual({str(foreign.id), str(replacement.id)}, ids)
+
+    def test_workspace_sync_upsert_failure_keeps_existing_points(self) -> None:
+        existing = _item("failure safe existing")
+        replacement = _item("failure safe replacement")
+        self.source.upsert(existing, dense_vector=[1.0, 0.0, 0.0, 0.0])
+
+        with (
+            patch.object(self.source._client, "upsert", side_effect=RuntimeError("write failed")),
+            self.assertRaisesRegex(RuntimeError, "write failed"),
+        ):
+            self.source.sync_workspace(
+                _T,
+                _W,
+                [(replacement, [1.0, 0.0, 0.0, 0.0])],
+            )
+
+        from qdrant_client import QdrantClient  # type: ignore[import-untyped]
+
+        client = QdrantClient(url=QDRANT_URL)
+        remaining = client.retrieve(self.collection, ids=[str(existing.id)])
+        self.assertEqual([str(existing.id)], [str(point.id) for point in remaining])
 
     def test_collection_has_expected_vectors(self) -> None:
         from qdrant_client import QdrantClient  # type: ignore[import-untyped]

@@ -75,7 +75,10 @@ remaining hard requirements.
 - [x] Qdrant/vector indexing has an asynchronous worker path.
 - [x] Isolate Qdrant startup/query failures so recall falls back to PostgreSQL;
       embedding workers fail fast for durable retry.
-- [ ] Make reindex failure-safe across workspaces.
+- [x] Workspace reindex preserves other workspaces and deletes stale scoped IDs
+      only after replacement upserts succeed.
+- [ ] Add target multi-replica/crash evidence and safe collection migration for
+      embedding model or dimension changes.
 - [x] PostgreSQL `memory_items.text` encryption can cover all memory rows or
       selected visibility scopes via `UAM_MEMORY_TEXT_ENCRYPTION_SCOPES`.
 - [ ] Encrypt or otherwise protect provenance, conversations, proposals,

@@ -192,18 +192,21 @@ class QdrantCandidateSource:
             return self._delete_in_memory(item_id)
         self._delete_qdrant(item_id)
 
-    def reindex(
+    def sync_workspace(
         self,
+        tenant_id: UUID,
+        workspace_id: UUID,
         items: Sequence[tuple[MemoryItem, list[float]]],
         model_name: str | None = None,
     ) -> None:
-        """Drop all points and re-insert from scratch.
-
-        This is a blunt full-reindex; incremental sync can be added later.
-        """
+        """Replace one workspace's vector set without touching other workspaces."""
+        for item, _vector in items:
+            if item.tenant_id != tenant_id or item.workspace_id != workspace_id:
+                raise ValueError("workspace sync contains an item outside its boundary")
         if self._mem_items is not None:
-            return self._reindex_in_memory(items, model_name)
-        self._reindex_qdrant(items, model_name)
+            self._sync_workspace_in_memory(tenant_id, workspace_id, items)
+            return
+        self._sync_workspace_qdrant(tenant_id, workspace_id, items, model_name)
 
     # ---- in-memory fallback implementation ------------------------------
 
@@ -222,16 +225,24 @@ class QdrantCandidateSource:
         with self._mem_lock:
             self._mem_items.pop(item_id, None)
 
-    def _reindex_in_memory(
+    def _sync_workspace_in_memory(
         self,
+        tenant_id: UUID,
+        workspace_id: UUID,
         items: Sequence[tuple[MemoryItem, list[float]]],
-        model_name: str | None = None,
     ) -> None:
         assert self._mem_items is not None and self._mem_lock is not None
+        replacement = {item.id: (item, vector) for item, vector in items}
         with self._mem_lock:
-            self._mem_items.clear()
-            for item, vec in items:
-                self._mem_items[item.id] = (item, vec)
+            stale_ids = {
+                item_id
+                for item_id, (item, _vector) in self._mem_items.items()
+                if item.tenant_id == tenant_id and item.workspace_id == workspace_id
+                and item_id not in replacement
+            }
+            self._mem_items.update(replacement)
+            for item_id in stale_ids:
+                self._mem_items.pop(item_id, None)
 
     def _search_in_memory(self, query: RecallQuery) -> tuple[Candidate, ...]:
         """In-memory search with cosine similarity and metadata filtering."""
@@ -313,28 +324,52 @@ class QdrantCandidateSource:
             points_selector=PointIdsList(points=[str(item_id)]),
         )
 
-    def _reindex_qdrant(
+    def _sync_workspace_qdrant(
         self,
+        tenant_id: UUID,
+        workspace_id: UUID,
         items: Sequence[tuple[MemoryItem, list[float]]],
         model_name: str | None = None,
     ) -> None:
-        from qdrant_client.models import PointStruct
+        from qdrant_client.models import (
+            FieldCondition,
+            Filter,
+            MatchValue,
+            PointIdsList,
+            PointStruct,
+        )
 
-        # Delete all existing points in the collection.
-        self._client.delete_collection(self.collection)  # type: ignore[union-attr]
-        self.connect()
+        workspace_filter = Filter(
+            must=[
+                FieldCondition(key="tenant_id", match=MatchValue(value=str(tenant_id))),
+                FieldCondition(key="workspace_id", match=MatchValue(value=str(workspace_id))),
+            ]
+        )
+        existing_ids: set[UUID] = set()
+        offset: object | None = None
+        while True:
+            points, next_offset = self._client.scroll(  # type: ignore[union-attr]
+                collection_name=self.collection,
+                scroll_filter=workspace_filter,
+                limit=256,
+                offset=offset,
+                with_payload=False,
+                with_vectors=False,
+            )
+            existing_ids.update(UUID(str(point.id)) for point in points)
+            if next_offset is None:
+                break
+            offset = next_offset
 
-        # Batch upsert in chunks of 100.
         batch: list[PointStruct] = []
-        for item, vec in items:
+        for item, vector in items:
             payload = self._item_to_payload(item, include_text=self._payload_text)
             if model_name:
                 payload["model_name"] = model_name
-
             batch.append(
                 PointStruct(
                     id=str(item.id),
-                    vector={"dense": vec},
+                    vector={"dense": vector},
                     payload=payload,
                 )
             )
@@ -343,6 +378,14 @@ class QdrantCandidateSource:
                 batch = []
         if batch:
             self._client.upsert(collection_name=self.collection, points=batch)  # type: ignore[union-attr]
+
+        replacement_ids = {item.id for item, _vector in items}
+        stale_ids = existing_ids - replacement_ids
+        if stale_ids:
+            self._client.delete(  # type: ignore[union-attr]
+                collection_name=self.collection,
+                points_selector=PointIdsList(points=[str(item_id) for item_id in stale_ids]),
+            )
 
     def _search_qdrant(self, query: RecallQuery) -> tuple[Candidate, ...]:
         from qdrant_client.models import (

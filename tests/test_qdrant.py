@@ -169,21 +169,103 @@ class QdrantAdapterTest(unittest.TestCase):
 
         self.assertEqual((), results)
 
-    def test_reindex_replaces_all_points(self) -> None:
+    def test_workspace_sync_replaces_workspace_points(self) -> None:
         old = _item("old knowledge")
         self.source.upsert(old, dense_vector=[0.1, 0.2, 0.3, 0.4])
 
         new_a = _item("new alpha")
         new_b = _item("new beta")
-        self.source.reindex([
-            (new_a, [0.5, 0.5, 0.5, 0.5]),
-            (new_b, [0.3, 0.3, 0.3, 0.3]),
-        ])
+        self.source.sync_workspace(
+            _T,
+            _W,
+            [
+                (new_a, [0.5, 0.5, 0.5, 0.5]),
+                (new_b, [0.3, 0.3, 0.3, 0.3]),
+            ],
+        )
 
         query = RecallQuery(tenant_id=_T, workspace_id=_W, text="knowledge")
         results = self.source.search(query)
         ids = {c.item.id for c in results}
         self.assertNotIn(old.id, ids)
+
+    def test_workspace_sync_preserves_other_workspaces_and_removes_only_stale_ids(self) -> None:
+        other_workspace = uuid4()
+        stale = _item("stale local")
+        foreign = _item("foreign preserved", workspace=other_workspace)
+        replacement = _item("fresh local")
+        vector = [0.5, 0.5, 0.5, 0.5]
+        self.source.upsert(stale, dense_vector=vector)
+        self.source.upsert(foreign, dense_vector=vector)
+
+        self.source.sync_workspace(_T, _W, [(replacement, vector)], model_name="model-v2")
+
+        local_ids = {
+            row.item.id
+            for row in self.source.search(
+                RecallQuery(tenant_id=_T, workspace_id=_W, text="local", top_k=10)
+            )
+        }
+        foreign_ids = {
+            row.item.id
+            for row in self.source.search(
+                RecallQuery(
+                    tenant_id=_T,
+                    workspace_id=other_workspace,
+                    text="foreign",
+                    top_k=10,
+                )
+            )
+        }
+        self.assertEqual({replacement.id}, local_ids)
+        self.assertEqual({foreign.id}, foreign_ids)
+
+    def test_empty_workspace_sync_clears_only_requested_workspace(self) -> None:
+        other_workspace = uuid4()
+        local = _item("local stale")
+        foreign = _item("foreign preserved", workspace=other_workspace)
+        vector = [0.5, 0.5, 0.5, 0.5]
+        self.source.upsert(local, dense_vector=vector)
+        self.source.upsert(foreign, dense_vector=vector)
+
+        self.source.sync_workspace(_T, _W, [])
+
+        self.assertEqual(
+            (),
+            self.source.search(RecallQuery(tenant_id=_T, workspace_id=_W, text="local")),
+        )
+        self.assertEqual(
+            (foreign.id,),
+            tuple(
+                row.item.id
+                for row in self.source.search(
+                    RecallQuery(
+                        tenant_id=_T,
+                        workspace_id=other_workspace,
+                        text="foreign",
+                    )
+                )
+            ),
+        )
+
+    def test_workspace_sync_rejects_cross_boundary_items_before_mutation(self) -> None:
+        existing = _item("existing local")
+        foreign = _item("wrong workspace", workspace=uuid4())
+        vector = [0.5, 0.5, 0.5, 0.5]
+        self.source.upsert(existing, dense_vector=vector)
+
+        with self.assertRaisesRegex(ValueError, "outside its boundary"):
+            self.source.sync_workspace(_T, _W, [(foreign, vector)])
+
+        self.assertEqual(
+            (existing.id,),
+            tuple(
+                row.item.id
+                for row in self.source.search(
+                    RecallQuery(tenant_id=_T, workspace_id=_W, text="existing")
+                )
+            ),
+        )
 
     # ---- candidate signals ----------------------------------------------
 
