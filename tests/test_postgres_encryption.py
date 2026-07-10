@@ -43,7 +43,7 @@ def test_postgres_encrypts_memory_text_before_insert(monkeypatch: pytest.MonkeyP
         provenance=Provenance(source_kind="test"),
     )
 
-    stored = ledger._stored_memory_text(connection, item.text)
+    stored = ledger._stored_memory_text(connection, item)
 
     assert stored == "enc:pgcrypto:v1:ciphertext"
     assert connection.calls
@@ -52,6 +52,53 @@ def test_postgres_encrypts_memory_text_before_insert(monkeypatch: pytest.MonkeyP
     assert params[0] == "enc:pgcrypto:v1:"
     assert params[1] == "sensitive canonical memory"
     assert params[2] == "memtext_" + "a" * 40
+
+
+def test_postgres_encrypts_only_selected_memory_scopes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("UAM_MEMORY_TEXT_ENCRYPTION", "pgcrypto")
+    monkeypatch.setenv("UAM_MEMORY_TEXT_ENCRYPTION_KEY", "memtext_" + "a" * 40)
+    monkeypatch.setenv("UAM_MEMORY_TEXT_ENCRYPTION_SCOPES", "private,thread")
+    ledger = PostgresMemoryLedger("postgresql://example/memory")
+    connection = _FakeRowConnection()
+    workspace_item = MemoryItem(
+        tenant_id=uuid4(),
+        workspace_id=uuid4(),
+        layer=MemoryLayer.SEMANTIC,
+        scope=MemoryScope.WORKSPACE,
+        kind="fact",
+        text="workspace text can remain plaintext by policy",
+        provenance=Provenance(source_kind="test"),
+    )
+    thread_item = MemoryItem(
+        tenant_id=workspace_item.tenant_id,
+        workspace_id=workspace_item.workspace_id,
+        thread_id=uuid4(),
+        layer=MemoryLayer.EPISODIC,
+        scope=MemoryScope.THREAD,
+        kind="turn_summary",
+        text="thread text must be encrypted",
+        provenance=Provenance(source_kind="test"),
+    )
+
+    plaintext = ledger._stored_memory_text(connection, workspace_item)
+    ciphertext = ledger._stored_memory_text(connection, thread_item)
+
+    assert plaintext == "workspace text can remain plaintext by policy"
+    assert ciphertext == "enc:pgcrypto:v1:ciphertext"
+    assert len(connection.calls) == 1
+
+
+def test_postgres_rejects_unknown_memory_text_encryption_scope(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("UAM_MEMORY_TEXT_ENCRYPTION", "pgcrypto")
+    monkeypatch.setenv("UAM_MEMORY_TEXT_ENCRYPTION_KEY", "memtext_" + "a" * 40)
+    monkeypatch.setenv("UAM_MEMORY_TEXT_ENCRYPTION_SCOPES", "private,nope")
+
+    with pytest.raises(ValueError, match="UAM_MEMORY_TEXT_ENCRYPTION_SCOPES"):
+        PostgresMemoryLedger("postgresql://example/memory")
 
 
 def test_postgres_reads_memory_text_encryption_key_file(

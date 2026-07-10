@@ -207,11 +207,10 @@ OpenAPI docs are available at `http://localhost:6798/docs` when authorized.
 ## Provider-neutral memory LLM endpoint
 
 Obelisk Memory separates memory reasoning from embeddings. The memory LLM handles
-curation, proposals, compacting, and future graph extraction. Production uses an
+curation, proposals, compacting, and future graph extraction.
 OpenAI-compatible means the API shape, not provider lock-in. Obelisk uses the
-`/v1/chat/completions` contract so the same configuration can point at official
-OpenAI, OpenRouter, LiteLLM, vLLM, llama.cpp, Spark/DGX, or another compatible
-gateway:
+`/v1/chat/completions` contract so the same configuration can point at OpenAI,
+OpenRouter, LiteLLM, vLLM, llama.cpp, Spark/DGX, or another compatible gateway:
 
 ```dotenv
 UAM_MEMORY_LLM_PROVIDER=openai-compatible
@@ -223,11 +222,11 @@ UAM_MEMORY_LLM_MAX_TOKENS=1600
 UAM_MEMORY_LLM_ENABLE_THINKING=false
 ```
 
-The values above are the official OpenAI production profile. For another
-provider, keep the contract and replace `UAM_MEMORY_LLM_BASE_URL`,
-`UAM_MEMORY_LLM_MODEL`, and the key with that provider's values. Examples:
-OpenRouter model IDs, a LiteLLM gateway route, vLLM served model names,
-llama.cpp server model aliases, or the optional Spark/DGX Qwen endpoint.
+The values above are one deployable profile, not a product lock. Keep the
+contract and replace `UAM_MEMORY_LLM_BASE_URL`, `UAM_MEMORY_LLM_MODEL`, and the
+key with the selected provider's values. Examples: OpenAI model IDs, OpenRouter
+model IDs, a LiteLLM gateway route, vLLM served model names, llama.cpp server
+model aliases, or a Spark/DGX Qwen endpoint.
 
 Embedding model configuration is separate:
 
@@ -270,6 +269,9 @@ For production PostgreSQL storage, keep `UAM_MEMORY_TEXT_ENCRYPTION=pgcrypto`
 and provide `UAM_MEMORY_TEXT_ENCRYPTION_KEY` from an external secret manager.
 The application sees normal text after loading from the ledger, while
 `memory_items.text` is stored as `enc:pgcrypto:v1:*` ciphertext.
+By default `UAM_MEMORY_TEXT_ENCRYPTION_SCOPES=all`; operators can use a
+comma-separated scope list such as `private,thread` when only selected
+visibility scopes need row-level ciphertext.
 
 ## Agent integration
 

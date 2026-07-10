@@ -79,6 +79,7 @@ def test_validate_production_env_accepts_strict_real_config(tmp_path: Path) -> N
                 "UAM_PRIVACY_ENABLED=true",
                 "UAM_PRIVACY_ACTION=redact",
                 "UAM_MEMORY_TEXT_ENCRYPTION=pgcrypto",
+                "UAM_MEMORY_TEXT_ENCRYPTION_SCOPES=all",
                 "UAM_MEMORY_TEXT_ENCRYPTION_KEY=memtext_" + "f" * 40,
                 "UAM_AUDIT_SIGNING_KEY=audit_" + "b" * 40,
                 "UAM_VAULT_SIGNING_KEY=vault_" + "c" * 40,
@@ -136,6 +137,7 @@ def test_validate_production_env_accepts_secret_files(tmp_path: Path) -> None:
                 "UAM_PRIVACY_ENABLED=true",
                 "UAM_PRIVACY_ACTION=redact",
                 "UAM_MEMORY_TEXT_ENCRYPTION=pgcrypto",
+                "UAM_MEMORY_TEXT_ENCRYPTION_SCOPES=private,thread",
                 "UAM_EMBEDDING_PROVIDER=openai",
                 "UAM_EMBEDDING_MODEL=text-embedding-3-large",
                 "UAM_EMBEDDING_BASE_URL=https://api.openai.com/v1",
@@ -210,6 +212,33 @@ def test_validate_production_env_rejects_plaintext_memory_storage() -> None:
     assert "UAM_MEMORY_TEXT_ENCRYPTION" in failed
 
 
+def test_validate_production_env_rejects_unknown_memory_encryption_scope() -> None:
+    values = {
+        "UAM_API_KEY": "ak_" + "a" * 40,
+        "UAM_API_KEYS": "openclaw:oc_" + "b" * 32 + ":agent,"
+        "hermes:hm_" + "c" * 32 + ":agent,"
+        "operator:op_" + "d" * 32 + ":operator",
+        "UAM_SERVER_ID": "00000000-0000-0000-0000-000000000001",
+        "UAM_PROJECT_ID": "00000000-0000-0000-0000-000000000002",
+        "POSTGRES_PASSWORD": "pg_" + "e" * 40,
+        "UAM_APP_DB_PASSWORD": "app_" + "f" * 40,
+        "MINIO_ROOT_PASSWORD": "minio_" + "a" * 40,
+        "UAM_CONTEXT_BUDGET_TOKENS": "131072",
+        "UAM_PRIVACY_ENABLED": "true",
+        "UAM_PRIVACY_ACTION": "redact",
+        "UAM_MEMORY_TEXT_ENCRYPTION": "pgcrypto",
+        "UAM_MEMORY_TEXT_ENCRYPTION_SCOPES": "private,nope",
+        "UAM_MEMORY_TEXT_ENCRYPTION_KEY": "memtext_" + "f" * 40,
+        "UAM_EMBEDDING_DIM": "3072",
+        "UAM_QDRANT_PAYLOAD_TEXT": "false",
+    }
+
+    checks = validate_production_env.validate_env(values)
+
+    failed = {check.name for check in checks if not check.ok}
+    assert "UAM_MEMORY_TEXT_ENCRYPTION_SCOPES" in failed
+
+
 def test_production_compose_wires_memory_text_encryption() -> None:
     compose = (ROOT / "docker-compose.prod.yml").read_text(encoding="utf-8")
 
@@ -219,6 +248,7 @@ def test_production_compose_wires_memory_text_encryption() -> None:
         )
         >= 2
     )
+    assert compose.count("UAM_MEMORY_TEXT_ENCRYPTION_SCOPES: ") >= 2
     assert (
         compose.count("UAM_MEMORY_TEXT_ENCRYPTION_KEY_FILE: ")
         >= 2

@@ -70,7 +70,7 @@ its own short-term scratchpad ephemeral.
 ## Real embedding runtime
 
 The production embedding target is OpenAI-compatible. That means the API
-contract, not provider lock-in. The default profile targets official OpenAI:
+contract, not provider lock-in. One deployable profile is:
 
 ```text
 provider=openai
@@ -99,7 +99,7 @@ boundary that makes the switch clean.
 Memory maintenance has its own LLM config. It is not the embedding model and not
 the agent runtime model.
 
-Production target:
+Production target shape:
 
 ```text
 provider=openai-compatible

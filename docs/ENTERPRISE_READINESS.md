@@ -49,6 +49,8 @@ remaining hard requirements.
 - [x] Operator UI can accept, override or dismiss conflict cases through the
       persisted conflict-review API.
 - [x] Qdrant/vector indexing is async and fail-soft.
+- [x] PostgreSQL memory text encryption can cover all rows or selected
+      visibility scopes via `UAM_MEMORY_TEXT_ENCRYPTION_SCOPES`.
 - [x] Memory LLM is separate from embedding endpoint.
 - [x] OpenAI-compatible memory LLM defaults are documented.
 - [x] OpenAI-compatible memory LLM live regression runner exists and writes JSON
@@ -80,7 +82,6 @@ remaining hard requirements.
 - [ ] Install environment-level backup schedule and immutable artifact storage.
 - [ ] Install the provided metrics dashboard/alert rules and scheduled-backup
       report routing in the target deployment.
-- [ ] Add optional row-level encryption for selected memory scopes.
 - [ ] Enforce signed vault import manifests in production operating procedure
       and keep signing keys outside the repository.
 - [x] Enforce GitHub branch protection and PR-only merges to `main`.

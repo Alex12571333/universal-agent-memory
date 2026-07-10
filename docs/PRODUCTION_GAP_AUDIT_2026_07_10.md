@@ -15,7 +15,7 @@ it is not enough.
 | API auth | Bearer key, scoped keys, env validator and non-secret key registry with last-used/revoked state exist; `/health` public | Strong local/team baseline; still not enterprise IAM |
 | Audit trail | Append-only `audit_events` table, RLS, operator export API, signed paginated JSONL bundle, safe retention runner, metrics, tests | Strong baseline; environment schedule, key custody and immutable storage still needed |
 | Browser/API hardening | Security headers are enforced by middleware and tests | Baseline present |
-| Data model | Append-only memory, CAS supersede, provenance, statuses, optional pgcrypto ciphertext for canonical memory text | Strong foundation |
+| Data model | Append-only memory, CAS supersede, provenance, statuses, optional pgcrypto ciphertext for all or selected memory scopes | Strong foundation |
 | Conversation capture | Raw conversation ledger exists, but curation remains explicit/manual or hook-driven | Not “automatically remembers everything” yet |
 | Embeddings | Real provider support exists; Qdrant can redact raw text payloads and hydrate recall from PostgreSQL; fake remains available for CI/emergency | Production depends on real endpoint, `UAM_QDRANT_PAYLOAD_TEXT=false`, and reindex discipline |
 | Memory LLM | Provider-neutral OpenAI-compatible contract, fail-soft adapter and live regression runner exist | Needs saved live endpoint regression evidence before autonomy |
@@ -55,7 +55,9 @@ Required gates:
    - Qdrant payload text redaction must stay enabled for production vector
      stores.
    - `UAM_MEMORY_TEXT_ENCRYPTION=pgcrypto` must be enabled for production
-     PostgreSQL storage, with the key held outside the repository.
+     PostgreSQL storage, with the key held outside the repository. Use
+     `UAM_MEMORY_TEXT_ENCRYPTION_SCOPES=all` by default or a documented
+     selective scope policy such as `private,thread`.
    - Security headers and CSP stay covered by tests.
 
 2. **Reliability gate**
