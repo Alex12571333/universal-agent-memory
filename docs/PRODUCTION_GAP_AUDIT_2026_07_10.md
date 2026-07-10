@@ -13,7 +13,7 @@ it is not enough.
 | Architecture | PostgreSQL source of truth, Qdrant index, outbox, NATS workers, vault, API, UI | Good foundation |
 | Docker | Dev and prod compose exist; prod hides internal infra ports | Good for trusted local/team deployment |
 | API auth | Bearer key, scoped keys and non-secret key registry with last-used/revoked state exist; `/health` public | Strong local/team baseline; still not enterprise IAM |
-| Audit trail | Append-only `audit_events` table, RLS, operator export API, tamper-evident JSONL bundle, metrics, tests | Strong baseline; retention schedule and private-key signing still needed |
+| Audit trail | Append-only `audit_events` table, RLS, operator export API, signed JSONL bundle, metrics, tests | Strong baseline; retention schedule, key custody and immutable storage still needed |
 | Browser/API hardening | Security headers are enforced by middleware and tests | Baseline present |
 | Data model | Append-only memory, CAS supersede, provenance, statuses | Strong foundation |
 | Conversation capture | Raw conversation ledger exists, but curation remains explicit/manual or hook-driven | Not “automatically remembers everything” yet |
@@ -40,9 +40,9 @@ Required gates:
      Baseline registry exists; external secret manager integration is still
      recommended for larger deployments.
    - Audit log export for write, supersede, conflict-decision, vault-import,
-     settings-change and model-change events. Durable storage and a checksum
-     bundle exist; retention schedule and private-key-signed exports are still
-     required for regulated environments.
+     settings-change and model-change events. Durable storage plus optional
+     HMAC-signed export bundles exist; regulated environments still need signing
+     key custody, retention schedule and immutable storage.
    - Optional row-level encryption for high-risk scopes.
    - Security headers and CSP stay covered by tests.
 
@@ -104,8 +104,8 @@ Required gates:
 
 ## Highest-priority next work
 
-1. Add audit retention policy, scheduled immutable storage, and private-key
-   signatures for audit bundles.
+1. Add audit retention policy, external signing-key custody, scheduled immutable
+   storage, and cursor/range export for complete long-window audit retention.
 2. Install environment-level backup schedule, immutable artifact storage, and
    alert routing for `scheduled_backup.py` reports.
 3. Add live `.14` OpenClaw/Hermes soak test script.

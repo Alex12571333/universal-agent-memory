@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import hmac
 import json
 import os
 from dataclasses import asdict, is_dataclass
@@ -24,6 +25,11 @@ def main() -> int:
     """Export operator audit events into JSONL plus checksum manifest files."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("output_dir", help="Directory where audit bundle files are written")
+    parser.add_argument(
+        "--verify",
+        action="store_true",
+        help="Verify an existing bundle instead of exporting from PostgreSQL",
+    )
     parser.add_argument(
         "--database-url",
         default=os.getenv("UAM_DATABASE_URL"),
@@ -50,7 +56,14 @@ def main() -> int:
         default=500,
         help="Maximum events to export; repository cap is 500",
     )
+    parser.add_argument(
+        "--signing-key",
+        default=os.getenv("UAM_AUDIT_SIGNING_KEY"),
+        help="Optional HMAC signing key; defaults to UAM_AUDIT_SIGNING_KEY",
+    )
     args = parser.parse_args()
+    if args.verify:
+        return _verify_bundle(Path(args.output_dir), signing_key=args.signing_key)
     if not args.database_url:
         parser.error("database URL is required")
 
@@ -71,6 +84,7 @@ def main() -> int:
     events_path = output / "audit-events.jsonl"
     manifest_path = output / "manifest.json"
     manifest_checksum_path = output / "manifest.sha256"
+    manifest_signature_path = output / "manifest.sig"
 
     events_bytes = _jsonl_bytes(events)
     events_path.write_bytes(events_bytes)
@@ -82,6 +96,7 @@ def main() -> int:
         action=args.action,
         resource_type=args.resource_type,
         requested_limit=args.limit,
+        signed=bool(args.signing_key),
     )
     manifest_bytes = _canonical_json_bytes(manifest)
     manifest_path.write_bytes(manifest_bytes)
@@ -89,11 +104,17 @@ def main() -> int:
         f"{_sha256(manifest_bytes)}  manifest.json\n",
         encoding="utf-8",
     )
+    if args.signing_key:
+        manifest_signature_path.write_text(
+            f"{_hmac_sha256(args.signing_key, manifest_bytes)}  manifest.json\n",
+            encoding="utf-8",
+        )
 
     print(
         "audit_export=PASS "
         f"events={len(events)} output={output} "
-        f"manifest_sha256={_sha256(manifest_bytes)}"
+        f"manifest_sha256={_sha256(manifest_bytes)} "
+        f"signed={'yes' if args.signing_key else 'no'}"
     )
     return 0
 
@@ -117,6 +138,7 @@ def _manifest(
     action: str | None,
     resource_type: str | None,
     requested_limit: int,
+    signed: bool,
 ) -> dict[str, Any]:
     """Build the tamper-evident manifest for one export bundle."""
     created_values = [event.created_at for event in events]
@@ -144,9 +166,10 @@ def _manifest(
             }
         ],
         "checksum_algorithm": "sha256",
+        "signature_algorithm": "hmac-sha256" if signed else None,
         "note": (
             "Tamper-evident bundle for recent filtered audit events. "
-            "Verify manifest.sha256 first, then audit-events.jsonl sha256."
+            "Verify manifest.sha256, audit-events.jsonl sha256 and manifest.sig when signed."
         ),
     }
 
@@ -162,6 +185,122 @@ def _canonical_json_bytes(value: dict[str, Any]) -> bytes:
 def _sha256(payload: bytes) -> str:
     """Return a hex SHA-256 digest."""
     return hashlib.sha256(payload).hexdigest()
+
+
+def _hmac_sha256(secret: str, payload: bytes) -> str:
+    """Return a hex HMAC-SHA256 signature for one payload."""
+    return hmac.new(secret.encode("utf-8"), payload, hashlib.sha256).hexdigest()
+
+
+def _verify_bundle(output: Path, *, signing_key: str | None) -> int:
+    """Verify checksum and optional signature files for one audit bundle."""
+    manifest_path = output / "manifest.json"
+    checksum_path = output / "manifest.sha256"
+    signature_path = output / "manifest.sig"
+    events_path = output / "audit-events.jsonl"
+    checks: list[dict[str, Any]] = []
+
+    manifest_bytes = _read_required(manifest_path, checks)
+    expected_manifest_sha = _read_digest(checksum_path, checks)
+    if manifest_bytes is not None and expected_manifest_sha is not None:
+        actual = _sha256(manifest_bytes)
+        checks.append(
+            {
+                "name": "manifest.sha256",
+                "ok": hmac.compare_digest(actual, expected_manifest_sha),
+                "expected": expected_manifest_sha,
+                "actual": actual,
+            }
+        )
+
+    manifest: dict[str, Any] | None = None
+    if manifest_bytes is not None:
+        try:
+            parsed = json.loads(manifest_bytes.decode("utf-8"))
+            manifest = parsed if isinstance(parsed, dict) else None
+        except json.JSONDecodeError as exc:
+            checks.append({"name": "manifest.json", "ok": False, "error": str(exc)})
+
+    events_bytes = _read_required(events_path, checks)
+    if manifest is not None and events_bytes is not None:
+        files = manifest.get("files") if isinstance(manifest.get("files"), list) else []
+        event_meta = next(
+            (
+                row
+                for row in files
+                if isinstance(row, dict) and row.get("path") == "audit-events.jsonl"
+            ),
+            {},
+        )
+        expected_events_sha = str(event_meta.get("sha256") or "")
+        actual_events_sha = _sha256(events_bytes)
+        checks.append(
+            {
+                "name": "audit-events.jsonl.sha256",
+                "ok": bool(expected_events_sha)
+                and hmac.compare_digest(actual_events_sha, expected_events_sha),
+                "expected": expected_events_sha,
+                "actual": actual_events_sha,
+            }
+        )
+
+    if signing_key:
+        expected_signature = _read_digest(signature_path, checks)
+        if manifest_bytes is not None and expected_signature is not None:
+            actual_signature = _hmac_sha256(signing_key, manifest_bytes)
+            checks.append(
+                {
+                    "name": "manifest.sig",
+                    "ok": hmac.compare_digest(actual_signature, expected_signature),
+                    "expected": expected_signature,
+                    "actual": actual_signature,
+                }
+            )
+    else:
+        checks.append(
+            {
+                "name": "manifest.sig",
+                "ok": not signature_path.exists(),
+                "detail": (
+                    "unsigned bundle"
+                    if not signature_path.exists()
+                    else "signing key required"
+                ),
+            }
+        )
+
+    ok = all(check.get("ok") is True for check in checks)
+    print(
+        json.dumps(
+            {
+                "format": "obelisk-audit-export-verification-v1",
+                "ok": ok,
+                "bundle": str(output),
+                "checks": checks,
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+    )
+    return 0 if ok else 1
+
+
+def _read_required(path: Path, checks: list[dict[str, Any]]) -> bytes | None:
+    """Read a required file and append a failed check when it is missing."""
+    try:
+        return path.read_bytes()
+    except OSError as exc:
+        checks.append({"name": path.name, "ok": False, "error": str(exc)})
+        return None
+
+
+def _read_digest(path: Path, checks: list[dict[str, Any]]) -> str | None:
+    """Read the first digest field from a sha/signature file."""
+    try:
+        return path.read_text(encoding="utf-8").split()[0]
+    except (OSError, IndexError) as exc:
+        checks.append({"name": path.name, "ok": False, "error": str(exc)})
+        return None
 
 
 def _json_ready(value: Any) -> Any:

@@ -55,8 +55,8 @@ Failed: 0
 | `audit:rls` | PASS | audit events are durable and tenant-isolated |
 | `audit:operator-export` | PASS | audit export endpoint is operator-scoped |
 | `tests:audit-trail` | PASS | audit trail behavior is covered by API tests |
-| `audit:tamper-evident-bundle` | PASS | audit script exports JSONL plus checksum manifest |
-| `tests:audit-export-bundle` | PASS | audit bundle checksum behavior is covered by tests |
+| `audit:tamper-evident-bundle` | PASS | audit script exports JSONL plus checksum and optional signature |
+| `tests:audit-export-bundle` | PASS | audit bundle checksum/signature behavior is covered by tests |
 | `keys:registry-rls` | PASS | API key registry stores non-secret metadata under RLS |
 | `keys:operator-api` | PASS | API key registry is operator-scoped |
 | `tests:key-registry` | PASS | key registry last-used and revocation behavior is covered |

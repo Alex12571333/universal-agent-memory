@@ -237,15 +237,19 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 "audit:tamper-evident-bundle",
                 "audit-events.jsonl" in read("scripts/export_audit.py")
                 and "manifest.sha256" in read("scripts/export_audit.py")
-                and "sha256" in read("scripts/export_audit.py"),
-                "audit script exports JSONL plus checksum manifest",
+                and "manifest.sig" in read("scripts/export_audit.py")
+                and "hmac-sha256" in read("scripts/export_audit.py"),
+                "audit script exports JSONL plus checksum and optional signature",
             ),
             Check(
                 "tests:audit-export-bundle",
                 "test_export_audit_writes_jsonl_manifest_and_checksum" in read(
                     "tests/test_backup_restore_scripts.py"
+                )
+                and "test_export_audit_signs_and_verifies_bundle" in read(
+                    "tests/test_backup_restore_scripts.py"
                 ),
-                "audit bundle checksum behavior is covered by tests",
+                "audit bundle checksum/signature behavior is covered by tests",
             ),
             Check(
                 "keys:registry-rls",

@@ -33,6 +33,7 @@ Manual checks:
 - Confirm embedding endpoint returns the configured dimension.
 - Confirm `audit-export/manifest.sha256` verifies before preserving release
   evidence.
+- Confirm signed audit bundles verify with `scripts/export_audit.py --verify`.
 - Confirm `backups/latest-backup-report.json` reports `"ok": true`.
 - Confirm `ops/metrics-health.json` reports `"ok": true`.
 - Confirm worker logs do not show repeated NATS/Qdrant connection failures.

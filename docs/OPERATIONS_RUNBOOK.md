@@ -120,6 +120,7 @@ security review:
 PYTHONPATH=src python scripts/export_audit.py ./audit-export \
   --tenant-id "$UAM_SERVER_ID" \
   --workspace-id "$UAM_PROJECT_ID" \
+  --signing-key "$UAM_AUDIT_SIGNING_KEY" \
   --limit 500
 ```
 
@@ -128,6 +129,8 @@ The bundle contains:
 - `audit-events.jsonl` — newline-delimited audit events;
 - `manifest.json` — filters, event count, created-at range, file checksum;
 - `manifest.sha256` — checksum for `manifest.json`.
+- `manifest.sig` — HMAC-SHA256 signature when `UAM_AUDIT_SIGNING_KEY` or
+  `--signing-key` is set.
 
 Verify the bundle before relying on it:
 
@@ -135,11 +138,14 @@ Verify the bundle before relying on it:
 cd audit-export
 shasum -a 256 -c manifest.sha256
 shasum -a 256 audit-events.jsonl
+PYTHONPATH=src python ../scripts/export_audit.py . --verify \
+  --signing-key "$UAM_AUDIT_SIGNING_KEY"
 ```
 
 The current export is intentionally bounded to the recent filtered audit window
-exposed by the repository API. For regulated retention, add scheduled exports or
-a cursor/range export job and store bundles in immutable storage.
+exposed by the repository API. For regulated retention, protect
+`UAM_AUDIT_SIGNING_KEY` in an external secret manager, add scheduled exports or a
+cursor/range export job, and store bundles in immutable storage.
 
 ## Upgrade
 

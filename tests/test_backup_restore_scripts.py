@@ -203,6 +203,75 @@ def test_export_audit_writes_jsonl_manifest_and_checksum(
     assert checksum == f"{manifest_digest}  manifest.json\n"
 
 
+def test_export_audit_signs_and_verifies_bundle(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tenant = uuid4()
+    event = export_audit.AuditEvent(
+        tenant_id=tenant,
+        workspace_id=None,
+        action="settings.models.update",
+        actor="operator",
+        actor_type="operator",
+        resource_type="model_settings",
+        metadata={"provider": "tei"},
+        created_at=datetime(2026, 7, 10, 12, 30, tzinfo=UTC),
+    )
+    ledger = Mock()
+    audit = Mock()
+    audit.list_events.return_value = (event,)
+    monkeypatch.setattr(export_audit, "PostgresMemoryLedger", Mock(return_value=ledger))
+    monkeypatch.setattr(export_audit, "AuditLogService", Mock(return_value=audit))
+    monkeypatch.setenv("UAM_DATABASE_URL", "postgresql://example/db")
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "export_audit.py",
+            str(tmp_path),
+            "--tenant-id",
+            str(tenant),
+            "--all-workspaces",
+            "--signing-key",
+            "secret-signing-key",
+        ],
+    )
+
+    assert export_audit.main() == 0
+    capsys.readouterr()
+
+    manifest_bytes = (tmp_path / "manifest.json").read_bytes()
+    manifest = json.loads(manifest_bytes)
+    expected_signature = export_audit._hmac_sha256("secret-signing-key", manifest_bytes)
+    signature = (tmp_path / "manifest.sig").read_text(encoding="utf-8")
+    assert manifest["signature_algorithm"] == "hmac-sha256"
+    assert signature == f"{expected_signature}  manifest.json\n"
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "export_audit.py",
+            str(tmp_path),
+            "--verify",
+            "--signing-key",
+            "secret-signing-key",
+        ],
+    )
+    assert export_audit.main() == 0
+    verified = json.loads(capsys.readouterr().out)
+    assert verified["ok"] is True
+
+    monkeypatch.setattr(
+        "sys.argv",
+        ["export_audit.py", str(tmp_path), "--verify", "--signing-key", "wrong-key"],
+    )
+    assert export_audit.main() == 1
+    rejected = json.loads(capsys.readouterr().out)
+    assert rejected["ok"] is False
+    assert any(check["name"] == "manifest.sig" for check in rejected["checks"])
+
+
 def test_check_branch_protection_accepts_pr_checks_and_admin_enforcement(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

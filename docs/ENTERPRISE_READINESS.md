@@ -21,6 +21,8 @@ remaining hard requirements.
       vault imports/archives and model-setting changes.
 - [x] Audit export bundle writes JSONL, manifest, and SHA-256 checksum for
       incident review.
+- [x] Audit export bundle can be HMAC-signed and verified with an operator-held
+      signing key.
 - [x] Health checks exist for API, PostgreSQL, and NATS.
 - [x] Metrics endpoint exists.
 - [x] Metrics health evaluator can fail on outbox lag/dead letters and emit JSON
@@ -45,8 +47,8 @@ remaining hard requirements.
 
 - [ ] Put the API behind a real TLS reverse proxy.
 - [ ] Move bearer secrets to an external secret manager for larger deployments.
-- [ ] Add audit retention schedule, immutable storage, and private-key signatures
-      for regulated environments.
+- [ ] Add audit retention schedule, immutable storage, and external signing-key
+      custody for regulated environments.
 - [ ] Install environment-level backup schedule and immutable artifact storage.
 - [ ] Wire metrics and scheduled-backup reports into deployment dashboards/alerts.
 - [ ] Add optional row-level encryption for selected memory scopes.
