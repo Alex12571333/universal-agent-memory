@@ -17,6 +17,7 @@ REQUIRED_ARTIFACTS = {
     "metrics_health",
     "scheduled_backup",
     "audit_retention",
+    "deployment_preflight",
     "vault_import",
     "branch_protection",
     "ui_walkthrough",
@@ -110,6 +111,7 @@ def verify_manifest(path: Path) -> list[EvidenceCheck]:
         "metrics_health": _verify_metrics_health,
         "scheduled_backup": _verify_scheduled_backup,
         "audit_retention": _verify_audit_retention,
+        "deployment_preflight": _verify_deployment_preflight,
         "vault_import": _verify_vault_import,
         "branch_protection": _verify_branch_protection,
         "ui_walkthrough": _verify_ui_walkthrough,
@@ -307,6 +309,32 @@ def _verify_audit_retention(payload: dict[str, Any]) -> list[EvidenceCheck]:
             "audit_retention:signed-export",
             payload.get("signed_export") is True,
             "pre-prune audit export was signed",
+        ),
+    ]
+
+
+def _verify_deployment_preflight(payload: dict[str, Any]) -> list[EvidenceCheck]:
+    names = _check_names(payload)
+    required = {
+        "public-url-https",
+        "public-health",
+        "public-security-headers",
+        "backend-not-public",
+    }
+    missing = sorted(required - names)
+    return [
+        _format_check("deployment_preflight", payload, "obelisk-deployment-preflight-v1"),
+        _ok_check("deployment_preflight", payload),
+        EvidenceCheck(
+            "deployment_preflight:required-checks",
+            not missing,
+            "required checks present" if not missing else "missing: " + ", ".join(missing),
+        ),
+        EvidenceCheck(
+            "deployment_preflight:backend-not-public",
+            payload.get("backend_probe_performed") is True
+            and payload.get("backend_publicly_reachable") is False,
+            "direct backend exposure probe passed",
         ),
     ]
 

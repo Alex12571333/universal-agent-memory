@@ -40,6 +40,10 @@ Then verify:
 curl -fsS https://$UAM_PUBLIC_HOST/health
 curl -fsS -H "Authorization: Bearer $UAM_API_KEY" \
   https://$UAM_PUBLIC_HOST/metrics
+UAM_API_KEY=... PYTHONPATH=src python scripts/deployment_preflight.py \
+  --public-url https://$UAM_PUBLIC_HOST \
+  --backend-url http://$UAM_PUBLIC_HOST:6798 \
+  --report ./ops/deployment-preflight.json
 ```
 
 ## Direct port exposure
@@ -59,7 +63,9 @@ docker compose \
 
 Do not call the deployment production-hardened until the rendered config shows
 `host_ip: 127.0.0.1` for backend `6798`, external clients can reach only
-`80`/`443`, and firewall/security-group policy matches that posture.
+`80`/`443`, `ops/deployment-preflight.json` reports
+`"backend_publicly_reachable": false`, and firewall/security-group policy
+matches that posture.
 
 ## Headers
 

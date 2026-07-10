@@ -76,6 +76,22 @@ Import `deploy/observability/grafana-dashboard.json` and
 See [OBSERVABILITY.md](OBSERVABILITY.md) for scrape config, dashboard coverage
 and alert rule details.
 
+## Deployment boundary preflight
+
+For any non-local deployment, preserve a preflight report that proves the public
+entrypoint is HTTPS and the direct backend port is not externally reachable from
+the probe location:
+
+```bash
+UAM_API_KEY=... PYTHONPATH=src python scripts/deployment_preflight.py \
+  --public-url https://$UAM_PUBLIC_HOST \
+  --backend-url http://$UAM_PUBLIC_HOST:6798 \
+  --report ./ops/deployment-preflight.json
+```
+
+The report uses format `obelisk-deployment-preflight-v1` and is required by
+`scripts/verify_release_evidence.py` before a full-production release claim.
+
 ## Access keys
 
 Use one master `UAM_API_KEY` for break-glass operations and scoped keys for

@@ -13,6 +13,8 @@ remaining hard requirements.
 - [x] Migrations are forward-only and run before API startup.
 - [x] Production compose exposes only API/UI to the host.
 - [x] TLS reverse-proxy deployment example exists for non-local access.
+- [x] Deployment preflight runner writes JSON evidence for public HTTPS,
+      security headers and direct backend exposure checks.
 - [x] API key auth can protect API, docs, metrics, and UI.
 - [x] Scoped API keys can separate operator, agent, read, and write access.
 - [x] Runtime secrets can be supplied through mounted `*_FILE` secrets for
@@ -72,8 +74,9 @@ remaining hard requirements.
 
 ## Required before calling it full production
 
-- [ ] Put the deployed API behind the real TLS reverse proxy/VPN boundary and
-      verify direct backend `6798` is not externally reachable.
+- [ ] Run deployment preflight against the target TLS/VPN boundary, verify
+      direct backend `6798` is not externally reachable, and preserve the
+      generated report.
 - [ ] Install the external secret manager in the target environment and mount
       production secrets through `*_FILE` paths instead of raw env values.
 - [ ] Install the audit retention schedule in the target environment and store

@@ -141,6 +141,10 @@ PostgreSQL, Qdrant, NATS, and MinIO internal.
    UAM_API_KEY=... python scripts/ui_walkthrough_eval.py \
      --base-url http://127.0.0.1:6798 \
      --json-report ./ops/ui-walkthrough.json
+   UAM_API_KEY=... python scripts/deployment_preflight.py \
+     --public-url https://memory.example.com \
+     --backend-url http://memory.example.com:6798 \
+     --report ./ops/deployment-preflight.json
    UAM_VAULT_SIGNING_KEY=... python scripts/export_vault.py ./vault-review
    UAM_VAULT_SIGNING_KEY=... python scripts/import_vault.py ./vault-review \
      --require-signature \
@@ -349,6 +353,10 @@ python scripts/validate_production_env.py .env.production \
 UAM_API_KEY=... python scripts/agent_soak_eval.py --json-report ./ops/agent-soak.json
 UAM_API_KEY=... python scripts/load_smoke_eval.py --json-report ./ops/load-smoke.json
 UAM_API_KEY=... python scripts/ui_walkthrough_eval.py --json-report ./ops/ui-walkthrough.json
+UAM_API_KEY=... python scripts/deployment_preflight.py \
+  --public-url https://memory.example.com \
+  --backend-url http://memory.example.com:6798 \
+  --report ./ops/deployment-preflight.json
 UAM_VAULT_SIGNING_KEY=... python scripts/export_vault.py ./vault-review
 UAM_VAULT_SIGNING_KEY=... python scripts/import_vault.py ./vault-review \
   --require-signature \
