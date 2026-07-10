@@ -174,6 +174,7 @@ def test_openclaw_cli_bridge_recalls_and_retains(monkeypatch: MonkeyPatch, capsy
     assert calls[1][0] == "/v1/memory/retain"
     assert "Контекст Obelisk" in calls[0][1]["query"] or calls[0][1]["query"] == "question"
     assert calls[1][1]["kind"] == "run_summary"
+    assert calls[1][1]["text"] == "Запрос пользователя:\nquestion\n\nОтвет агента:\nanswer"
     assert "answer" in capsys.readouterr().out
 
 
@@ -204,6 +205,19 @@ def test_openclaw_cli_bridge_uses_configured_thread_id() -> None:
     )
 
     assert identity["thread_id"] == "thread"
+
+
+def test_openclaw_cli_bridge_extracts_visible_answer_from_json() -> None:
+    bridge = _load_openclaw_cli_bridge()
+    output = '{"result":{"payloads":[{"text":"first"},{"text":"final answer"}],"meta":{}}}'
+
+    assert bridge._assistant_text(output) == "first\n\nfinal answer"
+
+
+def test_openclaw_cli_bridge_keeps_plain_text_answer() -> None:
+    bridge = _load_openclaw_cli_bridge()
+
+    assert bridge._assistant_text("plain answer\n") == "plain answer"
 
 
 def test_hermes_provider_discovery_and_tools(monkeypatch: MonkeyPatch) -> None:

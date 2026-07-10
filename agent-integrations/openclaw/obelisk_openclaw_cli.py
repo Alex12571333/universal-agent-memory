@@ -44,7 +44,7 @@ def main(argv: list[str] | None = None) -> int:
     sys.stderr.write(result.stderr)
 
     if result.returncode == 0 and result.stdout.strip():
-        _retain_run(config, identity, original, result.stdout)
+        _retain_run(config, identity, original, _assistant_text(result.stdout))
     return result.returncode
 
 
@@ -109,8 +109,9 @@ def _identity(config: dict[str, str], args: list[str]) -> dict[str, str]:
     }
 
 
-def _retain_run(config: dict[str, str], identity: dict[str, str], prompt: str, output: str) -> None:
-    digest = sha256(f"{prompt}\n{output}".encode()).hexdigest()[:24]
+def _retain_run(config: dict[str, str], identity: dict[str, str], prompt: str, answer: str) -> None:
+    text = f"Запрос пользователя:\n{prompt.strip()}\n\nОтвет агента:\n{answer.strip()}".strip()
+    digest = sha256(text.encode()).hexdigest()[:24]
     try:
         _post(
             config,
@@ -120,7 +121,7 @@ def _retain_run(config: dict[str, str], identity: dict[str, str], prompt: str, o
                 "layer": "episodic",
                 "scope": "thread",
                 "kind": "run_summary",
-                "text": output[-8000:],
+                "text": text[-8000:],
                 "source_kind": "openclaw-cli-bridge",
                 "labels": ["openclaw", "cli"],
                 "idempotency_key": f"openclaw-cli-run:{digest}",
@@ -128,6 +129,33 @@ def _retain_run(config: dict[str, str], identity: dict[str, str], prompt: str, o
         )
     except Exception as error:  # fail-soft: never turn a successful run into a failure.
         print(f"obelisk-openclaw: retain skipped ({error})", file=sys.stderr)
+
+
+def _assistant_text(output: str) -> str:
+    """Extract the visible answer from OpenClaw JSON without storing run metadata."""
+    try:
+        payload = json.loads(output)
+    except json.JSONDecodeError:
+        return output.strip()
+    if not isinstance(payload, dict):
+        return output.strip()
+    result = payload.get("result")
+    if not isinstance(result, dict):
+        return output.strip()
+    messages = result.get("payloads")
+    if isinstance(messages, list):
+        texts = [item.get("text", "").strip() for item in messages if isinstance(item, dict)]
+        visible = "\n\n".join(text for text in texts if text)
+        if visible:
+            return visible
+    meta = result.get("meta")
+    if isinstance(meta, dict):
+        report = meta.get("systemPromptReport")
+        if isinstance(report, dict):
+            visible = str(report.get("finalAssistantVisibleText", "")).strip()
+            if visible:
+                return visible
+    return output.strip()
 
 
 def _post(config: dict[str, str], path: str, payload: dict[str, object]) -> dict[str, object]:

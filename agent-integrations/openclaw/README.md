@@ -74,7 +74,9 @@ python3 agent-integrations/openclaw/obelisk_openclaw_cli.py \
 
 The bridge reads the existing `universal-agent-memory` plugin configuration
 from `~/.openclaw/openclaw.json`, recalls before the run, injects a bounded
-reference-only context, then retains the successful final response. Both
+reference-only context, then retains the successful final response as clean
+`Запрос пользователя` / `Ответ агента` text. OpenClaw `--json` metadata is
+never written into the memory item. Both
 memory calls are fail-soft: a temporarily unavailable memory server never
 prevents OpenClaw from running. If the API key is deliberately kept out of the
 JSON config, it may instead be supplied as `UAM_API_KEY`; on a systemd-managed
