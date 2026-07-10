@@ -70,6 +70,77 @@ def test_migration_runner_includes_every_versioned_sql_file() -> None:
     assert configured == expected
 
 
+class _RoleQueryResult:
+    def __init__(self, value: object) -> None:
+        self.value = value
+
+    def fetchone(self) -> tuple[object]:
+        return (self.value,)
+
+
+class _RoleCursor:
+    def __init__(self, calls: list[tuple[object, object | None]]) -> None:
+        self.calls = calls
+
+    def __enter__(self) -> _RoleCursor:
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        return None
+
+    def execute(self, statement: object, params: object | None = None) -> None:
+        self.calls.append((statement, params))
+
+
+class _RoleConnection:
+    def __init__(self, *, exists: bool = False) -> None:
+        self.exists = exists
+        self.calls: list[tuple[object, object | None]] = []
+
+    def execute(self, statement: object, params: object | None = None) -> _RoleQueryResult:
+        self.calls.append((statement, params))
+        if statement == "select current_user":
+            return _RoleQueryResult("memory_admin")
+        return _RoleQueryResult(self.exists)
+
+    def cursor(self, **_kwargs: object) -> _RoleCursor:
+        return _RoleCursor(self.calls)
+
+
+def test_application_role_provisioning_parameterizes_secret_and_identifier(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    connection = _RoleConnection()
+    monkeypatch.setattr(migrate.psycopg, "ClientCursor", lambda _connection: connection.cursor())
+
+    migrate.provision_application_role(connection, "runtime_agent", "p@ssword-value")
+
+    assert connection.calls[1][1] == ("runtime_agent",)
+    assert connection.calls[2][1] == ("p@ssword-value",)
+    assert all("p@ssword-value" not in str(statement) for statement, _ in connection.calls)
+
+
+@pytest.mark.parametrize(
+    "username",
+    ["role-with-dash", "role;drop table memories", "9role", "a" * 64],
+)
+def test_application_role_provisioning_rejects_unsafe_identifier(username: str) -> None:
+    connection = _RoleConnection()
+
+    with pytest.raises(ValueError, match="valid PostgreSQL identifier"):
+        migrate.provision_application_role(connection, username, "safe-password")
+
+    assert connection.calls == []
+
+
+@pytest.mark.parametrize("username", ["postgres", "pg_runtime", "memory_admin"])
+def test_application_role_provisioning_rejects_privileged_role(username: str) -> None:
+    connection = _RoleConnection()
+
+    with pytest.raises(ValueError, match="reserved|differ"):
+        migrate.provision_application_role(connection, username, "safe-password")
+
+
 def test_validate_production_env_accepts_strict_real_config(tmp_path: Path) -> None:
     env_file = tmp_path / ".env.production"
     env_file.write_text(

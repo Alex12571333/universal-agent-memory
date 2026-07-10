@@ -186,11 +186,12 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 "UAM_API_KEY_FILE: ${UAM_API_KEY_FILE:-}" in prod_compose
                 and "UAM_API_KEYS_FILE: ${UAM_API_KEYS_FILE:-}" in prod_compose
                 and "UAM_MEMORY_LLM_API_KEY_FILE: ${UAM_MEMORY_LLM_API_KEY_FILE:-}" in prod_compose
-                and "UAM_EMBEDDING_API_KEY_FILE: ${UAM_EMBEDDING_API_KEY_FILE:-}" in prod_compose,
-                (
-                    "production compose passes *_FILE paths; external secret "
-                    "mounts remain deployment work"
-                ),
+                and "UAM_EMBEDDING_API_KEY_FILE: ${UAM_EMBEDDING_API_KEY_FILE:-}" in prod_compose
+                and "UAM_DATABASE_PASSWORD_FILE: /run/secrets/app_db_password" in prod_compose
+                and "POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password" in prod_compose
+                and "file: ${POSTGRES_PASSWORD_FILE:?" in prod_compose
+                and "file: ${UAM_APP_DB_PASSWORD_FILE:?" in prod_compose,
+                "production compose includes dedicated database secret mounts and *_FILE paths",
             ),
             Check(
                 "prod-compose:provider-neutral-embeddings",

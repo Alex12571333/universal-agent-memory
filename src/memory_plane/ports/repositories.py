@@ -12,6 +12,7 @@ from memory_plane.domain.api_key import ApiKeyRecord
 from memory_plane.domain.audit import AuditEvent
 from memory_plane.domain.conflict import ConflictReviewDecision
 from memory_plane.domain.graph import MemoryEdge, MemoryEdgeType
+from memory_plane.domain.identity import AgentIdentity, ThreadIdentity
 from memory_plane.domain.models import MemoryItem, MemoryLayer, Observation
 
 
@@ -47,6 +48,20 @@ class MemoryLedger(Protocol):
         idempotency_key: str | None = None,
     ) -> tuple[MemoryItem, bool]:
         """Append a replacement only if its parent is still the current head."""
+        ...
+
+
+class IdentityRegistry(Protocol):
+    """Atomic stable identity registry for agents and their threads."""
+
+    def provision_agent_thread(
+        self,
+        agent: AgentIdentity,
+        *,
+        thread_id: UUID | None = None,
+        thread_status: str = "active",
+    ) -> tuple[AgentIdentity, ThreadIdentity | None]:
+        """Create/update an agent and optional thread without moving scope."""
         ...
 
 

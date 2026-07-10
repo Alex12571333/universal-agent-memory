@@ -37,9 +37,7 @@ class CheckpointService:
             revision=new_revision,
             state=state,
         )
-        if head:
-            return self._store.save_if_head(checkpoint, head.revision)
-        return self._store.save(checkpoint)
+        return self._store.save_if_head(checkpoint, head.revision if head else 0)
 
     def update(
         self,

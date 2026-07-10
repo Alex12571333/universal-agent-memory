@@ -5,7 +5,11 @@ services:
     build:
       context: .
     environment:
-      UAM_DATABASE_URL: postgresql://${UAM_APP_DB_USER}:${UAM_APP_DB_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      UAM_DATABASE_HOST: postgres
+      UAM_DATABASE_PORT: 5432
+      UAM_DATABASE_NAME: ${POSTGRES_DB}
+      UAM_DATABASE_USER: ${UAM_APP_DB_USER}
+      UAM_DATABASE_PASSWORD_FILE: /run/secrets/app_db_password
       UAM_SERVER_ID: ${UAM_SERVER_ID}
       UAM_PROJECT_ID: ${UAM_PROJECT_ID}
       UAM_VERSION: ${UAM_VERSION}
@@ -46,6 +50,8 @@ services:
       UAM_MEMORY_LLM_EXTRA_BODY_JSON: ${UAM_MEMORY_LLM_EXTRA_BODY_JSON:-}
     ports:
       - "6798:8080"
+    secrets:
+      - app_db_password
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -71,9 +77,11 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    secrets:
+      - postgres_password
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
@@ -85,10 +93,16 @@ services:
       context: .
     command: ["python", "scripts/migrate.py"]
     environment:
-      UAM_ADMIN_DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      UAM_ADMIN_DATABASE_URL_FILE: ${UAM_ADMIN_DATABASE_URL_FILE:-}
+      UAM_ADMIN_DATABASE_HOST: postgres
+      UAM_ADMIN_DATABASE_PORT: 5432
+      UAM_ADMIN_DATABASE_NAME: ${POSTGRES_DB}
+      UAM_ADMIN_DATABASE_USER: ${POSTGRES_USER}
+      UAM_ADMIN_DATABASE_PASSWORD_FILE: /run/secrets/postgres_password
       UAM_APP_DB_USER: ${UAM_APP_DB_USER}
-      UAM_APP_DB_PASSWORD: ${UAM_APP_DB_PASSWORD}
+      UAM_APP_DB_PASSWORD_FILE: /run/secrets/app_db_password
+    secrets:
+      - postgres_password
+      - app_db_password
     depends_on:
       postgres:
         condition: service_healthy
@@ -117,10 +131,15 @@ services:
       context: .
     command: ["python", "-m", "memory_plane.workers.outbox_main"]
     environment:
-      UAM_DATABASE_URL: postgresql://${UAM_APP_DB_USER}:${UAM_APP_DB_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      UAM_DATABASE_URL_FILE: ${UAM_DATABASE_URL_FILE:-}
+      UAM_DATABASE_HOST: postgres
+      UAM_DATABASE_PORT: 5432
+      UAM_DATABASE_NAME: ${POSTGRES_DB}
+      UAM_DATABASE_USER: ${UAM_APP_DB_USER}
+      UAM_DATABASE_PASSWORD_FILE: /run/secrets/app_db_password
       UAM_SERVER_ID: ${UAM_SERVER_ID}
       UAM_NATS_URL: nats://nats:4222
+    secrets:
+      - app_db_password
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -133,8 +152,11 @@ services:
       context: .
     command: ["python", "-m", "memory_plane.workers.embedding_main"]
     environment:
-      UAM_DATABASE_URL: postgresql://${UAM_APP_DB_USER}:${UAM_APP_DB_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      UAM_DATABASE_URL_FILE: ${UAM_DATABASE_URL_FILE:-}
+      UAM_DATABASE_HOST: postgres
+      UAM_DATABASE_PORT: 5432
+      UAM_DATABASE_NAME: ${POSTGRES_DB}
+      UAM_DATABASE_USER: ${UAM_APP_DB_USER}
+      UAM_DATABASE_PASSWORD_FILE: /run/secrets/app_db_password
       UAM_SERVER_ID: ${UAM_SERVER_ID}
       UAM_PROJECT_ID: ${UAM_PROJECT_ID}
       UAM_NATS_URL: nats://nats:4222
@@ -151,6 +173,8 @@ services:
       UAM_EMBEDDING_SEND_DIMENSIONS: ${UAM_EMBEDDING_SEND_DIMENSIONS:-false}
       UAM_EMBEDDING_API_KEY: ${UAM_EMBEDDING_API_KEY:-}
       UAM_EMBEDDING_API_KEY_FILE: ${UAM_EMBEDDING_API_KEY_FILE:-}
+    secrets:
+      - app_db_password
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -176,9 +200,15 @@ services:
       context: .
     command: ["python", "scripts/backup.py", "/backups/obelisk-memory.dump"]
     environment:
-      UAM_BACKUP_DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      UAM_BACKUP_DATABASE_HOST: postgres
+      UAM_BACKUP_DATABASE_PORT: 5432
+      UAM_BACKUP_DATABASE_NAME: ${POSTGRES_DB}
+      UAM_BACKUP_DATABASE_USER: ${POSTGRES_USER}
+      UAM_BACKUP_DATABASE_PASSWORD_FILE: /run/secrets/postgres_password
     volumes:
       - ./backups:/backups
+    secrets:
+      - postgres_password
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -189,3 +219,9 @@ volumes:
   qdrant_data:
   nats_data:
   minio_data:
+
+secrets:
+  postgres_password:
+    file: ${POSTGRES_PASSWORD_FILE:?POSTGRES_PASSWORD_FILE must point to a host secret file}
+  app_db_password:
+    file: ${UAM_APP_DB_PASSWORD_FILE:?UAM_APP_DB_PASSWORD_FILE must point to a host secret file}

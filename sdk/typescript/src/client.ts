@@ -11,6 +11,8 @@ import {
 import type {
   IngestTextRequest,
   IngestTextResponse,
+  IdentityProvisionRequest,
+  IdentityProvisionResponse,
   RecallRequest,
   RecallResponse,
   RetainRequest,
@@ -74,6 +76,12 @@ export class MemoryClient {
 
   async ingestText(request: IngestTextRequest): Promise<IngestTextResponse> {
     return this.request("POST", "/v1/ingest/text", request);
+  }
+
+  async provisionIdentity(
+    request: IdentityProvisionRequest,
+  ): Promise<IdentityProvisionResponse> {
+    return this.request("POST", "/v1/identities/provision", request);
   }
 
   private async request<T>(

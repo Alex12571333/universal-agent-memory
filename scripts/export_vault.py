@@ -10,6 +10,7 @@ from uuid import UUID
 
 from memory_plane.api.app import DEFAULT_PROJECT_ID, DEFAULT_SERVER_ID
 from memory_plane.bootstrap import build_postgres_container
+from memory_plane.config.database import read_database_dsn
 from memory_plane.config.secrets import read_secret_env
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -22,7 +23,7 @@ def main() -> int:
     parser.add_argument("output_dir", help="Directory where Markdown files are written")
     parser.add_argument(
         "--database-url",
-        default=read_secret_env("UAM_DATABASE_URL"),
+        default=read_database_dsn(),
         help="PostgreSQL app-role URL; defaults to UAM_DATABASE_URL",
     )
     parser.add_argument(

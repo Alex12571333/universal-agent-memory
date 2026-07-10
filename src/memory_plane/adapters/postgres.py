@@ -23,6 +23,7 @@ from memory_plane.domain.conversation import (
     ConversationTurn,
 )
 from memory_plane.domain.graph import MemoryEdge, MemoryEdgeType
+from memory_plane.domain.identity import AgentIdentity, ThreadIdentity
 from memory_plane.domain.models import (
     MemoryItem,
     MemoryLayer,
@@ -44,7 +45,7 @@ _ITEM_COLUMNS = f"""
     m.id, m.tenant_id, m.workspace_id, m.agent_id, m.thread_id,
     m.layer, m.scope, m.kind,
     case
-      when m.text like '{_PGCRYPTO_TEXT_PREFIX}%'
+      when left(m.text, {len(_PGCRYPTO_TEXT_PREFIX)}) = '{_PGCRYPTO_TEXT_PREFIX}'
       then pgp_sym_decrypt(
         decode(substr(m.text, {len(_PGCRYPTO_TEXT_PREFIX) + 1}), 'base64'),
         nullif(current_setting('app.memory_text_encryption_key', true), '')
@@ -67,6 +68,15 @@ def _is_foreign_key_violation(exc: Exception) -> bool:
     except ImportError:
         return False
     return isinstance(exc, ForeignKeyViolation)
+
+
+def _is_unique_violation(exc: Exception) -> bool:
+    """Return whether a psycopg exception represents a global ID collision."""
+    try:
+        from psycopg.errors import UniqueViolation
+    except ImportError:
+        return False
+    return isinstance(exc, UniqueViolation)
 
 
 def _parse_text_encryption_scopes(raw: str) -> frozenset[MemoryScope] | None:
@@ -151,6 +161,98 @@ class PostgresMemoryLedger:
                 on conflict (id) do nothing
                 """,
                 (project_id, server_id, project_name),
+            )
+
+    def provision_agent_thread(
+        self,
+        agent: AgentIdentity,
+        *,
+        thread_id: UUID | None = None,
+        thread_status: str = "active",
+    ) -> tuple[AgentIdentity, ThreadIdentity | None]:
+        """Atomically upsert one scoped agent and optional owned thread."""
+        from psycopg.types.json import Jsonb
+
+        with self._connection() as connection:
+            self._set_tenant(connection, agent.tenant_id)
+            workspace = connection.execute(
+                "select id from workspaces where id = %s and tenant_id = %s",
+                (agent.workspace_id, agent.tenant_id),
+            ).fetchone()
+            if workspace is None:
+                raise ValueError("tenant/workspace scope is not provisioned")
+            try:
+                agent_row = connection.execute(
+                    """
+                    insert into agents (id, tenant_id, workspace_id, name, role, config)
+                    values (%s, %s, %s, %s, %s, %s)
+                    on conflict (id) do update set
+                      name = excluded.name,
+                      role = excluded.role,
+                      config = excluded.config
+                    where agents.tenant_id = excluded.tenant_id
+                      and agents.workspace_id = excluded.workspace_id
+                    returning id, tenant_id, workspace_id, name, role, config
+                    """,
+                    (
+                        agent.id,
+                        agent.tenant_id,
+                        agent.workspace_id,
+                        agent.name,
+                        agent.role,
+                        Jsonb(agent.config),
+                    ),
+                ).fetchone()
+            except Exception as exc:
+                if _is_unique_violation(exc):
+                    raise ValueError("agent_id already belongs to another scope") from exc
+                raise
+            if agent_row is None:
+                raise ValueError("agent_id already belongs to another scope")
+
+            stored_agent = AgentIdentity(
+                id=agent_row["id"],
+                tenant_id=agent_row["tenant_id"],
+                workspace_id=agent_row["workspace_id"],
+                name=agent_row["name"],
+                role=agent_row["role"],
+                config=dict(agent_row["config"]),
+            )
+            if thread_id is None:
+                return stored_agent, None
+            try:
+                thread_row = connection.execute(
+                    """
+                    insert into threads (
+                      id, tenant_id, workspace_id, owner_agent_id, status
+                    ) values (%s, %s, %s, %s, %s)
+                    on conflict (id) do update set
+                      owner_agent_id = excluded.owner_agent_id,
+                      status = excluded.status
+                    where threads.tenant_id = excluded.tenant_id
+                      and threads.workspace_id = excluded.workspace_id
+                    returning id, tenant_id, workspace_id, owner_agent_id, status
+                    """,
+                    (
+                        thread_id,
+                        agent.tenant_id,
+                        agent.workspace_id,
+                        agent.id,
+                        thread_status,
+                    ),
+                ).fetchone()
+            except Exception as exc:
+                if _is_unique_violation(exc):
+                    raise ValueError("thread_id already belongs to another scope") from exc
+                raise
+            if thread_row is None:
+                raise ValueError("thread_id already belongs to another scope")
+            return stored_agent, ThreadIdentity(
+                id=thread_row["id"],
+                tenant_id=thread_row["tenant_id"],
+                workspace_id=thread_row["workspace_id"],
+                owner_agent_id=thread_row["owner_agent_id"],
+                status=thread_row["status"],
             )
 
     def retain(
@@ -1789,19 +1891,23 @@ class PostgresCheckpointStore:
         """CAS: append only when current head revision equals *expected_revision*."""
         from psycopg.types.json import Jsonb
 
-
         with self._ledger._connection() as connection:
             self._ledger._set_tenant(connection, checkpoint.tenant_id)
+            connection.execute(
+                "select pg_advisory_xact_lock(hashtextextended(%s, 0))",
+                (f"{checkpoint.tenant_id}:{checkpoint.thread_id}",),
+            )
             row = connection.execute(
                 """
-                select max(revision) as head
+                select revision as head
                 from checkpoints
                 where thread_id = %s
-                for update
+                order by revision desc
+                limit 1
                 """,
                 (checkpoint.thread_id,),
             ).fetchone()
-            actual = row["head"] if row and row["head"] is not None else None
+            actual = row["head"] if row and row["head"] is not None else 0
             if actual != expected_revision:
                 raise StaleRevisionError(
                     checkpoint.thread_id, expected_revision, actual

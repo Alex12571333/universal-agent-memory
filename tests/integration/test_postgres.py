@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import os
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from uuid import uuid4
 
-from memory_plane.adapters.postgres import PostgresMemoryLedger
+from memory_plane.adapters.postgres import PostgresCheckpointStore, PostgresMemoryLedger
 from memory_plane.contracts.dto import RecallQuery
 from memory_plane.contracts.events import ConsumerClaim, IntegrationEvent
+from memory_plane.domain.checkpoint import Checkpoint, StaleRevisionError
+from memory_plane.domain.identity import AgentIdentity
 from memory_plane.domain.models import (
     MemoryItem,
     MemoryLayer,
@@ -110,6 +113,71 @@ class PostgresMemoryLedgerTest(unittest.TestCase):
                 (item.id,),
             ).fetchone()["count"]
         self.assertEqual(1, count)
+
+    def test_provisioned_agent_and_thread_satisfy_memory_foreign_keys(self) -> None:
+        agent_id = uuid4()
+        thread_id = uuid4()
+        agent, thread = self.store.provision_agent_thread(
+            AgentIdentity(
+                id=agent_id,
+                tenant_id=self.tenant,
+                workspace_id=self.workspace,
+                name="Hermes integration",
+                role="hermes",
+                config={"namespace": "hermes/integration"},
+            ),
+            thread_id=thread_id,
+        )
+        item = replace(
+            self._item("Provisioned identities retain correctly"),
+            agent_id=agent.id,
+            thread_id=thread_id,
+            scope=MemoryScope.THREAD,
+        )
+
+        stored, created = self.store.retain(item, self._event(item))
+
+        self.assertTrue(created)
+        self.assertEqual(agent_id, stored.agent_id)
+        self.assertIsNotNone(thread)
+        self.assertEqual(thread_id, thread.id if thread else None)
+
+    def test_concurrent_first_checkpoint_is_compare_and_swap_safe(self) -> None:
+        agent_id = uuid4()
+        thread_id = uuid4()
+        self.store.provision_agent_thread(
+            AgentIdentity(
+                id=agent_id,
+                tenant_id=self.tenant,
+                workspace_id=self.workspace,
+                name="Checkpoint agent",
+                role="test",
+            ),
+            thread_id=thread_id,
+        )
+        checkpoints = tuple(
+            Checkpoint(
+                tenant_id=self.tenant,
+                workspace_id=self.workspace,
+                thread_id=thread_id,
+                revision=1,
+                state={"writer": writer},
+            )
+            for writer in ("a", "b")
+        )
+        checkpoint_store = PostgresCheckpointStore(self.store)
+
+        def attempt(checkpoint: Checkpoint) -> str:
+            try:
+                checkpoint_store.save_if_head(checkpoint, 0)
+            except StaleRevisionError:
+                return "stale"
+            return "saved"
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            results = tuple(executor.map(attempt, checkpoints))
+
+        self.assertEqual(["saved", "stale"], sorted(results))
 
     def test_supersede_if_current_is_cas_and_idempotent(self) -> None:
         item = self._item("Alpha release is July 15")

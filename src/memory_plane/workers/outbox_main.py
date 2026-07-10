@@ -9,15 +9,15 @@ from uuid import UUID
 
 from memory_plane.adapters.nats import NatsJetStreamSink
 from memory_plane.adapters.postgres import PostgresMemoryLedger
-from memory_plane.config.secrets import read_secret_env
+from memory_plane.config.database import read_database_dsn
 from memory_plane.services.outbox import OutboxRelay
 
 
 async def run() -> None:
     """Run the standalone relay until its container is stopped."""
-    dsn = read_secret_env("UAM_DATABASE_URL")
+    dsn = read_database_dsn()
     if not dsn:
-        raise RuntimeError("UAM_DATABASE_URL or UAM_DATABASE_URL_FILE is required")
+        raise RuntimeError("PostgreSQL connection configuration is required")
     tenant_id = UUID(os.environ["UAM_SERVER_ID"])
     nats_url = os.getenv("UAM_NATS_URL", "nats://nats:4222")
     poll_seconds = float(os.getenv("UAM_OUTBOX_POLL_SECONDS", "0.5"))

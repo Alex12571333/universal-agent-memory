@@ -29,6 +29,7 @@ from memory_plane.services.context import ContextCompiler
 from memory_plane.services.conversations import ConversationCurator, ConversationService
 from memory_plane.services.embedding import EmbeddingService
 from memory_plane.services.graph import GraphService
+from memory_plane.services.identities import IdentityProvisioningService
 from memory_plane.services.ingestion import IngestionService
 from memory_plane.services.proposals import MemoryProposalService
 from memory_plane.services.reflection import ReflectionService
@@ -43,6 +44,7 @@ class Container:
 
     retention: RetentionService
     ingestion: IngestionService
+    identities: IdentityProvisioningService
     retrieval: RetrievalService
     context: ContextCompiler
     reflection: ReflectionService
@@ -82,6 +84,7 @@ def build_in_memory_container() -> Container:
     return Container(
         retention=retention,
         ingestion=IngestionService(retention),
+        identities=IdentityProvisioningService(store),
         retrieval=RetrievalService((store, qdrant)),
         context=ContextCompiler(),
         reflection=ReflectionService(store, observations),
@@ -157,6 +160,7 @@ def build_postgres_container(
     return Container(
         retention=retention,
         ingestion=IngestionService(retention),
+        identities=IdentityProvisioningService(store),
         retrieval=RetrievalService(tuple(sources)),
         context=ContextCompiler(),
         reflection=ReflectionService(store, observations),

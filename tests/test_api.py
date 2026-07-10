@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
@@ -171,6 +172,51 @@ def test_scoped_api_keys_limit_agent_and_operator_access(monkeypatch) -> None:
     assert agent_write.status_code == 201
     assert agent_metrics.status_code == 403
     assert operator_metrics.status_code == 200
+
+
+def test_identity_provisioning_is_operator_only_idempotent_and_scope_safe(monkeypatch) -> None:
+    monkeypatch.setenv(
+        "UAM_API_KEYS",
+        "agent:agent-secret:agent,operator:operator-secret:operator",
+    )
+    client = TestClient(create_app(build_in_memory_container()))
+    agent_id = uuid4()
+    thread_id = uuid4()
+    body = {
+        "agent_id": str(agent_id),
+        "agent_name": "OpenClaw primary",
+        "agent_role": "openclaw",
+        "agent_config": {"namespace": "openclaw/default"},
+        "thread_id": str(thread_id),
+    }
+
+    denied = client.post(
+        "/v1/identities/provision",
+        json=body,
+        headers={"Authorization": "Bearer agent-secret"},
+    )
+    created = client.post(
+        "/v1/identities/provision",
+        json=body,
+        headers={"Authorization": "Bearer operator-secret"},
+    )
+    updated = client.post(
+        "/v1/identities/provision",
+        json={**body, "agent_name": "OpenClaw production"},
+        headers={"Authorization": "Bearer operator-secret"},
+    )
+    collision = client.post(
+        "/v1/identities/provision",
+        json={**body, "workspace_id": str(uuid4())},
+        headers={"Authorization": "Bearer operator-secret"},
+    )
+
+    assert denied.status_code == 403
+    assert created.status_code == 200
+    assert created.json()["thread"]["owner_agent_id"] == str(agent_id)
+    assert updated.status_code == 200
+    assert updated.json()["agent"]["name"] == "OpenClaw production"
+    assert collision.status_code == 409
 
 
 def test_api_auth_reads_master_and_scoped_keys_from_files(monkeypatch, tmp_path) -> None:

@@ -11,7 +11,7 @@ roadmap и acceptance criteria, но не используется как lock.
 | WP-03 ⚠ | Outbox relay + dedupe consumer | events | bounded poison/DLQ replay remains production work |
 | WP-04 ✅ | Embedding worker | WP-02/03 | model version, dimensions, reindex |
 | WP-05 ✅ | Markdown/PDF ingestion | ledger | provenance, stable chunks, retry |
-| WP-06 ⚠ | Checkpoints/working blocks | ledger | PostgreSQL concurrent CAS fix remains production work |
+| WP-06 ⚠ | Checkpoints/working blocks | ledger | CAS fix + optional concurrent PostgreSQL test exist; target evidence remains |
 | WP-07 ✅ | Python/TypeScript SDK | OpenAPI | retries, typed errors |
 | WP-08 ✅ | Reflection v2 | reflection service | conflict/time/entity fixtures |
 | WP-09 ✅ | Scoped API-key authentication baseline | server | deny invalid key, health allowed |
@@ -26,10 +26,10 @@ SSO, SaaS quotas и hosted multi-region operation.
 
 Единственный канонический список текущих production-блокеров находится в
 [PRODUCTION_GAP_AUDIT_2026_07_10.md](PRODUCTION_GAP_AUDIT_2026_07_10.md). В P0
-входят provisioning database credentials и agent/thread identities,
-identity-bound authorization, active-head recall, полное шифрование чувствительных
-данных, fail-soft dependencies/readiness, безопасный multi-workspace reindex,
-PostgreSQL checkpoint CAS, browser authentication и model-endpoint SSRF policy.
+входят target proof для database credentials, identity provisioning и checkpoint
+CAS, identity-bound authorization, active-head recall, полное шифрование
+чувствительных данных, fail-soft dependencies/readiness, безопасный
+multi-workspace reindex, browser authentication и model-endpoint SSRF policy.
 
 Архивные возможности после закрытия runtime-блокеров описаны отдельно в
 [ROADMAP_PHASE_4_ARCHIVAL_MEMORY.md](ROADMAP_PHASE_4_ARCHIVAL_MEMORY.md). Статусы

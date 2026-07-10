@@ -94,6 +94,27 @@ class IngestTextResponse:
 
 
 @dataclass(frozen=True, slots=True)
+class IdentityProvisionRequest:
+    agent_id: str
+    agent_name: str
+    agent_role: str
+    tenant_id: str | None = None
+    workspace_id: str | None = None
+    agent_config: dict[str, Any] = field(default_factory=dict)
+    thread_id: str | None = None
+    thread_status: str = "active"
+
+    def to_dict(self) -> dict[str, Any]:
+        return _compact(asdict(self))
+
+
+@dataclass(frozen=True, slots=True)
+class IdentityProvisionResponse:
+    agent: dict[str, Any]
+    thread: dict[str, Any] | None
+
+
+@dataclass(frozen=True, slots=True)
 class RetryPolicy:
     max_retries: int = 3
     base_delay_seconds: float = 0.1

@@ -148,7 +148,8 @@
 | `claim_event_processing()` | Consumer dedupe lease | acquired/completed/busy |
 | `NatsJetStreamSink.send()` | Публикует versioned event | Ждёт server ack, `Nats-Msg-Id=event.id` |
 | `NatsPullWorker.run_once()` | Pull → decode → handler → ack/nak | Busy/error delivery не подтверждается |
-| `migrate(dsn)` | Применяет forward-only SQL migrations | Advisory lock; повторный запуск безопасен |
+| `migrate(dsn, app_user, app_password)` | Применяет forward-only SQL migrations и runtime-role grants | Advisory lock; повторный запуск и password rotation безопасны |
+| `read_database_dsn(...)` | URL/`*_URL_FILE` или DB-компоненты + password file → escaped DSN | Не требует secret interpolation в Compose |
 
 ## Metrics/ops — `services/metrics.py`, `scripts/backup.py`, `scripts/restore.py`
 
@@ -222,6 +223,7 @@
 | `GET /v1/audit/events` | Operator audit export | Operator/admin scope only; tenant/workspace/action filters |
 | `GET /v1/keys` | Operator API-key registry | Non-secret fingerprints, scopes, last-used/revoked state |
 | `POST /v1/keys/{id}/revoke` | Revoke one configured key | Future requests with that bearer are denied |
+| `POST /v1/identities/provision` | Atomic agent + optional thread bootstrap | Operator-only; idempotent; rejects cross-scope ID reuse |
 | `GET /v1/workspaces/{id}/memories` | Operator memory list | Optional layer/status/label filters |
 | `POST /v1/memory/retain` | REST boundary для retain |
 | `POST /v1/conversations/turns` | Append immutable raw transcript turn | Не создаёт recallable memory автоматически |
@@ -244,11 +246,11 @@
 | `POST /v1/graph/edges` | Create typed graph edge | Validates endpoint memories and workspace |
 | `GET /v1/memory/{id}/neighbors` | List graph neighbors | Optional edge type filter |
 | `POST /v1/workspaces/{id}/reindex` | Запускает workspace reindex | Текущая shared-collection реализация небезопасна для multi-workspace production |
-| `POST /v1/checkpoints` | Создаёт checkpoint revision | PostgreSQL first-save/CAS остаётся P0 blocker |
+| `POST /v1/checkpoints` | Создаёт checkpoint revision | First save использует CAS expected head `0` |
 | `GET /v1/checkpoints` | Workspace checkpoint heads | Tenant/workspace scoped |
 | `GET /v1/checkpoints/{thread_id}` | Последний checkpoint thread | Возвращает `404`, если head отсутствует |
 | `GET /v1/checkpoints/{thread_id}/revisions/{revision}` | Конкретная checkpoint revision | Историческое чтение без мутации |
-| `PUT /v1/checkpoints/{thread_id}` | CAS checkpoint update | Stale expected revision → conflict |
+| `PUT /v1/checkpoints/{thread_id}` | CAS checkpoint update | PostgreSQL advisory lock; stale expected revision → conflict |
 | `POST /v1/checkpoints/{thread_id}/compact` | Удаляет старые checkpoint revisions | Явная bounded retention operation |
 
 ## PostgreSQL adapter
