@@ -44,6 +44,8 @@ def run_checks(*, static_only: bool) -> list[Check]:
         "SECURITY.md",
         ".env.production.example",
         "docker-compose.prod.yml",
+        "deploy/reverse-proxy/Caddyfile",
+        "deploy/reverse-proxy/docker-compose.caddy.yml",
         ".github/workflows/ci.yml",
         "migrations/008_audit_events.sql",
         "migrations/009_api_key_registry.sql",
@@ -57,6 +59,7 @@ def run_checks(*, static_only: bool) -> list[Check]:
         "docs/assets/obelisk-memory-hero.png",
         "docs/GITHUB_BRANCH_PROTECTION.md",
         "docs/OPERATIONS_RUNBOOK.md",
+        "docs/TLS_REVERSE_PROXY.md",
         "docs/ENTERPRISE_READINESS.md",
         "docs/PRODUCTION_GAP_AUDIT_2026_07_10.md",
         "docs/RELEASE_CHECKLIST.md",
@@ -127,6 +130,33 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 "${UAM_API_KEY:?set UAM_API_KEY" in prod_compose,
                 "production API key is required",
             ),
+            Check(
+                "reverse-proxy:caddy-overlay",
+                "caddy:2.8-alpine" in read("deploy/reverse-proxy/docker-compose.caddy.yml")
+                and '"443:443"' in read("deploy/reverse-proxy/docker-compose.caddy.yml")
+                and "ports: !override" in read(
+                    "deploy/reverse-proxy/docker-compose.caddy.yml"
+                )
+                and "127.0.0.1:6798:8080" in read(
+                    "deploy/reverse-proxy/docker-compose.caddy.yml"
+                )
+                and "reverse_proxy memory-server:8080" in read(
+                    "deploy/reverse-proxy/Caddyfile"
+                )
+                and "Strict-Transport-Security" in read(
+                    "deploy/reverse-proxy/Caddyfile"
+                ),
+                "Caddy TLS reverse proxy example exists",
+            ),
+            Check(
+                "docs:tls-reverse-proxy",
+                "UAM_PUBLIC_HOST" in read("docs/TLS_REVERSE_PROXY.md")
+                and "Do not call the deployment production-hardened" in read(
+                    "docs/TLS_REVERSE_PROXY.md"
+                )
+                and "6798" in read("docs/TLS_REVERSE_PROXY.md"),
+                "TLS reverse proxy guide documents backend exposure limits",
+            ),
         ]
     )
 
@@ -183,6 +213,11 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 "env:signing-keys",
                 "UAM_AUDIT_SIGNING_KEY=" in env and "UAM_VAULT_SIGNING_KEY=" in env,
                 "operator-held signing keys are documented",
+            ),
+            Check(
+                "env:public-host",
+                "UAM_PUBLIC_HOST=" in env and "UAM_PUBLIC_EMAIL=" in env,
+                "public TLS endpoint env is documented",
             ),
         ]
     )

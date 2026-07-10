@@ -10,6 +10,22 @@ docker compose -f docker-compose.prod.yml --env-file .env.production up -d --bui
 Only API/UI port `6798` is exposed. PostgreSQL, Qdrant, NATS, and MinIO remain
 inside the Docker network.
 
+For any host reachable from another machine, start with the TLS proxy overlay
+instead:
+
+```bash
+docker compose \
+  -f docker-compose.prod.yml \
+  -f deploy/reverse-proxy/docker-compose.caddy.yml \
+  --env-file .env.production \
+  up -d --build
+```
+
+Set `UAM_PUBLIC_HOST` and `UAM_PUBLIC_EMAIL` in `.env.production`, then verify
+external clients use `https://$UAM_PUBLIC_HOST`. See
+[TLS_REVERSE_PROXY.md](TLS_REVERSE_PROXY.md) before exposing the service outside
+localhost/VPN.
+
 ## Health checks
 
 ```bash

@@ -1,6 +1,6 @@
 # Production envelope report — 2026-07-10
 
-Passed: 72
+Passed: 78
 Failed: 0
 
 | Check | Status | Detail |
@@ -9,6 +9,8 @@ Failed: 0
 | `file:SECURITY.md` | PASS | required production artifact |
 | `file:.env.production.example` | PASS | required production artifact |
 | `file:docker-compose.prod.yml` | PASS | required production artifact |
+| `file:deploy/reverse-proxy/Caddyfile` | PASS | required production artifact |
+| `file:deploy/reverse-proxy/docker-compose.caddy.yml` | PASS | required production artifact |
 | `file:.github/workflows/ci.yml` | PASS | required production artifact |
 | `file:migrations/008_audit_events.sql` | PASS | required production artifact |
 | `file:migrations/009_api_key_registry.sql` | PASS | required production artifact |
@@ -22,6 +24,7 @@ Failed: 0
 | `file:docs/assets/obelisk-memory-hero.png` | PASS | required production artifact |
 | `file:docs/GITHUB_BRANCH_PROTECTION.md` | PASS | required production artifact |
 | `file:docs/OPERATIONS_RUNBOOK.md` | PASS | required production artifact |
+| `file:docs/TLS_REVERSE_PROXY.md` | PASS | required production artifact |
 | `file:docs/ENTERPRISE_READINESS.md` | PASS | required production artifact |
 | `file:docs/PRODUCTION_GAP_AUDIT_2026_07_10.md` | PASS | required production artifact |
 | `file:docs/RELEASE_CHECKLIST.md` | PASS | required production artifact |
@@ -40,6 +43,8 @@ Failed: 0
 | `prod-compose:internal-qdrant` | PASS | Qdrant is internal in production |
 | `prod-compose:nats-health` | PASS | NATS JetStream has monitoring healthcheck |
 | `prod-compose:required-api-key` | PASS | production API key is required |
+| `reverse-proxy:caddy-overlay` | PASS | Caddy TLS reverse proxy example exists |
+| `docs:tls-reverse-proxy` | PASS | TLS reverse proxy guide documents backend exposure limits |
 | `ci:ruff` | PASS | CI runs ruff |
 | `ci:pytest` | PASS | CI runs pytest |
 | `ci:web-build` | PASS | CI builds web UI |
@@ -52,6 +57,7 @@ Failed: 0
 | `env:privacy` | PASS | privacy defaults |
 | `env:scoped-keys` | PASS | scoped API keys documented |
 | `env:signing-keys` | PASS | operator-held signing keys are documented |
+| `env:public-host` | PASS | public TLS endpoint env is documented |
 | `api:security-headers` | PASS | API applies baseline security headers |
 | `tests:security-headers` | PASS | security headers are covered by API tests |
 | `ops:metrics-health-evaluator` | PASS | metrics health script evaluates outbox lag/dead letters; embedding exposes failure/latency metrics |

@@ -1,0 +1,25 @@
+services:
+  memory-server:
+    ports: !override
+      - "127.0.0.1:6798:8080"
+
+  caddy:
+    image: caddy:2.8-alpine
+    environment:
+      UAM_PUBLIC_HOST: ${UAM_PUBLIC_HOST:-localhost}
+      UAM_PUBLIC_EMAIL: ${UAM_PUBLIC_EMAIL:-}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/reverse-proxy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      memory-server:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:

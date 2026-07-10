@@ -12,6 +12,8 @@ operator-edited vault files. Treat it as sensitive infrastructure.
   off host ports.
 - Put TLS, IP allowlisting, and rate limits at the reverse proxy when accessing
   the service outside the host.
+- Use `deploy/reverse-proxy/docker-compose.caddy.yml` or an equivalent managed
+  proxy when the service leaves localhost/VPN.
 
 ## Authentication
 

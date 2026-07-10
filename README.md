@@ -110,6 +110,16 @@ PostgreSQL, Qdrant, NATS, and MinIO internal.
    docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
    ```
 
+   For a host reachable from another machine, use the TLS reverse-proxy overlay:
+
+   ```bash
+   docker compose \
+     -f docker-compose.prod.yml \
+     -f deploy/reverse-proxy/docker-compose.caddy.yml \
+     --env-file .env.production \
+     up -d --build
+   ```
+
 3. Check health and metrics:
 
    ```bash
@@ -137,8 +147,9 @@ Production notes:
 - keep backups outside Docker volumes;
 - pin and test embedding/model dimensions before changing providers.
 
-Full runbook: [docs/OPERATIONS_RUNBOOK.md](docs/OPERATIONS_RUNBOOK.md). Security
-policy: [SECURITY.md](SECURITY.md).
+Full runbook: [docs/OPERATIONS_RUNBOOK.md](docs/OPERATIONS_RUNBOOK.md). TLS
+guide: [docs/TLS_REVERSE_PROXY.md](docs/TLS_REVERSE_PROXY.md). Security policy:
+[SECURITY.md](SECURITY.md).
 
 ## API examples
 
@@ -290,6 +301,7 @@ substitute for the production gates in the gap audit.
 - [docs/PRODUCTION_READINESS_TESTING.md](docs/PRODUCTION_READINESS_TESTING.md) — test plan.
 - [docs/PRODUCTION_GAP_AUDIT_2026_07_10.md](docs/PRODUCTION_GAP_AUDIT_2026_07_10.md) — honest production gaps.
 - [docs/OPERATIONS_RUNBOOK.md](docs/OPERATIONS_RUNBOOK.md) — production operations.
+- [docs/TLS_REVERSE_PROXY.md](docs/TLS_REVERSE_PROXY.md) — HTTPS/reverse proxy deployment.
 - [docs/ENTERPRISE_READINESS.md](docs/ENTERPRISE_READINESS.md) — readiness checklist.
 - [docs/GITHUB_BRANCH_PROTECTION.md](docs/GITHUB_BRANCH_PROTECTION.md) — PR-only release gate.
 - [docs/ROADMAP_PHASE_4_ARCHIVAL_MEMORY.md](docs/ROADMAP_PHASE_4_ARCHIVAL_MEMORY.md) — archival memory roadmap.

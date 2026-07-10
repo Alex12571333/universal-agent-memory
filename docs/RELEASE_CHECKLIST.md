@@ -27,6 +27,11 @@ GITHUB_TOKEN=... python scripts/check_branch_protection.py \
   --required-check web
 docker compose --profile advanced config
 docker compose -f docker-compose.prod.yml --env-file .env.production config
+docker compose \
+  -f docker-compose.prod.yml \
+  -f deploy/reverse-proxy/docker-compose.caddy.yml \
+  --env-file .env.production \
+  config
 python scripts/benchmark_suite.py
 python scripts/enterprise_readiness_check.py
 ```
@@ -40,6 +45,8 @@ Manual checks:
 - Confirm vault imports use `--require-signature` for release/operator bundles.
 - Confirm Qwen/Spark memory LLM endpoint is reachable.
 - Confirm embedding endpoint returns the configured dimension.
+- Confirm non-local deployments use HTTPS through the reverse proxy and direct
+  backend port `6798` is localhost-only or blocked by firewall/security group.
 - Confirm `audit-export/manifest.sha256` verifies before preserving release
   evidence.
 - Confirm signed audit bundles verify with `scripts/export_audit.py --verify`.
@@ -61,6 +68,7 @@ Do not release if:
 - restore drill fails for the release backup;
 - `benchmark_suite.py` reports any failed gate;
 - production compose exposes internal infrastructure ports;
+- non-local production exposes backend `6798` directly instead of HTTPS proxy;
 - generated context contains rejected/archived/superseded memory as active truth.
 - branch protection or PR-only merge policy is disabled for a shared production
   repository.

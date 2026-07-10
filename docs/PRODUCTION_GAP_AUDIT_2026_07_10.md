@@ -11,7 +11,7 @@ it is not enough.
 | Area | Current state | Production verdict |
 |---|---|---|
 | Architecture | PostgreSQL source of truth, Qdrant index, outbox, NATS workers, vault, API, UI | Good foundation |
-| Docker | Dev and prod compose exist; prod hides internal infra ports | Good for trusted local/team deployment |
+| Docker | Dev/prod compose plus Caddy TLS proxy example exist; prod hides internal infra ports | Good for trusted local/team deployment; real TLS boundary must be installed |
 | API auth | Bearer key, scoped keys and non-secret key registry with last-used/revoked state exist; `/health` public | Strong local/team baseline; still not enterprise IAM |
 | Audit trail | Append-only `audit_events` table, RLS, operator export API, signed paginated JSONL bundle, metrics, tests | Strong baseline; retention schedule, key custody and immutable storage still needed |
 | Browser/API hardening | Security headers are enforced by middleware and tests | Baseline present |
@@ -34,7 +34,9 @@ leaking secrets, or letting agents poison each other.
 Required gates:
 
 1. **Security gate**
-   - TLS or VPN/reverse proxy in front of any non-local deployment.
+   - TLS or VPN/reverse proxy in front of any non-local deployment. The
+     repository ships a Caddy example; production evidence requires the deployed
+     host to expose HTTPS/proxy only, not a public backend `6798`.
    - Long random master key plus scoped per-agent/operator keys.
    - Key rotation record: owner, scope, created time, last used, revoked time.
      Baseline registry exists; external secret manager integration is still

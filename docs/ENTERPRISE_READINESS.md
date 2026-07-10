@@ -12,6 +12,7 @@ remaining hard requirements.
 - [x] PostgreSQL is the source of truth.
 - [x] Migrations are forward-only and run before API startup.
 - [x] Production compose exposes only API/UI to the host.
+- [x] TLS reverse-proxy deployment example exists for non-local access.
 - [x] API key auth can protect API, docs, metrics, and UI.
 - [x] Scoped API keys can separate operator, agent, read, and write access.
 - [x] API-key registry tracks non-secret fingerprints, scopes, last-used time
@@ -48,7 +49,8 @@ remaining hard requirements.
 
 ## Required before calling it full production
 
-- [ ] Put the API behind a real TLS reverse proxy.
+- [ ] Put the deployed API behind the real TLS reverse proxy/VPN boundary and
+      verify direct backend `6798` is not externally reachable.
 - [ ] Move bearer secrets to an external secret manager for larger deployments.
 - [ ] Add audit retention schedule, immutable storage, and external signing-key
       custody for regulated environments.
