@@ -3701,7 +3701,7 @@ Build a universal memory layer for AI agents that is:
       const frontmatter = parseFrontmatter(frontmatterLines);
       const bodyLines = lines.slice(end + 1);
       const sectionIndex = bodyLines.findIndex(isVaultSystemHeading);
-      const editableBody = (sectionIndex >= 0 ? bodyLines.slice(0, sectionIndex) : bodyLines).join("\\n").trim();
+      const editableBody = sanitizeVaultEditableBody((sectionIndex >= 0 ? bodyLines.slice(0, sectionIndex) : bodyLines).join("\\n"));
       const tail = sectionIndex >= 0 ? "\\n\\n" + bodyLines.slice(sectionIndex).join("\\n").trim() : "";
       return {
         frontmatter,
@@ -3717,10 +3717,47 @@ Build a universal memory layer for AI agents that is:
         "provenance", "quote", "links", "evidence",
         "embedding", "embeddings", "vector", "vectors", "vector data",
         "metadata", "frontmatter", "revision", "revisions",
-        "technical", "system", "service data",
-        "служебное", "служебные данные", "вектор", "векторы",
-        "embedding данные", "метаданные", "ревизии"
+        "technical", "system", "service data", "service", "debug", "diagnostics",
+        "checksums", "checksums and signatures",
+        "служебное", "служебные данные", "вектор", "векторы", "векторные данные",
+        "embedding данные", "эмбеддинг", "эмбеддинги", "технические данные", "метаданные", "ревизии", "диагностика"
       ].includes(heading);
+    }
+
+    function sanitizeVaultEditableBody(value) {
+      const lines = String(value || "").split(/\\r?\\n/);
+      const kept = [];
+      let droppingJsonBlock = false;
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (droppingJsonBlock) {
+          if (trimmed === "}" || trimmed === "]," || trimmed === "]") droppingJsonBlock = false;
+          continue;
+        }
+        if (!trimmed) {
+          kept.push("");
+          continue;
+        }
+        if (isVaultSystemHeading(line) || looksLikeVaultSystemField(trimmed) || looksLikeVectorPayload(trimmed)) {
+          if (trimmed.endsWith("{") || trimmed.endsWith("[") || trimmed === "{" || trimmed === "[") droppingJsonBlock = true;
+          continue;
+        }
+        kept.push(line);
+      }
+      return kept.join("\\n").replace(/\\n{3,}/g, "\\n\\n").trim();
+    }
+
+    function looksLikeVaultSystemField(line) {
+      return /^(embedding|embeddings|vector|vectors|metadata|provenance|revision|revisions|checksum_sha256|checksum|source|origin|object|supersedes|superseded_by|tenant_id|workspace_id|item_id|id|created_at|updated_at|valid_from|valid_to|observed_at|labels|confidence|importance|status|type)\\s*[:=]/i.test(line)
+        || /^(эмбеддинг|эмбеддинги|вектор|векторы|метаданные|ревизия|ревизии|источник|контрольная сумма|служебные данные)\\s*[:=]/i.test(line)
+        || /^["']?(embedding|embeddings|vector|vectors|metadata|provenance|revision|checksum_sha256)["']?\\s*:/i.test(line);
+    }
+
+    function looksLikeVectorPayload(line) {
+      if (/^\\[\\s*-?\\d+(\\.\\d+)?([eE][+-]?\\d+)?(\\s*,\\s*-?\\d+(\\.\\d+)?([eE][+-]?\\d+)?){3,}\\s*,?\\s*\\]?$/.test(line)) return true;
+      if (/^[-+]?\\d+(\\.\\d+)?([eE][+-]?\\d+)?(\\s*,\\s*[-+]?\\d+(\\.\\d+)?([eE][+-]?\\d+)?){5,}$/.test(line)) return true;
+      if (/^[-+]?\\d+(\\.\\d+)?([eE][+-]?\\d+)?(\\s+[-+]?\\d+(\\.\\d+)?([eE][+-]?\\d+)?){8,}$/.test(line)) return true;
+      return false;
     }
 
     function parseFrontmatter(lines) {
@@ -3753,7 +3790,7 @@ Build a universal memory layer for AI agents that is:
     }
 
     function composeVaultNote(note, body) {
-      const cleanBody = String(body || "").trim();
+      const cleanBody = sanitizeVaultEditableBody(String(body || ""));
       return `${note.frontmatterBlock}\\n\\n${cleanBody}${note.tail ? note.tail : ""}\\n`;
     }
 

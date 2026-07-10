@@ -1187,7 +1187,7 @@ function vaultReadableBody(content: string) {
 function replaceBody(original: string, body: string) {
   const parts = splitVaultMarkdown(original);
   const suffix = parts.systemSections ? `\n\n${parts.systemSections.trim()}\n` : "\n";
-  return `${parts.frontmatter}${body.trim()}${suffix}`;
+  return `${parts.frontmatter}${sanitizeVaultEditableBody(body).trim()}${suffix}`;
 }
 
 function splitVaultMarkdown(content: string) {
@@ -1197,11 +1197,11 @@ function splitVaultMarkdown(content: string) {
   const lines = withoutFrontmatter.split(/\r?\n/);
   const sectionIndex = lines.findIndex(isVaultSystemHeading);
   if (sectionIndex < 0) {
-    return { frontmatter, body: withoutFrontmatter.trim(), systemSections: "" };
+    return { frontmatter, body: sanitizeVaultEditableBody(withoutFrontmatter), systemSections: "" };
   }
   return {
     frontmatter,
-    body: lines.slice(0, sectionIndex).join("\n").trim(),
+    body: sanitizeVaultEditableBody(lines.slice(0, sectionIndex).join("\n")),
     systemSections: lines.slice(sectionIndex).join("\n").trim()
   };
 }
@@ -1225,12 +1225,64 @@ function isVaultSystemHeading(line: string) {
     "technical",
     "system",
     "service data",
+    "service",
+    "debug",
+    "diagnostics",
+    "checksums",
+    "checksums and signatures",
     "служебное",
     "служебные данные",
     "вектор",
     "векторы",
+    "векторные данные",
     "embedding данные",
+    "эмбеддинг",
+    "эмбеддинги",
+    "технические данные",
     "метаданные",
-    "ревизии"
+    "ревизии",
+    "диагностика"
   ].includes(heading);
+}
+
+function sanitizeVaultEditableBody(value: string) {
+  const lines = String(value ?? "").split(/\r?\n/);
+  const kept: string[] = [];
+  let droppingJsonBlock = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    if (droppingJsonBlock) {
+      if (trimmed === "}" || trimmed === "]," || trimmed === "]") droppingJsonBlock = false;
+      continue;
+    }
+
+    if (!trimmed) {
+      kept.push("");
+      continue;
+    }
+
+    if (isVaultSystemHeading(line) || looksLikeVaultSystemField(trimmed) || looksLikeVectorPayload(trimmed)) {
+      if (trimmed.endsWith("{") || trimmed.endsWith("[") || trimmed === "{" || trimmed === "[") droppingJsonBlock = true;
+      continue;
+    }
+
+    kept.push(line);
+  }
+
+  return kept.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function looksLikeVaultSystemField(line: string) {
+  return /^(embedding|embeddings|vector|vectors|metadata|provenance|revision|revisions|checksum_sha256|checksum|source|origin|object|supersedes|superseded_by|tenant_id|workspace_id|item_id|id|created_at|updated_at|valid_from|valid_to|observed_at|labels|confidence|importance|status|type)\s*[:=]/i.test(line)
+    || /^(эмбеддинг|эмбеддинги|вектор|векторы|метаданные|ревизия|ревизии|источник|контрольная сумма|служебные данные)\s*[:=]/i.test(line)
+    || /^["']?(embedding|embeddings|vector|vectors|metadata|provenance|revision|checksum_sha256)["']?\s*:/i.test(line);
+}
+
+function looksLikeVectorPayload(line: string) {
+  if (/^\[\s*-?\d+(\.\d+)?([eE][+-]?\d+)?(\s*,\s*-?\d+(\.\d+)?([eE][+-]?\d+)?){3,}\s*,?\s*\]?$/.test(line)) return true;
+  if (/^[-+]?\d+(\.\d+)?([eE][+-]?\d+)?(\s*,\s*[-+]?\d+(\.\d+)?([eE][+-]?\d+)?){5,}$/.test(line)) return true;
+  if (/^[-+]?\d+(\.\d+)?([eE][+-]?\d+)?(\s+[-+]?\d+(\.\d+)?([eE][+-]?\d+)?){8,}$/.test(line)) return true;
+  return false;
 }

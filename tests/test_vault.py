@@ -173,6 +173,52 @@ def test_vault_import_ignores_embedding_sections_from_editable_body() -> None:
     assert all("technical payload" not in row.text for row in memories)
 
 
+def test_vault_import_strips_leaked_vector_payload_without_heading() -> None:
+    container = build_in_memory_container()
+    tenant = uuid4()
+    workspace = uuid4()
+    container.retention.retain(
+        RetainCommand(
+            tenant_id=tenant,
+            workspace_id=workspace,
+            layer=MemoryLayer.SEMANTIC,
+            scope=MemoryScope.WORKSPACE,
+            kind="fact",
+            text="Редактор должен показывать обычный текст.",
+            provenance=Provenance(source_kind="api"),
+        )
+    )
+    export = container.vault.export(tenant, workspace)
+    note = next(file for file in export.files if file.path.startswith("semantic/"))
+    edited = note.content.replace(
+        "Редактор должен показывать обычный текст.",
+        "\n".join(
+            [
+                "Редактор хранит только понятный человеку текст.",
+                "embedding: [0.11, 0.22, 0.33, 0.44]",
+                "metadata: {\"provider\":\"qwen-on-spark\"}",
+                "[0.91, 0.82, 0.73, 0.64, 0.55, 0.46]",
+                "checksum_sha256: deadbeef",
+            ]
+        ),
+    )
+
+    result = container.vault.apply_import(
+        tenant,
+        workspace,
+        (VaultImportSource(note.path, edited),),
+    )
+
+    memories = container.store.list_for_workspace(tenant, workspace)
+    assert result.changes[0].action == "supersede"
+    assert any(
+        row.text == "Редактор хранит только понятный человеку текст."
+        for row in memories
+    )
+    assert all("0.91, 0.82" not in row.text for row in memories)
+    assert all("qwen-on-spark" not in row.text for row in memories)
+
+
 def test_vault_import_apply_creates_superseding_revision_without_overwrite() -> None:
     container = build_in_memory_container()
     tenant = uuid4()

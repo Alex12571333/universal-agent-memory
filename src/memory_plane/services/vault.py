@@ -669,7 +669,7 @@ def _parse_markdown_note(content: str) -> _ParsedMarkdownNote:
         body.append(line)
     return _ParsedMarkdownNote(
         frontmatter=frontmatter,
-        body="\n".join(body).strip(),
+        body=_sanitize_editable_body("\n".join(body)),
     )
 
 
@@ -696,14 +696,126 @@ def _is_system_heading(line: str) -> bool:
         "technical",
         "system",
         "service data",
+        "service",
+        "debug",
+        "diagnostics",
+        "checksums",
+        "checksums and signatures",
         "служебное",
         "служебные данные",
         "вектор",
         "векторы",
+        "векторные данные",
         "embedding данные",
+        "эмбеддинг",
+        "эмбеддинги",
+        "технические данные",
         "метаданные",
         "ревизии",
+        "диагностика",
     }
+
+
+def _sanitize_editable_body(value: str) -> str:
+    """Drop technical vector/provenance payloads that leaked into editable text."""
+    kept: list[str] = []
+    dropping_json_block = False
+    for line in value.splitlines():
+        stripped = line.strip()
+        if dropping_json_block:
+            if stripped in {"}", "],", "]"}:
+                dropping_json_block = False
+            continue
+        if not stripped:
+            kept.append("")
+            continue
+        if (
+            _is_system_heading(line)
+            or _looks_like_system_field(stripped)
+            or _looks_like_vector_payload(stripped)
+        ):
+            if stripped.endswith(("{", "[")) or stripped in {"{", "["}:
+                dropping_json_block = True
+            continue
+        kept.append(line)
+    return _collapse_blank_lines("\n".join(kept)).strip()
+
+
+def _looks_like_system_field(line: str) -> bool:
+    lowered = line.lower()
+    keys = (
+        "embedding",
+        "embeddings",
+        "vector",
+        "vectors",
+        "metadata",
+        "provenance",
+        "revision",
+        "revisions",
+        "checksum_sha256",
+        "checksum",
+        "source",
+        "origin",
+        "object",
+        "supersedes",
+        "superseded_by",
+        "tenant_id",
+        "workspace_id",
+        "item_id",
+        "id",
+        "created_at",
+        "updated_at",
+        "valid_from",
+        "valid_to",
+        "observed_at",
+        "labels",
+        "confidence",
+        "importance",
+        "status",
+        "type",
+        "эмбеддинг",
+        "эмбеддинги",
+        "вектор",
+        "векторы",
+        "метаданные",
+        "ревизия",
+        "ревизии",
+        "источник",
+        "контрольная сумма",
+        "служебные данные",
+    )
+    normalized = lowered.lstrip("\"'")
+    return any(
+        normalized.startswith(f"{key}:")
+        or normalized.startswith(f"{key}\":")
+        or normalized.startswith(f"{key}':")
+        or normalized.startswith(f"{key}=")
+        or normalized.startswith(f"{key} =")
+        for key in keys
+    )
+
+
+def _looks_like_vector_payload(line: str) -> bool:
+    compact = line.strip().strip("[]")
+    if "," in compact:
+        parts = [part.strip() for part in compact.split(",") if part.strip()]
+        return len(parts) >= 4 and all(_is_float_like(part) for part in parts)
+    parts = compact.split()
+    return len(parts) >= 9 and all(_is_float_like(part) for part in parts)
+
+
+def _is_float_like(value: str) -> bool:
+    try:
+        float(value)
+    except ValueError:
+        return False
+    return True
+
+
+def _collapse_blank_lines(value: str) -> str:
+    while "\n\n\n" in value:
+        value = value.replace("\n\n\n", "\n\n")
+    return value
 
 
 def _parse_frontmatter(lines: list[str]) -> dict[str, Any]:
