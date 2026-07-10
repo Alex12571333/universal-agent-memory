@@ -54,6 +54,7 @@ def run_checks(*, static_only: bool) -> list[Check]:
         "scripts/validate_production_env.py",
         "scripts/export_audit.py",
         "scripts/agent_soak_eval.py",
+        "scripts/real_memory_llm_eval.py",
         "scripts/vault_manifest.py",
         "scripts/restore_drill.py",
         "scripts/scheduled_backup.py",
@@ -106,6 +107,12 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 "scripts/validate_production_env.py" in readme
                 and "--require-public-tls" in readme,
                 "README documents strict production env validation",
+            ),
+            Check(
+                "readme:memory-llm-eval",
+                "scripts/real_memory_llm_eval.py" in readme
+                and "ops/memory-llm.json" in readme,
+                "README documents live memory LLM regression evidence",
             ),
             Check("readme:128k", "131072" in readme, "128k context budget documented"),
             Check("readme:dgx", "192.168.0.10" in readme, "DGX Spark .10 endpoint documented"),
@@ -432,6 +439,22 @@ def run_checks(*, static_only: bool) -> list[Check]:
                     "tests/test_backup_restore_scripts.py"
                 ),
                 "production env validator behavior is covered",
+            ),
+            Check(
+                "llm:live-regression-runner",
+                "obelisk-memory-llm-eval-v1" in read("scripts/real_memory_llm_eval.py")
+                and "json-memory-curation" in read("scripts/real_memory_llm_eval.py")
+                and "fake" in read("scripts/real_memory_llm_eval.py"),
+                "live Qwen/Spark memory LLM runner validates chat and curation",
+            ),
+            Check(
+                "tests:llm-live-regression-runner",
+                "test_real_memory_llm_eval_passes_memory_contract" in read(
+                    "tests/test_real_memory_llm_eval.py"
+                )
+                and "test_real_memory_llm_eval_fails_when_model_keeps_obsolete_claim"
+                in read("tests/test_real_memory_llm_eval.py"),
+                "memory LLM live regression runner behavior is covered",
             ),
         ]
     )

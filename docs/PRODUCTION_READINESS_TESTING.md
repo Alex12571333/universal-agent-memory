@@ -1,6 +1,6 @@
 # Production readiness testing
 
-This project now has four repeatable validation layers beyond ordinary unit
+This project now has five repeatable validation layers beyond ordinary unit
 tests.
 
 ## 1. Fast unit/API regression
@@ -92,6 +92,25 @@ Checks:
 For full production evidence, run it from the `.14` OpenClaw/Hermes deployment
 path or immediately after those plugins are installed, then preserve
 `ops/agent-soak.json` with the release artifacts.
+
+## 5. Live Qwen/Spark memory LLM eval
+
+Run this against the `.10` Qwen endpoint used by memory workers:
+
+```bash
+.venv/bin/python scripts/real_memory_llm_eval.py \
+  --base-url http://192.168.0.10:8000/v1 \
+  --model qwen3.6-35b-a3b \
+  --json-report ./ops/memory-llm.json
+```
+
+Checks:
+
+- OpenAI-compatible `/chat/completions` returns final content;
+- JSON-object mode works for memory curation;
+- the model keeps the current Jina/Q8 memory and rejects the obsolete fake
+  embeddings claim;
+- JSON evidence is suitable for release review.
 
 ## Bugs caught by this layer
 

@@ -42,6 +42,8 @@ remaining hard requirements.
 - [x] Qdrant/vector indexing is async and fail-soft.
 - [x] Memory LLM is separate from embedding endpoint.
 - [x] Qwen/Spark `.10` memory LLM defaults are documented.
+- [x] Qwen/Spark memory LLM live regression runner exists and writes JSON
+      release evidence.
 - [x] OpenClaw and Hermes integration guides exist.
 - [x] OpenClaw/Hermes soak runner exists and writes JSON release evidence.
 - [x] CI workflow validates lint, tests, web build, and compose configs.
@@ -64,7 +66,8 @@ remaining hard requirements.
 - [ ] Enforce GitHub branch protection and PR-only merges to `main`.
 - [ ] Run real OpenClaw/Hermes soak tests against the `.14` agents and preserve
       the generated report.
-- [ ] Run live embedding/Qwen regression tests against DGX Spark `.10`.
+- [ ] Run live embedding/Qwen regression tests against DGX Spark `.10` and
+      preserve the generated reports.
 
 ## Production interpretation
 

@@ -81,6 +81,21 @@ The current runtime client is `MemoryLLMClient` in
 - endpoint/protocol failures are normalized as `MemoryLLMError`, so workers can
   fail soft without breaking the user-facing agent flow.
 
+## Live regression gate
+
+Before production release, run the Qwen/Spark memory LLM regression:
+
+```bash
+python scripts/real_memory_llm_eval.py \
+  --base-url http://192.168.0.10:8000/v1 \
+  --model qwen3.6-35b-a3b \
+  --json-report ./ops/memory-llm.json
+```
+
+The report format is `obelisk-memory-llm-eval-v1`. It verifies normal chat
+completion, JSON-object curation, and that the model preserves the current
+Jina/Q8 embedding instruction instead of the obsolete fake-embedding claim.
+
 ## Live endpoint note
 
 On 2026-07-09 the `.10` gateway advertised:

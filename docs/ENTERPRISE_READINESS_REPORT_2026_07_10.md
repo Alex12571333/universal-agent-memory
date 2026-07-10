@@ -1,6 +1,6 @@
 # Production envelope report — 2026-07-10
 
-Passed: 84
+Passed: 88
 Failed: 0
 
 | Check | Status | Detail |
@@ -19,6 +19,7 @@ Failed: 0
 | `file:scripts/validate_production_env.py` | PASS | required production artifact |
 | `file:scripts/export_audit.py` | PASS | required production artifact |
 | `file:scripts/agent_soak_eval.py` | PASS | required production artifact |
+| `file:scripts/real_memory_llm_eval.py` | PASS | required production artifact |
 | `file:scripts/vault_manifest.py` | PASS | required production artifact |
 | `file:scripts/restore_drill.py` | PASS | required production artifact |
 | `file:scripts/scheduled_backup.py` | PASS | required production artifact |
@@ -39,6 +40,7 @@ Failed: 0
 | `readme:agents` | PASS | agent adapters documented |
 | `readme:agent-soak` | PASS | README documents live agent soak evidence |
 | `readme:env-validation` | PASS | README documents strict production env validation |
+| `readme:memory-llm-eval` | PASS | README documents live memory LLM regression evidence |
 | `readme:128k` | PASS | 128k context budget documented |
 | `readme:dgx` | PASS | DGX Spark .10 endpoint documented |
 | `prod-compose:only-api-published` | PASS | production compose publishes API/UI but not PostgreSQL |
@@ -85,6 +87,8 @@ Failed: 0
 | `tests:vault-signed-manifest` | PASS | signed vault manifest behavior is covered by tests |
 | `env:validator` | PASS | production env validator rejects placeholder/local-only config |
 | `tests:env-validator` | PASS | production env validator behavior is covered |
+| `llm:live-regression-runner` | PASS | live Qwen/Spark memory LLM runner validates chat and curation |
+| `tests:llm-live-regression-runner` | PASS | memory LLM live regression runner behavior is covered |
 | `gap-audit:no-overclaim` | PASS | gap audit explicitly forbids readiness over-claims |
 | `gap-audit:full-production-gates` | PASS | gap audit defines full-production gates |
 | `benchmark:passed` | PASS | latest benchmark pass count |

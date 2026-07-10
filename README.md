@@ -138,6 +138,10 @@ PostgreSQL, Qdrant, NATS, and MinIO internal.
    UAM_API_KEY=... python scripts/agent_soak_eval.py \
      --base-url http://127.0.0.1:6798 \
      --json-report ./ops/agent-soak.json
+   python scripts/real_memory_llm_eval.py \
+     --base-url http://192.168.0.10:8000/v1 \
+     --model qwen3.6-35b-a3b \
+     --json-report ./ops/memory-llm.json
    python scripts/enterprise_readiness_check.py
    ```
 
@@ -291,6 +295,7 @@ python scripts/validate_production_env.py .env.production \
   --require-signed-artifacts \
   --require-real-embeddings
 UAM_API_KEY=... python scripts/agent_soak_eval.py --json-report ./ops/agent-soak.json
+python scripts/real_memory_llm_eval.py --json-report ./ops/memory-llm.json
 python scripts/benchmark_suite.py
 python scripts/enterprise_readiness_check.py
 ```

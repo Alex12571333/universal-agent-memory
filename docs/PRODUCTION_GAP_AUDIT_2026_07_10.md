@@ -18,7 +18,7 @@ it is not enough.
 | Data model | Append-only memory, CAS supersede, provenance, statuses | Strong foundation |
 | Conversation capture | Raw conversation ledger exists, but curation remains explicit/manual or hook-driven | Not “automatically remembers everything” yet |
 | Embeddings | Real provider support exists; fake remains available for CI/emergency | Production depends on real endpoint and reindex discipline |
-| Memory LLM | Qwen/Spark `.10` config exists and fails soft | Needs live quality evaluation before autonomy |
+| Memory LLM | Qwen/Spark `.10` config, fail-soft adapter and live regression runner exist | Needs saved live `.10` regression evidence before autonomy |
 | OpenClaw/Hermes | Native adapter scaffolds, tests and live soak runner exist | Needs saved real runtime soak evidence from `.14` |
 | UI | React dashboard exists and is improving | Operator-grade, not yet admin-console complete |
 | Testing | Unit, integration-style, benchmark scripts, web build | Needs load/chaos/restore/security tests |
@@ -73,6 +73,8 @@ Required gates:
      operator action history.
    - LLM-derived memories must be proposals or evidence-grounded observations,
      not unverified truth.
+   - Qwen/Spark memory LLM changes must pass `scripts/real_memory_llm_eval.py`
+     and preserve the JSON report before release.
 
 4. **Agent-integration gate**
    - OpenClaw and Hermes run real lifecycle hooks:

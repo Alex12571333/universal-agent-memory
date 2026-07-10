@@ -162,6 +162,7 @@
 | `validate_production_env.py` | `.env.production` → deployment gate | Rejects placeholders, weak secrets, local TLS defaults, fake embeddings |
 | `scheduled_backup.py` | Backup → restore drill → audit export → JSON report | Webhook alert при fail; подходит для cron/systemd |
 | `agent_soak_eval.py` | Live OpenClaw/Hermes soak gate → JSON report | Retain/recall/idempotency/leakage checks against a running server |
+| `real_memory_llm_eval.py` | Live Qwen/Spark memory LLM gate → JSON report | Chat completion + JSON curation regression |
 
 ## Vault — `services/vault.py`, `scripts/export_vault.py`, `scripts/import_vault.py`
 

@@ -25,6 +25,10 @@ UAM_API_KEY=... python scripts/agent_soak_eval.py \
   --rounds 5 \
   --parallel 4 \
   --json-report ./ops/agent-soak.json
+python scripts/real_memory_llm_eval.py \
+  --base-url http://192.168.0.10:8000/v1 \
+  --model qwen3.6-35b-a3b \
+  --json-report ./ops/memory-llm.json
 GITHUB_TOKEN=... python scripts/check_branch_protection.py \
   --repo Alex12571333/universal-agent-memory \
   --required-check python \
@@ -50,6 +54,7 @@ Manual checks:
 - Export vault, edit a note, run dry-run import, then apply only after review.
 - Confirm vault imports use `--require-signature` for release/operator bundles.
 - Confirm Qwen/Spark memory LLM endpoint is reachable.
+- Confirm `ops/memory-llm.json` reports `"ok": true` for Qwen/Spark `.10`.
 - Confirm embedding endpoint returns the configured dimension.
 - Confirm non-local deployments use HTTPS through the reverse proxy and direct
   backend port `6798` is localhost-only or blocked by firewall/security group.
@@ -80,3 +85,5 @@ Do not release if:
 - branch protection or PR-only merge policy is disabled for a shared production
   repository.
 - OpenClaw/Hermes soak reports show cross-workspace leakage or missing recall.
+- Qwen/Spark memory LLM regression returns invalid JSON or keeps obsolete
+  memory as current truth.
