@@ -46,6 +46,8 @@ remaining hard requirements.
       release evidence.
 - [x] OpenClaw and Hermes integration guides exist.
 - [x] OpenClaw/Hermes soak runner exists and writes JSON release evidence.
+- [x] Release evidence verifier checks saved agent, LLM, metrics, backup and
+      branch-protection reports before a full-production claim.
 - [x] CI workflow validates lint, tests, web build, and compose configs.
 - [x] Enterprise readiness check script exists.
 - [x] Branch-protection verifier exists for the `main` release gate.
@@ -68,6 +70,7 @@ remaining hard requirements.
       the generated report.
 - [ ] Run live embedding/Qwen regression tests against DGX Spark `.10` and
       preserve the generated reports.
+- [ ] Verify the preserved release evidence manifest before tagging.
 
 ## Production interpretation
 

@@ -1,0 +1,290 @@
+"""Verify release evidence artifacts for a full-production Obelisk Memory release."""
+
+from __future__ import annotations
+
+import argparse
+import json
+from dataclasses import asdict, dataclass
+from pathlib import Path
+from typing import Any
+
+MANIFEST_FORMAT = "obelisk-release-evidence-manifest-v1"
+
+REQUIRED_ARTIFACTS = {
+    "agent_soak",
+    "memory_llm",
+    "metrics_health",
+    "scheduled_backup",
+    "branch_protection",
+}
+
+
+@dataclass(frozen=True, slots=True)
+class EvidenceCheck:
+    """One release evidence verification result."""
+
+    name: str
+    passed: bool
+    detail: str
+
+
+def main() -> int:
+    """Verify a release evidence manifest and its referenced JSON reports."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "manifest",
+        type=Path,
+        help="Path to obelisk-release-evidence-manifest-v1 JSON",
+    )
+    parser.add_argument("--json", action="store_true", help="Print JSON result")
+    args = parser.parse_args()
+
+    checks = verify_manifest(args.manifest)
+    passed = all(check.passed for check in checks)
+    if args.json:
+        print(
+            json.dumps(
+                {
+                    "passed": passed,
+                    "checks": [asdict(check) for check in checks],
+                },
+                ensure_ascii=False,
+                indent=2,
+                sort_keys=True,
+            )
+        )
+    else:
+        for check in checks:
+            status = "PASS" if check.passed else "FAIL"
+            print(f"{status} {check.name}: {check.detail}")
+        print("release_evidence=PASS" if passed else "release_evidence=FAIL")
+    return 0 if passed else 1
+
+
+def verify_manifest(path: Path) -> list[EvidenceCheck]:
+    """Return release evidence checks for a manifest path."""
+    checks: list[EvidenceCheck] = []
+    try:
+        manifest = _read_json(path)
+    except Exception as exc:  # noqa: BLE001 - CLI reports malformed evidence.
+        return [EvidenceCheck("manifest:read", False, f"{type(exc).__name__}: {exc}")]
+
+    checks.append(
+        EvidenceCheck(
+            "manifest:format",
+            manifest.get("format") == MANIFEST_FORMAT,
+            (
+                f"format={MANIFEST_FORMAT}"
+                if manifest.get("format") == MANIFEST_FORMAT
+                else f"expected {MANIFEST_FORMAT}, got {manifest.get('format')!r}"
+            ),
+        )
+    )
+
+    artifacts = manifest.get("artifacts")
+    if not isinstance(artifacts, dict):
+        checks.append(EvidenceCheck("manifest:artifacts", False, "artifacts must be an object"))
+        return checks
+    missing = sorted(REQUIRED_ARTIFACTS - set(artifacts))
+    checks.append(
+        EvidenceCheck(
+            "manifest:required-artifacts",
+            not missing,
+            (
+                "all required artifacts listed"
+                if not missing
+                else "missing artifacts: " + ", ".join(missing)
+            ),
+        )
+    )
+
+    base = path.parent
+    readers = {
+        "agent_soak": _verify_agent_soak,
+        "memory_llm": _verify_memory_llm,
+        "metrics_health": _verify_metrics_health,
+        "scheduled_backup": _verify_scheduled_backup,
+        "branch_protection": _verify_branch_protection,
+    }
+    for name, verifier in readers.items():
+        raw_path = artifacts.get(name)
+        artifact_path = _artifact_path(base, raw_path)
+        try:
+            payload = _read_json(artifact_path)
+        except Exception as exc:  # noqa: BLE001 - keep checking all artifacts.
+            checks.append(
+                EvidenceCheck(
+                    f"{name}:read",
+                    False,
+                    f"{artifact_path}: {type(exc).__name__}: {exc}",
+                )
+            )
+            continue
+        checks.extend(verifier(payload))
+    return checks
+
+
+def _artifact_path(base: Path, raw_path: object) -> Path:
+    if not isinstance(raw_path, str) or not raw_path.strip():
+        raise ValueError("artifact path must be a non-empty string")
+    path = Path(raw_path)
+    return path if path.is_absolute() else base / path
+
+
+def _read_json(path: Path) -> dict[str, Any]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("JSON root must be an object")
+    return payload
+
+
+def _verify_agent_soak(payload: dict[str, Any]) -> list[EvidenceCheck]:
+    checks = [
+        _format_check("agent_soak", payload, "obelisk-agent-soak-v1"),
+        _ok_check("agent_soak", payload),
+    ]
+    names = _check_names(payload)
+    required = {
+        "health",
+        "cross-workspace-leakage",
+    }
+    checks.append(
+        EvidenceCheck(
+            "agent_soak:openclaw",
+            any(name.startswith("openclaw:recall:") for name in names),
+            "OpenClaw recall lifecycle evidence present",
+        )
+    )
+    checks.append(
+        EvidenceCheck(
+            "agent_soak:hermes",
+            any(name.startswith("hermes:recall:") for name in names),
+            "Hermes recall lifecycle evidence present",
+        )
+    )
+    missing = sorted(required - names)
+    checks.append(
+        EvidenceCheck(
+            "agent_soak:required-checks",
+            not missing,
+            "required checks present" if not missing else "missing: " + ", ".join(missing),
+        )
+    )
+    return checks
+
+
+def _verify_memory_llm(payload: dict[str, Any]) -> list[EvidenceCheck]:
+    names = _check_names(payload)
+    required = {"chat-completions", "json-memory-curation"}
+    missing = sorted(required - names)
+    return [
+        _format_check("memory_llm", payload, "obelisk-memory-llm-eval-v1"),
+        _ok_check("memory_llm", payload),
+        EvidenceCheck(
+            "memory_llm:required-checks",
+            not missing,
+            "required checks present" if not missing else "missing: " + ", ".join(missing),
+        ),
+    ]
+
+
+def _verify_metrics_health(payload: dict[str, Any]) -> list[EvidenceCheck]:
+    names = _check_names(payload)
+    required = {
+        "outbox_pending_total",
+        "outbox_dead_letter_total",
+        "outbox_lag_seconds",
+        "processed_events_inflight_total",
+    }
+    missing = sorted(required - names)
+    return [
+        _format_check("metrics_health", payload, "obelisk-metrics-health-v1"),
+        _ok_check("metrics_health", payload),
+        EvidenceCheck(
+            "metrics_health:required-checks",
+            not missing,
+            "required checks present" if not missing else "missing: " + ", ".join(missing),
+        ),
+    ]
+
+
+def _verify_scheduled_backup(payload: dict[str, Any]) -> list[EvidenceCheck]:
+    step_names = {
+        str(step.get("name"))
+        for step in payload.get("steps", [])
+        if isinstance(step, dict)
+    }
+    skipped = {
+        str(step.get("name"))
+        for step in payload.get("steps", [])
+        if isinstance(step, dict) and step.get("skipped")
+    }
+    return [
+        _format_check("scheduled_backup", payload, "obelisk-scheduled-backup-report-v1"),
+        _ok_check("scheduled_backup", payload),
+        EvidenceCheck(
+            "scheduled_backup:restore-drill",
+            "restore_drill" in step_names and "restore_drill" not in skipped,
+            "restore drill ran and was not skipped",
+        ),
+        EvidenceCheck(
+            "scheduled_backup:audit-export",
+            "audit_export" in step_names and "audit_export" not in skipped,
+            "audit export ran and was not skipped",
+        ),
+    ]
+
+
+def _verify_branch_protection(payload: dict[str, Any]) -> list[EvidenceCheck]:
+    names = _check_names(payload)
+    required = {
+        "pull-request-required",
+        "status-checks-required",
+        "strict-status-checks",
+        "admins-enforced",
+    }
+    missing = sorted(required - names)
+    return [
+        EvidenceCheck(
+            "branch_protection:passed",
+            payload.get("passed") is True,
+            "branch protection verifier passed",
+        ),
+        EvidenceCheck(
+            "branch_protection:required-checks",
+            not missing,
+            "required checks present" if not missing else "missing: " + ", ".join(missing),
+        ),
+    ]
+
+
+def _format_check(name: str, payload: dict[str, Any], expected: str) -> EvidenceCheck:
+    actual = payload.get("format")
+    return EvidenceCheck(
+        f"{name}:format",
+        actual == expected,
+        f"format={expected}" if actual == expected else f"expected {expected}, got {actual!r}",
+    )
+
+
+def _ok_check(name: str, payload: dict[str, Any]) -> EvidenceCheck:
+    return EvidenceCheck(
+        f"{name}:ok",
+        payload.get("ok") is True,
+        "ok=true" if payload.get("ok") is True else f"ok is {payload.get('ok')!r}",
+    )
+
+
+def _check_names(payload: dict[str, Any]) -> set[str]:
+    checks = payload.get("checks", [])
+    if not isinstance(checks, list):
+        return set()
+    return {
+        str(item.get("name"))
+        for item in checks
+        if isinstance(item, dict) and item.get("name")
+    }
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

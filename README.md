@@ -308,6 +308,7 @@ python scripts/validate_production_env.py .env.production \
   --require-real-embeddings
 UAM_API_KEY=... python scripts/agent_soak_eval.py --json-report ./ops/agent-soak.json
 python scripts/real_memory_llm_eval.py --json-report ./ops/memory-llm.json
+python scripts/verify_release_evidence.py ./release-evidence.json
 python scripts/benchmark_suite.py
 python scripts/enterprise_readiness_check.py
 ```
@@ -328,6 +329,7 @@ substitute for the production gates in the gap audit.
 - [docs/OPERATIONS_RUNBOOK.md](docs/OPERATIONS_RUNBOOK.md) — production operations.
 - [docs/TLS_REVERSE_PROXY.md](docs/TLS_REVERSE_PROXY.md) — HTTPS/reverse proxy deployment.
 - [docs/ENTERPRISE_READINESS.md](docs/ENTERPRISE_READINESS.md) — readiness checklist.
+- [docs/RELEASE_EVIDENCE.md](docs/RELEASE_EVIDENCE.md) — release evidence manifest.
 - [docs/GITHUB_BRANCH_PROTECTION.md](docs/GITHUB_BRANCH_PROTECTION.md) — PR-only release gate.
 - [docs/ROADMAP_PHASE_4_ARCHIVAL_MEMORY.md](docs/ROADMAP_PHASE_4_ARCHIVAL_MEMORY.md) — archival memory roadmap.
 - [docs/WEB_DASHBOARD.md](docs/WEB_DASHBOARD.md) — UI guide.

@@ -23,7 +23,7 @@ it is not enough.
 | UI | React dashboard exists and is improving | Operator-grade, not yet admin-console complete |
 | Testing | Unit, integration-style, benchmark scripts, web build | Needs load/chaos/restore/security tests |
 | Release process | `main` branch protection requires PR flow, strict `python`/`web` checks, conversation resolution, and admin enforcement | Release gate baseline is now proven by `scripts/check_branch_protection.py`; keep verifying before releases |
-| Operations | Runbook, backup/restore scripts, isolated restore-drill script, scheduler-ready backup runner, signed vault manifests, metrics health evaluator with JSON report/webhook, release checklist | Needs environment scheduler, durable/immutable storage and dashboard wiring |
+| Operations | Runbook, backup/restore scripts, isolated restore-drill script, scheduler-ready backup runner, signed vault manifests, metrics health evaluator with JSON report/webhook, release checklist and release evidence verifier | Needs environment scheduler, durable/immutable storage and dashboard wiring |
 
 ## What “full production level” means for this project
 
@@ -102,6 +102,8 @@ Required gates:
    - CI runs lint, tests, web build, compose config, static readiness, and
      in-process production readiness.
    - Release checklist includes manual UI walk-through and live embedding probe.
+   - Release evidence manifest verifies saved agent, LLM, metrics, backup and
+     branch-protection JSON reports before a full-production claim.
    - Versioned changelog and rollback instructions exist.
 
 ## Things that must not be claimed yet
@@ -127,5 +129,5 @@ Required gates:
 4. Wire metrics and scheduled-backup health reports into the deployment
    dashboard/alerting stack.
 5. Add UI conflict-resolution flow with accept/supersede/reject actions.
-6. Preserve branch-protection evidence in every release bundle.
+6. Preserve and verify the release evidence manifest in every release bundle.
 7. Add optional external secret-manager integration.
