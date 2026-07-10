@@ -53,6 +53,8 @@ docker compose -f docker-compose.prod.yml --env-file .env.production ps
 Healthy production means:
 
 - `memory-server` is healthy;
+- `UAM_QDRANT_PAYLOAD_TEXT=false`, so Qdrant stores vectors/filter metadata and
+  recall hydrates memory text from PostgreSQL;
 - `postgres` is healthy;
 - `nats` is healthy;
 - `outbox-relay` and `embedding-worker` are running;

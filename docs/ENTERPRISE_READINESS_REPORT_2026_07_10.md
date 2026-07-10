@@ -1,6 +1,6 @@
 # Production envelope report — 2026-07-10
 
-Passed: 88
+Passed: 90
 Failed: 0
 
 | Check | Status | Detail |
@@ -87,6 +87,8 @@ Failed: 0
 | `tests:vault-signed-manifest` | PASS | signed vault manifest behavior is covered by tests |
 | `env:validator` | PASS | production env validator rejects placeholder/local-only config |
 | `tests:env-validator` | PASS | production env validator behavior is covered |
+| `qdrant:redacted-payload` | PASS | Qdrant can store vectors/filter metadata without raw memory text |
+| `tests:qdrant-redacted-payload` | PASS | Qdrant payload redaction and ledger hydration are covered |
 | `llm:live-regression-runner` | PASS | live Qwen/Spark memory LLM runner validates chat and curation |
 | `tests:llm-live-regression-runner` | PASS | memory LLM live regression runner behavior is covered |
 | `gap-audit:no-overclaim` | PASS | gap audit explicitly forbids readiness over-claims |

@@ -65,6 +65,7 @@ def validate_env(
         _check_context_budget(values),
         _check_privacy(values),
         _check_embedding_dim(values),
+        _check_qdrant_payload_text(values),
     ]
     if require_public_tls:
         checks.append(_check_public_tls(values))
@@ -154,6 +155,17 @@ def _check_embedding_dim(values: dict[str, str]) -> EnvCheck:
     if dimension <= 0:
         return EnvCheck("UAM_EMBEDDING_DIM", False, "must be positive")
     return EnvCheck("UAM_EMBEDDING_DIM", True, str(dimension))
+
+
+def _check_qdrant_payload_text(values: dict[str, str]) -> EnvCheck:
+    value = values.get("UAM_QDRANT_PAYLOAD_TEXT", "").strip().lower()
+    if value != "false":
+        return EnvCheck(
+            "UAM_QDRANT_PAYLOAD_TEXT",
+            False,
+            "must be false so Qdrant stores vectors and filters, not raw memory text",
+        )
+    return EnvCheck("UAM_QDRANT_PAYLOAD_TEXT", True, "raw text redacted from vector payloads")
 
 
 def _check_public_tls(values: dict[str, str]) -> EnvCheck:

@@ -427,7 +427,8 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 "env:validator",
                 "PLACEHOLDER_PATTERNS" in read("scripts/validate_production_env.py")
                 and "--require-public-tls" in read("scripts/validate_production_env.py")
-                and "--require-real-embeddings" in read("scripts/validate_production_env.py"),
+                and "--require-real-embeddings" in read("scripts/validate_production_env.py")
+                and "UAM_QDRANT_PAYLOAD_TEXT" in read("scripts/validate_production_env.py"),
                 "production env validator rejects placeholder/local-only config",
             ),
             Check(
@@ -439,6 +440,22 @@ def run_checks(*, static_only: bool) -> list[Check]:
                     "tests/test_backup_restore_scripts.py"
                 ),
                 "production env validator behavior is covered",
+            ),
+            Check(
+                "qdrant:redacted-payload",
+                "payload_text" in read("src/memory_plane/adapters/qdrant.py")
+                and "text_redacted" in read("src/memory_plane/adapters/qdrant.py")
+                and "_payload_to_candidate_item" in read(
+                    "src/memory_plane/adapters/qdrant.py"
+                ),
+                "Qdrant can store vectors/filter metadata without raw memory text",
+            ),
+            Check(
+                "tests:qdrant-redacted-payload",
+                "test_upsert_qdrant_can_redact_text_payload" in read("tests/test_qdrant.py")
+                and "test_live_qdrant_search_hydrates_redacted_payload_from_ledger"
+                in read("tests/test_qdrant.py"),
+                "Qdrant payload redaction and ledger hydration are covered",
             ),
             Check(
                 "llm:live-regression-runner",

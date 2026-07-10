@@ -71,6 +71,7 @@ def build_in_memory_container() -> Container:
         url="http://localhost:6333",
         dense_dim=1536,
         query_embedding_client=client,
+        ledger=store,
     )
     qdrant._use_in_memory_backend()
     embedding = EmbeddingService(store, qdrant, client)
@@ -129,11 +130,14 @@ def build_postgres_container(
 
     sources: list[CandidateSource] = [store]
     qdrant_url_val = qdrant_url or os.getenv("UAM_QDRANT_URL")
+    qdrant_payload_text = _env_bool("UAM_QDRANT_PAYLOAD_TEXT", default=True)
     if qdrant_url_val:
         qdrant = QdrantCandidateSource(
             url=qdrant_url_val,
             dense_dim=qdrant_dim,
             query_embedding_client=client,
+            ledger=store,
+            payload_text=qdrant_payload_text,
         )
         qdrant.connect()
         sources.append(qdrant)
@@ -142,6 +146,8 @@ def build_postgres_container(
             url="http://localhost:6333",
             dense_dim=qdrant_dim,
             query_embedding_client=client,
+            ledger=store,
+            payload_text=qdrant_payload_text,
         )
         qdrant._use_in_memory_backend()
 
@@ -171,3 +177,13 @@ def build_postgres_container(
         vault=VaultExporter(store, observations, retention),
         store=store,
     )
+
+
+def _env_bool(name: str, *, default: bool) -> bool:
+    """Parse an opt-in/opt-out boolean environment variable."""
+    import os
+
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}

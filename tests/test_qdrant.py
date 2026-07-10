@@ -236,14 +236,45 @@ class QdrantAdapterTest(unittest.TestCase):
             )
             source._client = MagicMock()
             item = _item("test text")
-            
+
             source._upsert_qdrant(item, [0.1, 0.2, 0.3, 0.4], model_name="test-model-v2")
-            
+
             called_args = source._client.upsert.call_args
             self.assertIsNotNone(called_args)
             points = called_args.kwargs.get("points")
             self.assertEqual(1, len(points))
             self.assertEqual("test-model-v2", points[0].payload.get("model_name"))
+
+    def test_upsert_qdrant_can_redact_text_payload(self) -> None:
+        """Production mode can keep raw text out of Qdrant payloads."""
+        from unittest.mock import MagicMock, patch
+
+        mock_models = MagicMock()
+        mock_models.PointStruct = lambda id, vector, payload: MagicMock(payload=payload)
+
+        with patch.dict(
+            "sys.modules",
+            {
+                "qdrant_client": MagicMock(),
+                "qdrant_client.models": mock_models,
+            },
+        ):
+            source = QdrantCandidateSource(
+                url="http://localhost:6333",
+                collection="test",
+                dense_dim=4,
+                payload_text=False,
+            )
+            source._client = MagicMock()
+            item = _item("sensitive agent memory")
+
+            source._upsert_qdrant(item, [0.1, 0.2, 0.3, 0.4])
+
+            points = source._client.upsert.call_args.kwargs["points"]
+            payload = points[0].payload
+            self.assertNotIn("text", payload)
+            self.assertTrue(payload["text_redacted"])
+            self.assertEqual(str(item.id), payload["memory_id"])
 
     def test_live_qdrant_search_embeds_query_and_maps_payload(self) -> None:
         """Live Qdrant recall uses a real query vector instead of raising."""
@@ -286,6 +317,55 @@ class QdrantAdapterTest(unittest.TestCase):
             search_kwargs = source._client.search.call_args.kwargs
             self.assertEqual(("dense", [0.9, 0.1, 0.0, 0.0]), search_kwargs["query_vector"])
             self.assertEqual("test", search_kwargs["collection_name"])
+
+    def test_live_qdrant_search_hydrates_redacted_payload_from_ledger(self) -> None:
+        """Recall still returns text when Qdrant payloads omit raw memory text."""
+        from unittest.mock import MagicMock, patch
+
+        from memory_plane.adapters.in_memory import InMemoryMemoryStore
+
+        mock_models = MagicMock()
+        mock_models.FieldCondition = lambda key, match: ("field", key, match)
+        mock_models.Filter = lambda must: ("filter", must)
+        mock_models.MatchValue = lambda value: ("match", value)
+
+        with patch.dict(
+            "sys.modules",
+            {
+                "qdrant_client": MagicMock(),
+                "qdrant_client.models": mock_models,
+            },
+        ):
+            store = InMemoryMemoryStore()
+            item = _item("production q8 embeddings stay editable")
+            store.append(item)
+            source = QdrantCandidateSource(
+                url="http://localhost:6333",
+                collection="test",
+                dense_dim=4,
+                query_embedding_client=_StaticEmbeddingClient([0.9, 0.1, 0.0, 0.0]),
+                ledger=store,
+                payload_text=False,
+            )
+            source._client = MagicMock()
+            source._client.search.return_value = [
+                SimpleNamespace(
+                    payload=QdrantCandidateSource._item_to_payload(
+                        item,
+                        include_text=False,
+                    ),
+                    score=0.91,
+                )
+            ]
+
+            results = source.search(
+                RecallQuery(tenant_id=_T, workspace_id=_W, text="q8 embeddings")
+            )
+
+            self.assertEqual(1, len(results))
+            self.assertEqual(item.id, results[0].item.id)
+            self.assertEqual("production q8 embeddings stay editable", results[0].item.text)
+            self.assertGreater(results[0].lexical, 0)
 
     def test_live_qdrant_search_supports_query_points_client_api(self) -> None:
         """qdrant-client 1.18+ uses query_points instead of search."""

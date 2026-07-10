@@ -223,10 +223,15 @@ UAM_EMBEDDING_PROVIDER=tei
 UAM_EMBEDDING_MODEL=jina-embeddings-v4
 UAM_EMBEDDING_DIM=2048
 UAM_EMBEDDING_BASE_URL=http://192.168.0.10:8002
+UAM_QDRANT_PAYLOAD_TEXT=false
 ```
 
 See [docs/DGX_SPARK_MEMORY_LLM.md](docs/DGX_SPARK_MEMORY_LLM.md) and
 [docs/DGX_SPARK_EMBEDDINGS.md](docs/DGX_SPARK_EMBEDDINGS.md).
+
+In production, keep `UAM_QDRANT_PAYLOAD_TEXT=false`. Qdrant then stores vectors
+and filter metadata only; recalled text is hydrated from the canonical
+PostgreSQL ledger.
 
 ## Agent integration
 

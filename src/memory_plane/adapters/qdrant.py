@@ -12,6 +12,7 @@ from collections.abc import Sequence
 from datetime import datetime
 from math import sqrt
 from threading import RLock
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 from memory_plane.contracts.dto import Candidate, RecallQuery
@@ -24,6 +25,9 @@ from memory_plane.domain.models import (
 )
 from memory_plane.ports.embeddings import EmbeddingClient
 
+if TYPE_CHECKING:
+    from memory_plane.ports.repositories import MemoryLedger
+
 _WORD = re.compile(r"\w+", re.UNICODE)
 
 
@@ -34,8 +38,9 @@ class QdrantCandidateSource:
     so it integrates transparently with ``RetrievalService`` fusion.
 
     Dense vectors are stored under the ``"dense"`` named vector, and sparse
-    vectors under the ``"sparse"`` named vector.  Payload carries full metadata
-    needed for project-scoped filtering and faithful ``MemoryItem`` reconstruction.
+    vectors under the ``"sparse"`` named vector. Payload carries project-scoped
+    filter metadata. Production deployments can disable raw text payloads and
+    hydrate recalled candidates from the canonical ledger.
     """
 
     def __init__(
@@ -46,6 +51,8 @@ class QdrantCandidateSource:
         dense_dim: int = 1536,
         api_key: str | None = None,
         query_embedding_client: EmbeddingClient | None = None,
+        ledger: MemoryLedger | None = None,
+        payload_text: bool = True,
     ) -> None:
         """Capture endpoint and collection; delay client creation until ``connect``."""
         self.url = url
@@ -53,6 +60,8 @@ class QdrantCandidateSource:
         self.dense_dim = dense_dim
         self.api_key = api_key
         self._query_embedding_client = query_embedding_client
+        self._ledger = ledger
+        self._payload_text = payload_text
         self._client: object | None = None  # QdrantClient when connected
         # In-memory fallback for tests (activated by ``_use_in_memory_backend``).
         self._mem_items: dict[UUID, tuple[MemoryItem, list[float]]] | None = None
@@ -236,7 +245,7 @@ class QdrantCandidateSource:
         if sparse_indices is not None and sparse_values is not None:
             vectors["sparse"] = SparseVector(indices=sparse_indices, values=sparse_values)
 
-        payload = self._item_to_payload(item)
+        payload = self._item_to_payload(item, include_text=self._payload_text)
         if model_name:
             payload["model_name"] = model_name
 
@@ -269,7 +278,7 @@ class QdrantCandidateSource:
         # Batch upsert in chunks of 100.
         batch: list[PointStruct] = []
         for item, vec in items:
-            payload = self._item_to_payload(item)
+            payload = self._item_to_payload(item, include_text=self._payload_text)
             if model_name:
                 payload["model_name"] = model_name
 
@@ -331,7 +340,7 @@ class QdrantCandidateSource:
         query_terms = self._terms(query.text)
         for row in rows:
             payload = row.payload or {}
-            item = self._payload_to_item(payload)
+            item = self._payload_to_candidate_item(payload)
             if not self._matches_filter(item, query):
                 continue
             item_terms = self._terms(item.text)
@@ -376,9 +385,9 @@ class QdrantCandidateSource:
         return {m.group(0).casefold() for m in _WORD.finditer(text)}
 
     @staticmethod
-    def _item_to_payload(item: MemoryItem) -> dict[str, object]:
+    def _item_to_payload(item: MemoryItem, *, include_text: bool = True) -> dict[str, object]:
         """Serialize a MemoryItem into a Qdrant-compatible payload dict."""
-        return {
+        payload: dict[str, object] = {
             "memory_id": str(item.id),
             "tenant_id": str(item.tenant_id),
             "workspace_id": str(item.workspace_id),
@@ -387,7 +396,6 @@ class QdrantCandidateSource:
             "layer": str(item.layer),
             "scope": str(item.scope),
             "kind": item.kind,
-            "text": item.text,
             "labels": list(item.labels),
             "status": item.status.value,
             "importance": item.importance,
@@ -397,6 +405,22 @@ class QdrantCandidateSource:
             "revision": item.revision,
             "supersedes_id": str(item.supersedes_id) if item.supersedes_id else None,
         }
+        if include_text:
+            payload["text"] = item.text
+        else:
+            payload["text_redacted"] = True
+        return payload
+
+    def _payload_to_candidate_item(self, payload: dict[str, object]) -> MemoryItem:
+        """Hydrate a redacted Qdrant payload from the ledger when available."""
+        if not payload.get("text") and self._ledger is not None:
+            memory_id = UUID(str(payload["memory_id"]))
+            tenant_id = UUID(str(payload["tenant_id"]))
+            hydrated = self._ledger.get(tenant_id, memory_id)
+            if hydrated is not None:
+                return hydrated
+        item = self._payload_to_item(payload)
+        return item
 
     @staticmethod
     def _payload_to_item(payload: dict[str, object]) -> MemoryItem:

@@ -17,7 +17,7 @@ it is not enough.
 | Browser/API hardening | Security headers are enforced by middleware and tests | Baseline present |
 | Data model | Append-only memory, CAS supersede, provenance, statuses | Strong foundation |
 | Conversation capture | Raw conversation ledger exists, but curation remains explicit/manual or hook-driven | Not “automatically remembers everything” yet |
-| Embeddings | Real provider support exists; fake remains available for CI/emergency | Production depends on real endpoint and reindex discipline |
+| Embeddings | Real provider support exists; Qdrant can redact raw text payloads and hydrate recall from PostgreSQL; fake remains available for CI/emergency | Production depends on real endpoint, `UAM_QDRANT_PAYLOAD_TEXT=false`, and reindex discipline |
 | Memory LLM | Qwen/Spark `.10` config, fail-soft adapter and live regression runner exist | Needs saved live `.10` regression evidence before autonomy |
 | OpenClaw/Hermes | Native adapter scaffolds, tests and live soak runner exist | Needs saved real runtime soak evidence from `.14` |
 | UI | React dashboard exists and is improving | Operator-grade, not yet admin-console complete |
@@ -50,7 +50,9 @@ Required gates:
    - Vault import bundles must use manifest checksum verification and signed
      manifests for production operator workflows. CLI support exists; the
      deployment must keep signing keys outside the repository.
-   - Optional row-level encryption for high-risk scopes.
+   - Qdrant payload text redaction must stay enabled for production vector
+     stores. Optional row-level encryption for high-risk PostgreSQL scopes is
+     still a separate hardening item.
    - Security headers and CSP stay covered by tests.
 
 2. **Reliability gate**

@@ -81,6 +81,7 @@ def test_validate_production_env_accepts_strict_real_config(tmp_path: Path) -> N
                 "UAM_EMBEDDING_PROVIDER=tei",
                 "UAM_EMBEDDING_BASE_URL=http://192.168.0.10:8002",
                 "UAM_EMBEDDING_DIM=2048",
+                "UAM_QDRANT_PAYLOAD_TEXT=false",
             ]
         ),
         encoding="utf-8",
@@ -118,6 +119,40 @@ def test_validate_production_env_rejects_placeholders_and_missing_public_tls() -
         "UAM_AUDIT_SIGNING_KEY",
         "UAM_VAULT_SIGNING_KEY",
     } <= failed
+
+
+def test_validate_production_env_rejects_qdrant_text_payloads(tmp_path: Path) -> None:
+    env_file = tmp_path / ".env.production"
+    env_file.write_text(
+        "\n".join(
+            [
+                "UAM_API_KEY=ak_" + "a" * 40,
+                "UAM_API_KEYS="
+                "openclaw:oc_" + "b" * 32 + ":agent,"
+                "hermes:hm_" + "c" * 32 + ":agent,"
+                "operator:op_" + "d" * 32 + ":operator",
+                "UAM_SERVER_ID=00000000-0000-0000-0000-000000000001",
+                "UAM_PROJECT_ID=00000000-0000-0000-0000-000000000002",
+                "POSTGRES_PASSWORD=pg_" + "e" * 40,
+                "UAM_APP_DB_PASSWORD=app_" + "f" * 40,
+                "MINIO_ROOT_PASSWORD=minio_" + "a" * 40,
+                "UAM_CONTEXT_BUDGET_TOKENS=131072",
+                "UAM_PRIVACY_ENABLED=true",
+                "UAM_PRIVACY_ACTION=redact",
+                "UAM_EMBEDDING_PROVIDER=tei",
+                "UAM_EMBEDDING_BASE_URL=http://192.168.0.10:8002",
+                "UAM_EMBEDDING_DIM=2048",
+                "UAM_QDRANT_PAYLOAD_TEXT=true",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    values = validate_production_env.parse_env_file(env_file)
+    checks = validate_production_env.validate_env(values)
+
+    failed = {check.name for check in checks if not check.ok}
+    assert "UAM_QDRANT_PAYLOAD_TEXT" in failed
 
 
 def test_backup_invokes_pg_dump(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
