@@ -13,7 +13,7 @@ it is not enough.
 | Architecture | PostgreSQL source of truth, Qdrant index, outbox, NATS workers, vault, API, UI | Good foundation |
 | Docker | Dev and prod compose exist; prod hides internal infra ports | Good for trusted local/team deployment |
 | API auth | Bearer key, scoped keys and non-secret key registry with last-used/revoked state exist; `/health` public | Strong local/team baseline; still not enterprise IAM |
-| Audit trail | Append-only `audit_events` table, RLS, operator export API, metrics, tests | Baseline present; retention/export policy still needed |
+| Audit trail | Append-only `audit_events` table, RLS, operator export API, tamper-evident JSONL bundle, metrics, tests | Strong baseline; retention schedule and private-key signing still needed |
 | Browser/API hardening | Security headers are enforced by middleware and tests | Baseline present |
 | Data model | Append-only memory, CAS supersede, provenance, statuses | Strong foundation |
 | Conversation capture | Raw conversation ledger exists, but curation remains explicit/manual or hook-driven | Not “automatically remembers everything” yet |
@@ -40,8 +40,9 @@ Required gates:
      Baseline registry exists; external secret manager integration is still
      recommended for larger deployments.
    - Audit log export for write, supersede, conflict-decision, vault-import,
-     settings-change and model-change events. Baseline durable storage exists;
-     retention policy and signed exports are still required.
+     settings-change and model-change events. Durable storage and a checksum
+     bundle exist; retention schedule and private-key-signed exports are still
+     required for regulated environments.
    - Optional row-level encryption for high-risk scopes.
    - Security headers and CSP stay covered by tests.
 
@@ -87,8 +88,9 @@ Required gates:
 
 ## Things that must not be claimed yet
 
-- “Fully enterprise production-ready” — not until branch protection, restore
-  drills, alerting, audit export, and real agent soak tests are proven.
+- “Fully enterprise production-ready” — not until branch protection, automated
+  restore drills, alerting, signed audit retention, and real agent soak tests
+  are proven.
 - “Remembers all conversations automatically” — the raw ledger can store full
   turns, but automatic capture depends on agent/plugin hooks being installed.
 - “Semantic recall is production quality” — only true when a real embedding
@@ -98,7 +100,8 @@ Required gates:
 
 ## Highest-priority next work
 
-1. Add audit retention policy and signed audit export bundles.
+1. Add audit retention policy, scheduled immutable storage, and private-key
+   signatures for audit bundles.
 2. Add automated scheduled backup execution and restore-drill alerting.
 3. Add live `.14` OpenClaw/Hermes soak test script.
 4. Add worker/outbox/embedding alert metrics and dashboard panel.

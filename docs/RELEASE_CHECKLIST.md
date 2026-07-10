@@ -6,6 +6,7 @@ Use this before tagging or pushing a production release.
 ruff check src tests scripts agent-integrations
 pytest -q
 PYTHONPATH=src python scripts/production_readiness_eval.py
+PYTHONPATH=src python scripts/export_audit.py ./audit-export --limit 500
 python scripts/restore_drill.py ./backups/obelisk-memory.dump
 docker compose --profile advanced config
 docker compose -f docker-compose.prod.yml --env-file .env.production config
@@ -21,6 +22,8 @@ Manual checks:
 - Export vault, edit a note, run dry-run import, then apply only after review.
 - Confirm Qwen/Spark memory LLM endpoint is reachable.
 - Confirm embedding endpoint returns the configured dimension.
+- Confirm `audit-export/manifest.sha256` verifies before preserving release
+  evidence.
 - Confirm worker logs do not show repeated NATS/Qdrant connection failures.
 - Confirm restore drill passes against the backup intended for rollback.
 - Confirm `.env.production` is not staged.

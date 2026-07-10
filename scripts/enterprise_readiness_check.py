@@ -47,6 +47,7 @@ def run_checks(*, static_only: bool) -> list[Check]:
         ".github/workflows/ci.yml",
         "migrations/008_audit_events.sql",
         "migrations/009_api_key_registry.sql",
+        "scripts/export_audit.py",
         "scripts/restore_drill.py",
         "docs/assets/obelisk-memory-hero.png",
         "docs/OPERATIONS_RUNBOOK.md",
@@ -190,6 +191,20 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 "test_audit_trail_records_operator_memory_and_vault_actions" in tests
                 and "test_audit_events_require_operator_scope" in tests,
                 "audit trail behavior is covered by API tests",
+            ),
+            Check(
+                "audit:tamper-evident-bundle",
+                "audit-events.jsonl" in read("scripts/export_audit.py")
+                and "manifest.sha256" in read("scripts/export_audit.py")
+                and "sha256" in read("scripts/export_audit.py"),
+                "audit script exports JSONL plus checksum manifest",
+            ),
+            Check(
+                "tests:audit-export-bundle",
+                "test_export_audit_writes_jsonl_manifest_and_checksum" in read(
+                    "tests/test_backup_restore_scripts.py"
+                ),
+                "audit bundle checksum behavior is covered by tests",
             ),
             Check(
                 "keys:registry-rls",

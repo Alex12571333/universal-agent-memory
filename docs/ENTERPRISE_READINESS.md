@@ -19,6 +19,8 @@ remaining hard requirements.
 - [x] HTTP responses include baseline browser/API security headers.
 - [x] Durable audit log records memory writes, supersedes, conflict decisions,
       vault imports/archives and model-setting changes.
+- [x] Audit export bundle writes JSONL, manifest, and SHA-256 checksum for
+      incident review.
 - [x] Health checks exist for API, PostgreSQL, and NATS.
 - [x] Metrics endpoint exists.
 - [x] Privacy guard redacts common secrets and high-risk PII.
@@ -37,8 +39,8 @@ remaining hard requirements.
 
 - [ ] Put the API behind a real TLS reverse proxy.
 - [ ] Move bearer secrets to an external secret manager for larger deployments.
-- [ ] Add signed audit export bundles and retention policy for regulated
-      environments.
+- [ ] Add audit retention schedule, immutable storage, and private-key signatures
+      for regulated environments.
 - [ ] Add automated scheduled backup execution and alerting.
 - [ ] Add dashboards/alerts for outbox lag, dead letters, Qdrant failures, and
       embedding latency.

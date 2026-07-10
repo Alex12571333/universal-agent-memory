@@ -22,6 +22,7 @@
 | `AuditEvent.__post_init__()` | Проверяет actor/action/resource/status | `ValueError` при бесполезной audit-записи |
 | `AuditLogService.record(...)` | API/workers → append-only audit event | Не мутирует domain objects |
 | `AuditLogService.list_events(...)` | Operator export с фильтрами | Ограничивает `limit` диапазоном `1..500` |
+| `scripts/export_audit.py` | Recent audit events → JSONL forensic bundle | Пишет `audit-events.jsonl`, `manifest.json`, `manifest.sha256` |
 
 ## API keys — `domain/api_key.py`, `services/api_keys.py`
 

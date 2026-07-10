@@ -1,6 +1,6 @@
 # Production envelope report — 2026-07-10
 
-Passed: 50
+Passed: 53
 Failed: 0
 
 | Check | Status | Detail |
@@ -12,6 +12,7 @@ Failed: 0
 | `file:.github/workflows/ci.yml` | PASS | required production artifact |
 | `file:migrations/008_audit_events.sql` | PASS | required production artifact |
 | `file:migrations/009_api_key_registry.sql` | PASS | required production artifact |
+| `file:scripts/export_audit.py` | PASS | required production artifact |
 | `file:scripts/restore_drill.py` | PASS | required production artifact |
 | `file:docs/assets/obelisk-memory-hero.png` | PASS | required production artifact |
 | `file:docs/OPERATIONS_RUNBOOK.md` | PASS | required production artifact |
@@ -46,6 +47,8 @@ Failed: 0
 | `audit:rls` | PASS | audit events are durable and tenant-isolated |
 | `audit:operator-export` | PASS | audit export endpoint is operator-scoped |
 | `tests:audit-trail` | PASS | audit trail behavior is covered by API tests |
+| `audit:tamper-evident-bundle` | PASS | audit script exports JSONL plus checksum manifest |
+| `tests:audit-export-bundle` | PASS | audit bundle checksum behavior is covered by tests |
 | `keys:registry-rls` | PASS | API key registry stores non-secret metadata under RLS |
 | `keys:operator-api` | PASS | API key registry is operator-scoped |
 | `tests:key-registry` | PASS | key registry last-used and revocation behavior is covered |

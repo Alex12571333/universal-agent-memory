@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import hashlib
 import importlib.util
+import json
 import subprocess
+from datetime import UTC, datetime
 from pathlib import Path
 from types import ModuleType
 from unittest.mock import Mock
+from uuid import uuid4
 
 import pytest
 
@@ -23,6 +27,7 @@ def _load_script(name: str) -> ModuleType:
 backup = _load_script("backup")
 restore = _load_script("restore")
 restore_drill = _load_script("restore_drill")
+export_audit = _load_script("export_audit")
 export_vault = _load_script("export_vault")
 import_vault = _load_script("import_vault")
 migrate = _load_script("migrate")
@@ -128,6 +133,71 @@ def test_restore_drill_uses_temporary_docker_target(
     assert any(command[:4] == ["docker", "exec", container, "psql"] for command in commands)
     assert commands[-2] == ["docker", "rm", "-f", container]
     assert commands[-1] == ["docker", "volume", "rm", "-f", volume]
+
+
+def test_export_audit_writes_jsonl_manifest_and_checksum(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    tenant = uuid4()
+    workspace = uuid4()
+    event = export_audit.AuditEvent(
+        tenant_id=tenant,
+        workspace_id=workspace,
+        action="memory.retain",
+        actor="operator",
+        actor_type="operator",
+        resource_type="memory_item",
+        resource_id="mem-alpha",
+        metadata={"path": "semantic/mem-alpha.md"},
+        created_at=datetime(2026, 7, 10, 12, 0, tzinfo=UTC),
+    )
+    ledger = Mock()
+    audit = Mock()
+    audit.list_events.return_value = (event,)
+    monkeypatch.setattr(export_audit, "PostgresMemoryLedger", Mock(return_value=ledger))
+    monkeypatch.setattr(export_audit, "AuditLogService", Mock(return_value=audit))
+    monkeypatch.setenv("UAM_DATABASE_URL", "postgresql://example/db")
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "export_audit.py",
+            str(tmp_path),
+            "--tenant-id",
+            str(tenant),
+            "--workspace-id",
+            str(workspace),
+            "--action",
+            "memory.retain",
+            "--limit",
+            "25",
+        ],
+    )
+
+    assert export_audit.main() == 0
+
+    events = (tmp_path / "audit-events.jsonl").read_text(encoding="utf-8").splitlines()
+    manifest_bytes = (tmp_path / "manifest.json").read_bytes()
+    manifest = json.loads(manifest_bytes)
+    manifest_digest = hashlib.sha256(manifest_bytes).hexdigest()
+    events_digest = hashlib.sha256((tmp_path / "audit-events.jsonl").read_bytes()).hexdigest()
+    checksum = (tmp_path / "manifest.sha256").read_text(encoding="utf-8")
+
+    ledger.connect.assert_called_once()
+    audit.list_events.assert_called_once_with(
+        tenant,
+        workspace_id=workspace,
+        action="memory.retain",
+        resource_type=None,
+        limit=25,
+    )
+    assert len(events) == 1
+    assert json.loads(events[0])["metadata"]["path"] == "semantic/mem-alpha.md"
+    assert manifest["format"] == "obelisk-audit-export-v1"
+    assert manifest["event_count"] == 1
+    assert manifest["filters"]["tenant_id"] == str(tenant)
+    assert manifest["filters"]["workspace_id"] == str(workspace)
+    assert manifest["files"][0]["sha256"] == events_digest
+    assert checksum == f"{manifest_digest}  manifest.json\n"
 
 
 def test_export_vault_builds_postgres_exporter(

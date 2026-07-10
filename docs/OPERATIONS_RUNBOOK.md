@@ -74,6 +74,36 @@ The drill creates a temporary PostgreSQL Docker container and volume, restores
 the dump inside it, verifies required production tables, then removes the
 temporary resources. Use `--keep` only when you need manual forensic inspection.
 
+## Audit export
+
+Export recent operator/agent audit events before upgrades, incident response, or
+security review:
+
+```bash
+PYTHONPATH=src python scripts/export_audit.py ./audit-export \
+  --tenant-id "$UAM_SERVER_ID" \
+  --workspace-id "$UAM_PROJECT_ID" \
+  --limit 500
+```
+
+The bundle contains:
+
+- `audit-events.jsonl` — newline-delimited audit events;
+- `manifest.json` — filters, event count, created-at range, file checksum;
+- `manifest.sha256` — checksum for `manifest.json`.
+
+Verify the bundle before relying on it:
+
+```bash
+cd audit-export
+shasum -a 256 -c manifest.sha256
+shasum -a 256 audit-events.jsonl
+```
+
+The current export is intentionally bounded to the recent filtered audit window
+exposed by the repository API. For regulated retention, add scheduled exports or
+a cursor/range export job and store bundles in immutable storage.
+
 ## Upgrade
 
 1. Pull/build the new image.
@@ -84,16 +114,17 @@ temporary resources. Use `--keep` only when you need manual forensic inspection.
    ```
 
 3. Back up PostgreSQL.
-4. Run `python scripts/restore_drill.py ./backups/obelisk-memory.dump`.
-5. Start the stack; migrations run through the one-shot `migrate` service.
-6. Run:
+4. Export an audit bundle with `PYTHONPATH=src python scripts/export_audit.py ./audit-export`.
+5. Run `python scripts/restore_drill.py ./backups/obelisk-memory.dump`.
+6. Start the stack; migrations run through the one-shot `migrate` service.
+7. Run:
 
    ```bash
    python scripts/benchmark_suite.py
    python scripts/enterprise_readiness_check.py
    ```
 
-7. Review `/metrics` and worker logs.
+8. Review `/metrics` and worker logs.
 
 ## Model changes
 
@@ -115,7 +146,7 @@ If memory contents may have leaked:
 1. Remove network exposure immediately.
 2. Rotate `UAM_API_KEY` and all downstream credentials that may have appeared in
    memory/tool logs.
-3. Export audit/vault evidence for review.
+3. Export audit/vault evidence for review and preserve `manifest.sha256`.
 4. Search for leaked secret patterns and reject/supersede affected memories.
 5. Re-enable access only after reverse proxy and auth are verified.
 
