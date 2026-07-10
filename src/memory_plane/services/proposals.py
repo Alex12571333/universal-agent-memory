@@ -138,7 +138,8 @@ class MemoryProposalService:
         target = command.target
         confidence = command.confidence
         importance = command.importance
-        if target == MemoryProposalTarget.AUTO and self._memory_llm is not None:
+        memory_llm = self._memory_llm
+        if target == MemoryProposalTarget.AUTO and memory_llm is not None:
             (
                 target,
                 confidence,
@@ -151,6 +152,7 @@ class MemoryProposalService:
                 confidence,
                 importance,
                 metadata,
+                memory_llm,
             )
         proposal = MemoryProposal(
             tenant_id=command.tenant_id,
@@ -180,9 +182,10 @@ class MemoryProposalService:
         confidence: float,
         importance: float,
         metadata: dict[str, Any],
+        memory_llm: MemoryReasoner,
     ) -> tuple[MemoryProposalTarget, float, float, dict[str, Any]]:
         try:
-            payload = self._memory_llm.chat_json(
+            payload = memory_llm.chat_json(
                 [
                     {
                         "role": "system",
@@ -209,21 +212,31 @@ class MemoryProposalService:
                 max_tokens=900,
             )
         except Exception as exc:  # noqa: BLE001 - proposals must fail soft
-            return target, confidence, importance, {
-                **metadata,
-                "gateway_engine": "deterministic_fallback",
-                "gateway_llm_error": type(exc).__name__,
-            }
+            return (
+                target,
+                confidence,
+                importance,
+                {
+                    **metadata,
+                    "gateway_engine": "deterministic_fallback",
+                    "gateway_llm_error": type(exc).__name__,
+                },
+            )
 
         classified_target = _parse_target(payload.get("target")) or target
         classified_confidence = _safe_float(payload.get("confidence"), confidence)
         classified_importance = _safe_float(payload.get("importance"), importance)
-        return classified_target, classified_confidence, classified_importance, {
-            **metadata,
-            "gateway_engine": "memory_llm",
-            "gateway_version": "memory-proposal-classifier-llm-v1",
-            "gateway_rationale": _trim_text(str(payload.get("rationale") or ""), 1000),
-        }
+        return (
+            classified_target,
+            classified_confidence,
+            classified_importance,
+            {
+                **metadata,
+                "gateway_engine": "memory_llm",
+                "gateway_version": "memory-proposal-classifier-llm-v1",
+                "gateway_rationale": _trim_text(str(payload.get("rationale") or ""), 1000),
+            },
+        )
 
     def list(
         self,
@@ -286,8 +299,7 @@ class MemoryProposalService:
                     "proposal_target": proposal.target.value,
                     "proposal_namespace": proposal.namespace,
                 },
-                idempotency_key=command.idempotency_key
-                or f"accept-proposal:{proposal.id}",
+                idempotency_key=command.idempotency_key or f"accept-proposal:{proposal.id}",
             )
         )
         reviewed = _reviewed_proposal(
@@ -369,9 +381,7 @@ def _accepted_memory_text(proposal: MemoryProposal) -> str:
     return _trim_text("\n".join(parts), 6000)
 
 
-def _merge_privacy_metadata(
-    left: dict[str, Any], right: dict[str, Any]
-) -> dict[str, Any]:
+def _merge_privacy_metadata(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]:
     """Merge PrivacyGuard metadata without retaining raw sensitive values."""
     merged = dict(left)
     for key, value in right.items():
@@ -398,8 +408,7 @@ def _merge_privacy_block(left: dict[str, Any], right: dict[str, Any]) -> dict[st
     finding_kinds = sorted({*left.get("finding_kinds", []), *right.get("finding_kinds", [])})
     return {
         "action": right.get("action") or left.get("action"),
-        "finding_count": int(left.get("finding_count") or 0)
-        + int(right.get("finding_count") or 0),
+        "finding_count": int(left.get("finding_count") or 0) + int(right.get("finding_count") or 0),
         "finding_kinds": finding_kinds,
         "counts": counts,
     }

@@ -48,7 +48,7 @@ UAM_API_KEY=... PYTHONPATH=src python scripts/deployment_preflight.py \
 
 ## Direct port exposure
 
-`docker-compose.prod.yml` publishes `6798:8080` for trusted local/team pilots.
+`docker-compose.prod.yml` publishes `6798:8080` for local validation.
 The supplied Caddy overlay uses Docker Compose `!override` to replace that with
 `127.0.0.1:6798:8080` for local diagnostics only. Confirm the final config
 before release:

@@ -92,6 +92,66 @@ class EmbeddingServiceTest(unittest.TestCase):
         self.assertEqual("http://gateway:8000/v1", config.base_url)
         self.assertTrue(config.send_dimensions)
 
+    def test_embedding_config_rejects_invalid_dimensions_flag(self) -> None:
+        """A typo must fail configuration instead of changing request semantics."""
+        with unittest.mock.patch.dict(
+            "os.environ",
+            {
+                "UAM_EMBEDDING_PROVIDER": "openai-compatible",
+                "UAM_EMBEDDING_SEND_DIMENSIONS": "sometimes",
+            },
+            clear=True,
+        ):
+            with self.assertRaisesRegex(
+                ValueError,
+                "UAM_EMBEDDING_SEND_DIMENSIONS must be one of",
+            ):
+                EmbeddingProviderConfig.from_env()
+
+    def test_compatible_embedding_defaults_are_local_and_provider_neutral(self) -> None:
+        """Compatible mode must not silently target a hosted vendor."""
+        with unittest.mock.patch.dict(
+            "os.environ",
+            {"UAM_EMBEDDING_PROVIDER": "openai-compatible"},
+            clear=True,
+        ):
+            config = EmbeddingProviderConfig.from_env()
+
+        self.assertEqual("embedding-model", config.model_name)
+        self.assertEqual("http://localhost:8000/v1", config.base_url)
+        self.assertIsNone(config.api_key)
+
+    def test_compatible_embedding_does_not_forward_generic_openai_key(self) -> None:
+        """A key for one vendor must not leak to an arbitrary compatible host."""
+        with unittest.mock.patch.dict(
+            "os.environ",
+            {
+                "UAM_EMBEDDING_PROVIDER": "openai-compatible",
+                "UAM_EMBEDDING_BASE_URL": "https://gateway.example/v1",
+                "OPENAI_API_KEY": "vendor-key",
+            },
+            clear=True,
+        ):
+            config = EmbeddingProviderConfig.from_env()
+
+        self.assertIsNone(config.api_key)
+
+    def test_explicit_openai_embedding_profile_uses_vendor_key_fallback(self) -> None:
+        """Only the explicit hosted profile can consume OPENAI_API_KEY."""
+        with unittest.mock.patch.dict(
+            "os.environ",
+            {
+                "UAM_EMBEDDING_PROVIDER": "openai",
+                "OPENAI_API_KEY": "hosted-key",
+            },
+            clear=True,
+        ):
+            config = EmbeddingProviderConfig.from_env()
+
+        self.assertEqual("text-embedding-3-small", config.model_name)
+        self.assertEqual("https://api.openai.com/v1", config.base_url)
+        self.assertEqual("hosted-key", config.api_key)
+
     def test_openai_embedding_client_posts_expected_payload(self) -> None:
         """OpenAI provider calls `/embeddings` and extracts `data[0].embedding`."""
         captured: dict[str, Any] = {}
@@ -189,6 +249,39 @@ class EmbeddingServiceTest(unittest.TestCase):
         self.assertNotIn("Authorization", captured["headers"])
         self.assertEqual(11, captured["timeout"])
 
+    def test_openai_compatible_embedding_adds_v1_to_gateway_root(self) -> None:
+        """Root and `/v1` base URLs resolve to the same endpoint exactly once."""
+        captured_urls: list[str] = []
+
+        def fake_urlopen(request: Any, timeout: float) -> _FakeResponse:
+            captured_urls.append(request.full_url)
+            return _FakeResponse({"data": [{"embedding": [0.1, 0.2]}]})
+
+        with patch("memory_plane.adapters.embeddings.urlopen", fake_urlopen):
+            for base_url in (
+                "https://gateway.example",
+                "https://gateway.example/v1/",
+                "https://gateway.example/provider/v1",
+            ):
+                client = build_embedding_client(
+                    EmbeddingProviderConfig(
+                        provider="openai-compatible",
+                        model_name="gateway-model",
+                        dimension=2,
+                        base_url=base_url,
+                    )
+                )
+                client.embed("text")
+
+        self.assertEqual(
+            [
+                "https://gateway.example/v1/embeddings",
+                "https://gateway.example/v1/embeddings",
+                "https://gateway.example/provider/v1/embeddings",
+            ],
+            captured_urls,
+        )
+
     def test_openai_compatible_embedding_client_can_send_dimensions(self) -> None:
         """Compatible gateways can opt into OpenAI's dimensions parameter."""
         captured: dict[str, Any] = {}
@@ -280,6 +373,59 @@ class EmbeddingServiceTest(unittest.TestCase):
             captured["payload"],
         )
 
+    def test_tei_v1_base_url_does_not_duplicate_version_segment(self) -> None:
+        """TEI accepts either a server root or an already-versioned base URL."""
+        captured: dict[str, Any] = {}
+
+        def fake_urlopen(request: Any, timeout: float) -> _FakeResponse:
+            captured["url"] = request.full_url
+            return _FakeResponse({"data": [{"embedding": [1, 2]}]})
+
+        with patch("memory_plane.adapters.embeddings.urlopen", fake_urlopen):
+            client = build_embedding_client(
+                EmbeddingProviderConfig(
+                    provider="tei",
+                    model_name="tei-model",
+                    dimension=2,
+                    base_url="http://tei:8080/v1/",
+                )
+            )
+            client.embed("document")
+
+        self.assertEqual("http://tei:8080/v1/embeddings", captured["url"])
+
+    def test_embedding_config_rejects_endpoint_url_and_credentials(self) -> None:
+        """Base URL validation prevents ambiguous paths and secret-bearing URLs."""
+        for base_url, expected in (
+            ("https://gateway.example/v1/embeddings", "not an embeddings endpoint"),
+            ("https://user:secret@gateway.example/v1", "must not contain credentials"),
+        ):
+            with self.assertRaisesRegex(ValueError, expected):
+                EmbeddingProviderConfig(
+                    provider="openai-compatible",
+                    model_name="model",
+                    dimension=2,
+                    base_url=base_url,
+                )
+
+    def test_embedding_rejects_non_finite_vector_values(self) -> None:
+        """NaN and infinity cannot enter the vector index."""
+
+        def fake_urlopen(request: Any, timeout: float) -> _FakeResponse:
+            return _FakeResponse({"data": [{"embedding": [0.1, float("nan")]}]})
+
+        with patch("memory_plane.adapters.embeddings.urlopen", fake_urlopen):
+            client = build_embedding_client(
+                EmbeddingProviderConfig(
+                    provider="openai-compatible",
+                    model_name="model",
+                    dimension=2,
+                    base_url="https://gateway.example/v1",
+                )
+            )
+            with self.assertRaisesRegex(RuntimeError, "non-finite"):
+                client.embed("text")
+
     def test_process_memory_retained_creates_qdrant_point(self) -> None:
         """Retaining a memory and processing it yields a vector candidate in search."""
         # 1. Retain memory in ledger
@@ -315,9 +461,7 @@ class EmbeddingServiceTest(unittest.TestCase):
         recall_result = self.container.retrieval.recall(recall_query)
 
         # Ensure qdrant candidate is present with semantic signals
-        qdrant_candidates = [
-            c for c in recall_result.candidates if "qdrant_hybrid" in c.source
-        ]
+        qdrant_candidates = [c for c in recall_result.candidates if "qdrant_hybrid" in c.source]
         self.assertEqual(1, len(qdrant_candidates))
         self.assertEqual(memory_id, qdrant_candidates[0].item.id)
         self.assertGreaterEqual(qdrant_candidates[0].semantic, 0.0)
@@ -403,9 +547,7 @@ class EmbeddingServiceTest(unittest.TestCase):
                 text="capital",
             )
         )
-        qdrant_candidates = [
-            c for c in recall_result.candidates if "qdrant_hybrid" in c.source
-        ]
+        qdrant_candidates = [c for c in recall_result.candidates if "qdrant_hybrid" in c.source]
         self.assertEqual(2, len(qdrant_candidates))
         metrics = self.container.embedding.collect_metrics()
         self.assertEqual(1, metrics["embedding_reindex_total"])

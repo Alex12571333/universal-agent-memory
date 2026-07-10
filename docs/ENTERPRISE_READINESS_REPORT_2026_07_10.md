@@ -1,6 +1,6 @@
 # Production envelope report — 2026-07-10
 
-Passed: 143
+Passed: 140
 Failed: 0
 
 | Check | Status | Detail |
@@ -46,25 +46,24 @@ Failed: 0
 | `file:docs/RELEASE_CHECKLIST.md` | PASS | required production artifact |
 | `file:docs/RELEASE_EVIDENCE.md` | PASS | required production artifact |
 | `file:docs/DGX_SPARK_MEMORY_LLM.md` | PASS | required production artifact |
-| `file:docs/BENCHMARK_RESULTS_2026_07_09.md` | PASS | required production artifact |
 | `file:deploy/observability/grafana-dashboard.json` | PASS | required production artifact |
 | `file:deploy/observability/prometheus-alerts.yml` | PASS | required production artifact |
 | `readme:brand` | PASS | README uses product name |
 | `readme:hero` | PASS | README references generated hero asset |
-| `readme:production` | PASS | prod path documented |
+| `readme:production-reference` | PASS | README documents the reference topology without approving production |
 | `readme:honest-status` | PASS | README does not over-claim full production readiness |
 | `readme:gap-audit` | PASS | README links the honest production gap audit |
 | `readme:agents` | PASS | agent adapters documented |
 | `readme:agent-soak` | PASS | README documents live agent soak evidence |
 | `readme:env-validation` | PASS | README documents strict production env validation |
-| `readme:memory-llm-eval` | PASS | README documents live memory LLM regression evidence |
-| `readme:ui-walkthrough` | PASS | README documents live UI walkthrough evidence |
+| `readme:release-memory-llm-eval` | PASS | README delegates live memory LLM evidence to release documentation |
+| `readme:release-ui-walkthrough` | PASS | README delegates live UI walkthrough evidence to release documentation |
 | `readme:128k` | PASS | 128k context budget documented |
 | `readme:openai-compatible-llm` | PASS | README documents provider-neutral memory LLM endpoint |
 | `prod-compose:only-api-published` | PASS | production compose publishes API/UI but not PostgreSQL |
 | `prod-compose:internal-qdrant` | PASS | Qdrant is internal in production |
 | `prod-compose:nats-health` | PASS | NATS JetStream has monitoring healthcheck |
-| `prod-compose:secret-files` | PASS | production compose supports mounted secret files |
+| `prod-compose:secret-files` | PASS | production compose passes *_FILE paths; external secret mounts remain deployment work |
 | `prod-compose:provider-neutral-embeddings` | PASS | production API and worker use provider-neutral embedding defaults |
 | `prod-compose:text-encryption` | PASS | production API and embedding worker receive canonical text encryption settings |
 | `prod-compose:qdrant-redacted-payload` | PASS | production API and embedding worker keep raw text out of Qdrant payloads |
@@ -91,7 +90,7 @@ Failed: 0
 | `tests:security-headers` | PASS | security headers are covered by API tests |
 | `ui:conflict-actions` | PASS | operator UI can accept, override or dismiss conflicts |
 | `tests:ui-conflict-actions` | PASS | conflict UI/API decision behavior is covered |
-| `ops:metrics-health-evaluator` | PASS | metrics health script evaluates outbox lag/dead letters; embedding exposes failure/latency metrics |
+| `ops:metrics-health-evaluator` | PASS | static metrics contracts cover outbox and embedding counters; worker export remains a runtime gap |
 | `ops:observability-artifacts` | PASS | Prometheus alerts and Grafana dashboard cover production metrics |
 | `tests:observability-artifacts` | PASS | observability artifacts are covered by tests |
 | `tests:metrics-health-evaluator` | PASS | metrics health thresholds and report behavior are covered |
@@ -106,14 +105,14 @@ Failed: 0
 | `keys:registry-rls` | PASS | API key registry stores non-secret metadata under RLS |
 | `keys:operator-api` | PASS | API key registry is operator-scoped |
 | `tests:key-registry` | PASS | key registry last-used and revocation behavior is covered |
-| `restore-drill:script` | PASS | restore drill verifies backups in isolated PostgreSQL |
+| `restore-drill:script` | PASS | restore drill restores into isolated PostgreSQL and checks schema presence |
 | `tests:restore-drill` | PASS | restore drill command flow is covered by tests |
 | `backup:schedule-runner` | PASS | scheduled backup runner performs backup, restore drill and alert hook |
 | `tests:scheduled-backup` | PASS | scheduled backup success/failure reporting is covered |
 | `release:evidence-verifier` | PASS | release evidence verifier checks saved production reports |
-| `release:evidence-generator` | PASS | release evidence manifest generator is documented and verifier-bound |
+| `release:evidence-generator` | PASS | release evidence generator hashes, identifies and signs the bundle |
 | `release:notes-generator` | PASS | release notes generator writes changelog and rollback evidence |
-| `tests:release-evidence-verifier` | PASS | release evidence verifier behavior is covered |
+| `tests:release-evidence-verifier` | PASS | release evidence semantics, tamper resistance and identity are covered |
 | `tests:release-evidence-generator` | PASS | release evidence manifest generator behavior is covered |
 | `tests:release-notes-generator` | PASS | release notes generator behavior is covered |
 | `ops:observability-preflight-runner` | PASS | observability preflight validates dashboard and alert coverage |
@@ -146,9 +145,7 @@ Failed: 0
 | `tests:llm-live-regression-runner` | PASS | memory LLM live regression runner behavior is covered |
 | `gap-audit:no-overclaim` | PASS | gap audit explicitly forbids readiness over-claims |
 | `gap-audit:full-production-gates` | PASS | gap audit defines full-production gates |
-| `benchmark:passed` | PASS | latest benchmark pass count |
-| `benchmark:no-failures` | PASS | latest benchmark failure count |
 
 ## Verdict
 
-Obelisk Memory passes the repository-level trusted self-hosted pilot gate. This is not a full-production certification; see the production gap audit.
+Obelisk Memory passes repository-level envelope checks. This does not certify runtime correctness, a trusted pilot, or production readiness; see the production gap audit.

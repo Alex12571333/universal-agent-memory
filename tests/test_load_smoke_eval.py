@@ -22,6 +22,13 @@ def _load_script(name: str):
 
 
 load_smoke_eval = _load_script("load_smoke_eval")
+BUILD_IDENTITY = {
+    "version": "0.1.0",
+    "source_commit": "a" * 40,
+    "image_digest": "sha256:" + "b" * 64,
+    "deployment_id": "load-smoke-test",
+    "build_time": "2026-07-10T00:00:00+00:00",
+}
 
 
 class FakeLoadApi:
@@ -30,6 +37,7 @@ class FakeLoadApi:
         *,
         drop_recall: bool = False,
         metrics: str | None = None,
+        include_build_identity: bool = True,
     ) -> None:
         self._lock = Lock()
         self._items: list[dict[str, Any]] = []
@@ -41,6 +49,7 @@ class FakeLoadApi:
                 "uam_outbox_dead_letter_total 0",
             ]
         )
+        self._build_identity = BUILD_IDENTITY if include_build_identity else None
 
     def request(
         self,
@@ -53,6 +62,8 @@ class FakeLoadApi:
     ) -> Any:
         if method == "GET" and path == "/health":
             return {"status": "ok"}
+        if method == "GET" and path == "/v1/system/status":
+            return {"status": "ok", "version": "0.1.0", "build": self._build_identity}
         if method == "GET" and path == "/metrics":
             return self._metrics
         if method == "POST" and path == "/v1/memory/retain":
@@ -92,9 +103,12 @@ def test_load_smoke_eval_passes_parallel_retain_recall() -> None:
 
     assert report.ok is True
     assert report.format == "obelisk-load-smoke-v1"
+    assert report.generated_at
+    assert report.build == BUILD_IDENTITY
     assert report.total_operations == 12
     assert {check.name for check in report.checks} >= {
         "health",
+        "build-identity",
         "concurrent-retain-recall",
         "error-rate",
         "retain-p95",
@@ -139,10 +153,26 @@ def test_load_smoke_eval_fails_on_backlog_metrics() -> None:
     assert "outbox pending" in metrics.detail
 
 
+def test_load_smoke_eval_fails_without_verified_build_identity() -> None:
+    config = load_smoke_eval.LoadConfig(agents=1, operations_per_agent=1, run_id="no-build")
+
+    report = load_smoke_eval.run_load_smoke(
+        config,
+        FakeLoadApi(include_build_identity=False),
+    )
+
+    assert report.ok is False
+    assert report.build == {}
+    check = next(item for item in report.checks if item.name == "build-identity")
+    assert check.ok is False
+
+
 def test_load_smoke_eval_writes_json_report(tmp_path: Path) -> None:
     report = load_smoke_eval.LoadReport(
         format="obelisk-load-smoke-v1",
         ok=True,
+        generated_at="2026-07-10T00:00:00+00:00",
+        build=BUILD_IDENTITY,
         base_url="http://memory.example",
         tenant_id="00000000-0000-0000-0000-000000000001",
         workspace_id="00000000-0000-0000-0000-000000000002",

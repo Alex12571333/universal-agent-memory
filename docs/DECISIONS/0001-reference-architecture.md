@@ -11,9 +11,9 @@ traversal.
 
 ## Почему
 
-Оба исследования независимо рекомендуют этот разрез: SQL лучше решает MVCC,
-RLS, ACL, аудит и recovery; vector/graph движки лучше решают специализированный
-recall, но не должны быть authority.
+PostgreSQL provides MVCC, transactional outbox, RLS, auditability and recovery.
+Vector and graph engines provide specialized recall, but remain rebuildable
+indexes rather than authorities for canonical memory.
 
 ## Последствия
 

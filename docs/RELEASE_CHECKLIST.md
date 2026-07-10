@@ -3,6 +3,24 @@
 Use this before tagging or pushing a production release.
 
 ```bash
+# Load the exact provider/model endpoints used by this deployment.
+set -a
+. ./.env.production
+set +a
+
+export RELEASE_ID=2026.07.10
+export SOURCE_COMMIT="$(git rev-parse HEAD)"
+export IMAGE_DIGEST='sha256:<64-hex-oci-digest>'
+export DEPLOYMENT_ID='production-primary'
+export RELEASE_API_URL='http://127.0.0.1:6798'
+export RELEASE_PUBLIC_URL="https://$UAM_PUBLIC_HOST"
+export UAM_RELEASE_SIGNING_KEY_FILE=/run/secrets/obelisk_release_signing_key
+
+# The running server must expose these same values at /v1/system/status.
+test "$UAM_SOURCE_COMMIT" = "$SOURCE_COMMIT"
+test "$UAM_IMAGE_DIGEST" = "$IMAGE_DIGEST"
+test "$UAM_DEPLOYMENT_ID" = "$DEPLOYMENT_ID"
+
 ruff check src tests scripts agent-integrations
 pytest -q
 PYTHONPATH=src python scripts/production_readiness_eval.py
@@ -44,30 +62,31 @@ UAM_API_KEY=... PYTHONPATH=src python scripts/check_metrics_health.py \
   --metrics-url http://localhost:6798/metrics \
   --report ./ops/metrics-health.json
 UAM_API_KEY=... python scripts/agent_soak_eval.py \
-  --base-url http://localhost:6798 \
+  --base-url "$RELEASE_API_URL" \
   --rounds 5 \
   --parallel 4 \
   --json-report ./ops/agent-soak.json
 UAM_API_KEY=... python scripts/load_smoke_eval.py \
-  --base-url http://localhost:6798 \
+  --base-url "$RELEASE_API_URL" \
   --agents 8 \
   --operations-per-agent 5 \
   --json-report ./ops/load-smoke.json
 UAM_API_KEY=... python scripts/ui_walkthrough_eval.py \
-  --base-url http://localhost:6798 \
+  --base-url "$RELEASE_API_URL" \
   --json-report ./ops/ui-walkthrough.json
 UAM_API_KEY=... python scripts/conversation_pipeline_eval.py \
-  --base-url http://localhost:6798 \
+  --base-url "$RELEASE_API_URL" \
   --json-report ./ops/conversation-pipeline.json
 python scripts/real_embedding_eval.py \
-  --provider openai-compatible \
-  --base-url https://api.openai.com/v1 \
-  --model text-embedding-3-large \
-  --dimension 3072 \
+  --provider "$UAM_EMBEDDING_PROVIDER" \
+  --base-url "$UAM_EMBEDDING_BASE_URL" \
+  --model "$UAM_EMBEDDING_MODEL" \
+  --dimension "$UAM_EMBEDDING_DIM" \
   --json-report ./ops/embedding.json
 python scripts/real_memory_llm_eval.py \
-  --base-url https://api.openai.com/v1 \
-  --model gpt-5.6-terra \
+  --provider "$UAM_MEMORY_LLM_PROVIDER" \
+  --base-url "$UAM_MEMORY_LLM_BASE_URL" \
+  --model "$UAM_MEMORY_LLM_MODEL" \
   --json-report ./ops/memory-llm.json
 GITHUB_TOKEN=... python scripts/check_branch_protection.py \
   --repo Alex12571333/universal-agent-memory \
@@ -75,15 +94,24 @@ GITHUB_TOKEN=... python scripts/check_branch_protection.py \
   --required-check web \
   --json > ./ops/branch-protection.json
 python scripts/generate_release_notes.py \
-  --release 2026.07.10 \
+  --release "$RELEASE_ID" \
   --previous-ref v2026.07.09 \
-  --current-ref HEAD \
+  --current-ref "$SOURCE_COMMIT" \
   --evidence-manifest ./release-evidence.json \
   --output ./ops/release-notes.json
 python scripts/generate_release_evidence_manifest.py \
-  --release 2026.07.10 \
+  --release "$RELEASE_ID" \
+  --source-commit "$SOURCE_COMMIT" \
+  --image-digest "$IMAGE_DIGEST" \
+  --deployment-id "$DEPLOYMENT_ID" \
+  --api-url "$RELEASE_API_URL" \
+  --public-url "$RELEASE_PUBLIC_URL" \
+  --signing-key-id production-release-key-2026 \
   --output ./release-evidence.json
-python scripts/verify_release_evidence.py ./release-evidence.json
+python scripts/verify_release_evidence.py ./release-evidence.json \
+  --expected-source-commit "$SOURCE_COMMIT" \
+  --expected-image-digest "$IMAGE_DIGEST" \
+  --expected-deployment-id "$DEPLOYMENT_ID"
 docker compose --profile advanced config
 docker compose -f docker-compose.prod.yml --env-file .env.production config
 docker compose \
@@ -102,8 +130,11 @@ Manual checks:
   strict production flags.
 - Retain and recall a Russian and English memory.
 - Verify conflict inbox can list and resolve at least one conflict.
-- Export vault, edit a note, run dry-run import, then apply only after review.
-- Confirm vault imports use `--require-signature` for release/operator bundles.
+- In a controlled non-production edit test, export with `--no-manifest`, edit a
+  note, run dry-run import, then apply only after review. Do not preserve this as
+  signed release evidence.
+- Confirm release/operator integrity bundles remain unchanged after signing and
+  use `--require-signature`. The current CLI cannot re-sign an edited vault.
 - Confirm `ops/vault-import.json` reports `"ok": true`,
   `"require_signature": true`, `"manifest_verified": true` and
   `"manifest_signed": true`.
@@ -144,8 +175,8 @@ Manual checks:
 - Confirm `deploy/observability/grafana-dashboard.json` is imported into the
   target dashboard stack and `deploy/observability/prometheus-alerts.yml` is
   loaded into the target alerting stack.
-- Confirm `ops/agent-soak.json` reports `"ok": true` after running against the
-  same server and `.14` OpenClaw/Hermes hosts used for production.
+- Confirm `ops/agent-soak.json` reports `"ok": true` after running through the
+  deployed OpenClaw/Hermes runtime hooks against the release server.
 - Confirm `ops/load-smoke.json` reports `"ok": true`, includes
   `concurrent-retain-recall`, `retain-p95`, `recall-p95` and
   `metrics-backlog`, and was run against the release server.
@@ -154,6 +185,10 @@ Manual checks:
   and metrics checks.
 - Confirm `scripts/verify_release_evidence.py ./release-evidence.json` prints
   `release_evidence=PASS`.
+- Confirm the signed manifest names the exact source commit, immutable image
+  digest and deployment ID under release.
+- Confirm every artifact SHA-256 and the manifest HMAC signature verify with an
+  operator-held key no older than the configured release window.
 - Confirm `ops/release-notes.json` contains the release changelog and rollback
   steps for redeploying the previous image/ref and restoring data if needed.
 - Confirm `release-evidence.json` was generated by
@@ -184,12 +219,14 @@ Do not release if:
   or semantic recall scenarios choose the wrong top memory.
 - load smoke evidence is missing, has non-zero errors, violates p95 thresholds,
   or shows outbox dead letters/backlog after the run.
-- OpenAI-compatible memory LLM regression returns invalid JSON or keeps obsolete
-  memory as current truth.
+- OpenAI-compatible memory LLM regression returns invalid JSON or fails the
+  explicit supersession-curation scenario.
 - UI walkthrough evidence is missing, skipped model probing, or shows vector /
   embedding data in the vault editor.
 - release notes evidence is missing, has an empty changelog, or lacks rollback
   instructions for the previous image/ref and restore procedure.
+- release evidence is unsigned, stale, references a different commit/image/
+  deployment, contains unsafe paths, or any artifact checksum differs.
 - audit retention evidence is missing, unsigned, unverified, or produced after
   pruning rather than before pruning.
 - observability dashboard/alert rules are not installed for the target

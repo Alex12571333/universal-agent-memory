@@ -12,7 +12,7 @@ from collections.abc import Sequence
 from datetime import datetime
 from math import sqrt
 from threading import RLock
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol, cast
 from uuid import UUID
 
 from memory_plane.contracts.dto import Candidate, RecallQuery
@@ -29,6 +29,48 @@ if TYPE_CHECKING:
     from memory_plane.ports.repositories import MemoryLedger
 
 _WORD = re.compile(r"\w+", re.UNICODE)
+
+
+class _ScoredPoint(Protocol):
+    """Subset of a Qdrant result consumed by the retrieval adapter."""
+
+    payload: dict[str, object] | None
+    score: float
+
+
+class _SearchMethod(Protocol):
+    """Legacy qdrant-client search call supported by the adapter."""
+
+    def __call__(
+        self,
+        *,
+        collection_name: str,
+        query_vector: tuple[str, list[float]],
+        query_filter: object,
+        limit: int,
+        with_payload: bool,
+    ) -> Sequence[_ScoredPoint]: ...
+
+
+class _QueryPointsResponse(Protocol):
+    """Subset of a qdrant-client query response consumed by the adapter."""
+
+    points: Sequence[_ScoredPoint]
+
+
+class _QueryPointsClient(Protocol):
+    """Modern qdrant-client query call supported by the adapter."""
+
+    def query_points(self, **kwargs: object) -> _QueryPointsResponse: ...
+
+
+class _QueryEmbeddingMethod(Protocol):
+    """Optional query-specific embedding method exposed by some providers."""
+
+    def __call__(self, text: str) -> list[float]: ...
+
+
+_NumericPayload = int | float | str
 
 
 class QdrantCandidateSource:
@@ -196,9 +238,7 @@ class QdrantCandidateSource:
         assert self._mem_items is not None and self._mem_lock is not None
         query_terms = self._terms(query.text)
         query_vector = (
-            self._embed_query(query.text)
-            if self._query_embedding_client is not None
-            else None
+            self._embed_query(query.text) if self._query_embedding_client is not None else None
         )
         results: list[Candidate] = []
         with self._mem_lock:
@@ -327,9 +367,7 @@ class QdrantCandidateSource:
             )
         if query.labels:
             for label in query.labels:
-                must_conditions.append(
-                    FieldCondition(key="labels", match=MatchValue(value=label))
-                )
+                must_conditions.append(FieldCondition(key="labels", match=MatchValue(value=label)))
 
         rows = self._query_points(
             query_vector=query_vector,
@@ -430,9 +468,7 @@ class QdrantCandidateSource:
         supersedes_raw = payload.get("supersedes_id")
         created_raw = payload.get("created_at")
         created_at = (
-            datetime.fromisoformat(str(created_raw))
-            if created_raw
-            else datetime.now().astimezone()
+            datetime.fromisoformat(str(created_raw)) if created_raw else datetime.now().astimezone()
         )
         return MemoryItem(
             id=UUID(str(payload["memory_id"])),
@@ -446,11 +482,11 @@ class QdrantCandidateSource:
             text=str(payload.get("text") or ""),
             labels=labels,
             status=MemoryStatus(str(payload.get("status") or MemoryStatus.ACTIVE)),
-            importance=float(payload.get("importance") or 0.5),
-            salience=float(payload.get("salience") or 0.5),
-            confidence=float(payload.get("confidence") or 0.7),
+            importance=float(cast(_NumericPayload, payload.get("importance") or 0.5)),
+            salience=float(cast(_NumericPayload, payload.get("salience") or 0.5)),
+            confidence=float(cast(_NumericPayload, payload.get("confidence") or 0.7)),
             created_at=created_at,
-            revision=int(payload.get("revision") or 1),
+            revision=int(cast(_NumericPayload, payload.get("revision") or 1)),
             supersedes_id=UUID(str(supersedes_raw)) if supersedes_raw else None,
             provenance=Provenance(source_kind="qdrant-payload"),
         )
@@ -470,7 +506,7 @@ class QdrantCandidateSource:
         assert self._query_embedding_client is not None
         embed_query = getattr(self._query_embedding_client, "embed_query", None)
         if callable(embed_query):
-            return embed_query(text)
+            return cast(_QueryEmbeddingMethod, embed_query)(text)
         return self._query_embedding_client.embed(text)
 
     def _query_points(
@@ -479,19 +515,19 @@ class QdrantCandidateSource:
         query_vector: list[float],
         query_filter: object,
         limit: int,
-    ) -> Sequence[object]:
+    ) -> Sequence[_ScoredPoint]:
         """Run a named-vector query across qdrant-client API versions."""
         assert self._client is not None
         search = getattr(self._client, "search", None)
         if callable(search):
-            return search(
+            return cast(_SearchMethod, search)(
                 collection_name=self.collection,
                 query_vector=("dense", query_vector),
                 query_filter=query_filter,
                 limit=limit,
                 with_payload=True,
             )
-        response = self._client.query_points(  # type: ignore[union-attr]
+        response = cast(_QueryPointsClient, self._client).query_points(
             collection_name=self.collection,
             query=query_vector,
             using="dense",

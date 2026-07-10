@@ -1,7 +1,8 @@
 # Production readiness testing
 
-This project now has five repeatable validation layers beyond ordinary unit
-tests.
+Production verification is divided into repository, live-service,
+target-environment and signed-release layers. No single layer is sufficient for
+a production claim.
 
 ## 1. Fast unit/API regression
 
@@ -18,9 +19,9 @@ helpers.
 
 ```bash
 PYTHONPATH=src .venv/bin/python scripts/production_readiness_eval.py \
-  --embedding-base-url https://api.openai.com/v1 \
-  --embedding-model text-embedding-3-large \
-  --embedding-dim 3072
+  --embedding-base-url "$UAM_EMBEDDING_BASE_URL" \
+  --embedding-model "$UAM_EMBEDDING_MODEL" \
+  --embedding-dim "$UAM_EMBEDDING_DIM"
 ```
 
 Checks:
@@ -38,9 +39,9 @@ you intentionally need the OpenAI-hosted embedding profile:
 ```bash
 PYTHONPATH=src .venv/bin/python scripts/real_memory_flow_eval.py \
   --provider openai-compatible \
-  --base-url https://api.openai.com/v1 \
-  --model text-embedding-3-large \
-  --dimension 3072
+  --base-url "$UAM_EMBEDDING_BASE_URL" \
+  --model "$UAM_EMBEDDING_MODEL" \
+  --dimension "$UAM_EMBEDDING_DIM"
 ```
 
 ## 3. Docker advanced E2E
@@ -100,8 +101,8 @@ Checks:
 - cross-workspace leakage probes;
 - JSON evidence suitable for release review.
 
-For full production evidence, run it from the `.14` OpenClaw/Hermes deployment
-path or immediately after those plugins are installed, then preserve
+For full production evidence, run it through the deployed OpenClaw/Hermes
+runtime path after the plugins are installed, then preserve
 `ops/agent-soak.json` with the release artifacts.
 
 ## 5. Live OpenAI-compatible memory LLM eval
@@ -110,8 +111,8 @@ Run this against the endpoint used by memory workers:
 
 ```bash
 .venv/bin/python scripts/real_memory_llm_eval.py \
-  --base-url https://api.openai.com/v1 \
-  --model gpt-5.6-terra \
+  --base-url "$UAM_MEMORY_LLM_BASE_URL" \
+  --model "$UAM_MEMORY_LLM_MODEL" \
   --json-report ./ops/memory-llm.json
 ```
 
@@ -119,16 +120,39 @@ Checks:
 
 - OpenAI-compatible `/chat/completions` returns final content;
 - JSON-object mode works for memory curation;
-- the model keeps the current OpenAI-compatible embedding endpoint memory and
-  rejects the obsolete fake embeddings claim;
+- the model selects newer explicit evidence and excludes the superseded value
+  from the curated proposal;
 - JSON evidence is suitable for release review.
 
-## Bugs caught by this layer
+## 6. Live embedding regression
 
-- Docker image lacked `qdrant-client` while advanced compose advertised Qdrant.
-- Advanced compose lacked an embedding worker service.
-- Migration runner skipped newer migrations, leaving Docker Postgres without
-  `memory_items.status`.
-- Unknown tenants caused raw PostgreSQL FK failures and API `500`s.
-- `qdrant-client` 1.18 used a different query API than older adapter code.
-- `qdrant-client` was not version-pinned to the bundled Qdrant server.
+Run `scripts/real_embedding_eval.py` against the exact provider/model/dimension
+used by the embedding worker and preserve `ops/embedding.json`.
+
+## 7. Target behavior gates
+
+Run and preserve:
+
+- `scripts/conversation_pipeline_eval.py`;
+- `scripts/load_smoke_eval.py`;
+- `scripts/ui_walkthrough_eval.py`.
+
+These validate raw→curated memory behavior, concurrent correctness/latency and
+operator workflows against the release server.
+
+## 8. Operations gates
+
+Deployment boundary, mounted secrets, schedules, monitoring, backup/restore,
+audit retention, branch protection and signed vault import each produce a JSON
+report described in [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md).
+
+## 9. Signed release bundle
+
+After all reports exist, seal them with
+`scripts/generate_release_evidence_manifest.py` and verify the v2 manifest with
+`scripts/verify_release_evidence.py`. The verifier binds reports to one commit,
+image digest and deployment, and rejects stale, modified or cross-target
+evidence.
+
+The remaining runtime blockers and missing integration tests are listed in
+[PRODUCTION_GAP_AUDIT_2026_07_10.md](PRODUCTION_GAP_AUDIT_2026_07_10.md).

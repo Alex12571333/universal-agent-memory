@@ -1,6 +1,14 @@
 # Obelisk Memory operations runbook
 
-## Start production
+> **Engineering preview:** the production-shaped Compose topology is available,
+> but a fresh production rollout is currently blocked by the P0 runtime issues in
+> [PRODUCTION_GAP_AUDIT_2026_07_10.md](PRODUCTION_GAP_AUDIT_2026_07_10.md),
+> including application-role credential provisioning and agent/thread identity
+> provisioning. The commands below are reference operating procedures; do not use
+> them to claim or run a production deployment until those blockers are resolved
+> and the target release gates pass.
+
+## Start the reference topology
 
 ```bash
 cp .env.production.example .env.production
@@ -67,9 +75,10 @@ Healthy production means:
 `check_metrics_health.py` turns Prometheus text into an operator gate. It fails
 when outbox pending, dead-letter, lag or in-flight values exceed configured
 thresholds, writes a JSON report, and can post failed reports through
-`UAM_METRICS_ALERT_WEBHOOK`. The `/metrics` endpoint also exposes embedding
-operation count, failure count, last duration, cumulative duration and reindex
-health so a deployment can alert when vector indexing degrades.
+`UAM_METRICS_ALERT_WEBHOOK`. The API `/metrics` surface contains embedding
+counter names, but the deployed embedding worker is a separate process and does
+not yet export its own metrics endpoint. Do not treat API-side counters as proof
+of worker health; worker metrics are an open production blocker.
 
 Import `deploy/observability/grafana-dashboard.json` and
 `deploy/observability/prometheus-alerts.yml` into the target monitoring stack.
@@ -284,8 +293,8 @@ exported event count, signature/verification status and pruned row count.
 
 ## Signed vault bundles
 
-Vault export/import is human-editable, so production operators should protect
-the review boundary with a signed manifest:
+Production operators can protect an unchanged vault export with a signed
+manifest:
 
 ```bash
 UAM_VAULT_SIGNING_KEY=... PYTHONPATH=src python scripts/export_vault.py ./vault-review
@@ -305,6 +314,12 @@ and keep `UAM_VAULT_SIGNING_KEY` in the same class of secret storage as
 `UAM_AUDIT_SIGNING_KEY`. Preserve the `obelisk-vault-import-report-v1` JSON
 report as release evidence; full-production release verification requires it to
 show a verified signed manifest and `require_signature: true`.
+
+The signature covers every Markdown file. Editing a signed export invalidates
+the manifest, and the current CLI does not provide a review-and-re-sign command.
+Therefore the signed flow above is an integrity/release-evidence check, not yet a
+production workflow for applying human edits. See [VAULT.md](VAULT.md) for the
+manifest-free trusted-environment edit path and the remaining production gap.
 
 ## Upgrade
 

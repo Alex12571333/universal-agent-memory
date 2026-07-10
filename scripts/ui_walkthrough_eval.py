@@ -20,6 +20,7 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 from uuid import UUID, uuid4
 
+from memory_plane.build_info import require_status_build_identity
 from memory_plane.config.secrets import read_secret_env
 
 TENANT = UUID("00000000-0000-0000-0000-000000000001")
@@ -83,6 +84,7 @@ class WalkthroughReport:
     format: str
     ok: bool
     generated_at: str
+    build: dict[str, str]
     base_url: str
     tenant_id: str
     workspace_id: str
@@ -144,7 +146,9 @@ def run_walkthrough(
     api = client or ApiClient(config.base_url, config.api_key, config.timeout_seconds)
     current_run_id = run_id or uuid4().hex[:12]
     state: dict[str, Any] = {}
+    build, build_check = _capture_build_identity(api)
     checks = [
+        build_check,
         _run_check("ui-served", lambda: _check_ui(api)),
         _run_check(
             "retain-recall",
@@ -173,6 +177,7 @@ def run_walkthrough(
         format=REPORT_FORMAT,
         ok=all(check.ok for check in checks),
         generated_at=datetime.now(UTC).isoformat(),
+        build=build,
         base_url=config.base_url.rstrip("/"),
         tenant_id=str(config.tenant_id),
         workspace_id=str(config.workspace_id),
@@ -227,6 +232,24 @@ def _run_check(name: str, action: Callable[[], str]) -> CheckResult:
     except Exception as exc:  # noqa: BLE001 - reports all walkthrough failures.
         return CheckResult(name, False, f"{type(exc).__name__}: {exc}")
     return CheckResult(name, True, str(detail))
+
+
+def _capture_build_identity(
+    api: WalkthroughClient,
+) -> tuple[dict[str, str], CheckResult]:
+    try:
+        status = api.request("GET", "/v1/system/status")
+        identity = require_status_build_identity(status)
+    except Exception as exc:  # noqa: BLE001 - evidence report captures the failure.
+        return {}, CheckResult("build-identity", False, f"{type(exc).__name__}: {exc}")
+    return identity, CheckResult(
+        "build-identity",
+        True,
+        (
+            f"version={identity['version']} source_commit={identity['source_commit']} "
+            f"image_digest={identity['image_digest']} deployment_id={identity['deployment_id']}"
+        ),
+    )
 
 
 def _check_ui(api: WalkthroughClient) -> str:

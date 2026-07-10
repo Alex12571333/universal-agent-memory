@@ -25,8 +25,8 @@ available.
 - **Граф** — Obsidian-style force graph. Nodes can be dragged, the canvas can
   be panned/zoomed, labels can be toggled, and physics can be restarted.
 - **Модели** — inspect runtime embedding settings, save desired model config,
-  use the DGX Spark Jina v4 Q8 preset, probe an embedding endpoint, and copy
-  Docker env values.
+  choose hosted or self-hosted OpenAI-compatible templates, probe an endpoint,
+  and copy Docker env values.
 
 ## Local frontend development
 
@@ -76,17 +76,17 @@ API:
 - `PUT /v1/settings/models`
 - `POST /v1/settings/models/test`
 
-Recommended real local preset:
+Self-hosted template:
 
 ```text
-UAM_EMBEDDING_PROVIDER=tei
-UAM_EMBEDDING_BASE_URL=http://192.168.0.10:8002
+UAM_EMBEDDING_PROVIDER=openai-compatible
+UAM_EMBEDDING_BASE_URL=http://127.0.0.1:8002/v1
 UAM_EMBEDDING_MODEL=jina-embeddings-v4
 UAM_EMBEDDING_DIM=2048
 UAM_EMBEDDING_SEND_DIMENSIONS=false
 ```
 
-The UI's **Use DGX preset** button fills these values and **Test endpoint**
+The UI's self-hosted template fills these values and **Test endpoint**
 verifies that the endpoint returns `2048` floats before you restart/reindex.
 For generic `/v1/embeddings` gateways use `openai-compatible`; reserve
 `openai` for the OpenAI-hosted profile that sends the optional `dimensions`

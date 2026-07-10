@@ -1,87 +1,61 @@
-# DGX Spark embeddings
+# Self-hosted DGX Spark embeddings
 
-Recommended local embedding runtime for the memory server:
+DGX Spark can host an optional OpenAI-compatible embedding endpoint. Obelisk
+Memory is not coupled to this hardware or model; the production contract is
+`POST /v1/embeddings` with a stable model ID and output dimension.
 
-- host: `192.168.0.10`
-- runtime: `qwen3-tts-service/jina_embedding_server.py` wrapper over
-  `jina-llama.cpp`
-- model: `jinaai/jina-embeddings-v4-text-retrieval-GGUF`
-- preferred quantization: `Q8_0`
-- fallback quantization: `Q4_K_M`
-- embedding dimension: `2048`
-- serving API: OpenAI-compatible wrapper `/v1/embeddings`
+One suitable profile is a retrieval-oriented multilingual Jina embedding GGUF
+served through llama.cpp plus an OpenAI-compatible pooling/normalization
+wrapper. Quantization, model path and port are deployment choices.
 
-## Why this model
-
-`jina-embeddings-v4-text-retrieval` is retrieval-oriented, multilingual, and
-small enough to keep resident on the DGX Spark GB10 GPU. It is a better fit for
-long-term memory search than reusing large chat models, because memory recall
-mostly needs stable semantic vectors, not generation.
-
-Use `Q8_0` when VRAM/storage allow it. Use `Q4_K_M` only as the fast fallback.
-
-## Download Q8
+## Deployment variables
 
 ```bash
-python3 -c 'from huggingface_hub import hf_hub_download; hf_hub_download(
-    repo_id="jinaai/jina-embeddings-v4-text-retrieval-GGUF",
-    filename="jina-embeddings-v4-text-retrieval-Q8_0.gguf",
-    local_dir="/home/alex1257/models/embeddings/jina-v4",
-)'
+export EMBEDDING_GATEWAY_URL='https://embeddings.internal.example/v1'
+export EMBEDDING_MODEL_ID='jina-embeddings-v4'
+export EMBEDDING_DIMENSION=2048
+export EMBEDDING_MODEL_PATH='/srv/models/jina-embeddings-v4-Q8_0.gguf'
+export EMBEDDING_MMPROJ_PATH='/srv/models/mmproj-jina-v4-retrieval-BF16.gguf'
 ```
 
-## Start OpenAI-compatible embedding wrapper
+Use Q8 when accelerator memory and storage permit it. Validate the exact
+artifact checksum before deployment and record the model/version in release
+evidence. A wrapper is required when a bare llama.cpp endpoint returns
+token-level embeddings instead of one normalized vector per input.
 
-```bash
-cd /home/alex1257/qwen3-tts-service
+## Obelisk configuration
 
-JINA_MODEL_PATH=/home/alex1257/models/embeddings/jina-v4/jina-embeddings-v4-text-retrieval-Q8_0.gguf \
-JINA_MMPROJ_PATH=/home/alex1257/models/embeddings/jina-v4/mmproj-jina-v4-retrieval-BF16.gguf \
-JINA_BACKEND_PORT=18002 \
-HF_HOME=/home/alex1257/qwen3-tts-service/hf-cache \
-LD_LIBRARY_PATH=/home/alex1257/jina-llama.cpp/build/bin:/usr/local/cuda-13.0/lib64 \
-PATH=/home/alex1257/qwen3-tts-service/bin:/home/alex1257/qwen3-tts-service/.venv/bin:/usr/local/cuda-13.0/bin:/usr/bin:/bin \
-/home/alex1257/qwen3-tts-service/.venv/bin/uvicorn \
-  jina_embedding_server:app \
-  --host 0.0.0.0 \
-  --port 8002 \
-  --workers 1
-```
+Use the generic OpenAI-compatible profile unless the gateway explicitly
+requires another adapter:
 
-The wrapper starts `jina-llama.cpp/build/bin/llama-server` as a private backend
-on `127.0.0.1:18002`, requests token-level embeddings from llama.cpp, then
-returns pooled and normalized OpenAI-compatible vectors.
-
-Do not point UAM directly at bare `llama-server` for this model: the server can
-load the Q8 GGUF, but its public embedding endpoint expects token-level output.
-The wrapper is the API adapter that returns one vector per input.
-
-## Configure Obelisk Memory
-
-```text
-UAM_EMBEDDING_PROVIDER=tei
-UAM_EMBEDDING_BASE_URL=http://192.168.0.10:8002
+```dotenv
+UAM_EMBEDDING_PROVIDER=openai-compatible
+UAM_EMBEDDING_BASE_URL=https://embeddings.internal.example/v1
 UAM_EMBEDDING_MODEL=jina-embeddings-v4
 UAM_EMBEDDING_DIM=2048
+UAM_EMBEDDING_SEND_DIMENSIONS=false
+UAM_EMBEDDING_API_KEY_FILE=/run/secrets/embedding_gateway_key
 ```
 
-## Smoke test
+The base URL must not include `/embeddings`; the client appends that path.
+
+## Release checks
+
+Probe the endpoint, then run the semantic regression against the same model and
+dimension configured in the worker:
 
 ```bash
-curl -sS http://192.168.0.10:8002/v1/models
+curl -fsS "$EMBEDDING_GATEWAY_URL/models" \
+  -H "Authorization: Bearer $EMBEDDING_GATEWAY_KEY"
 
-curl -sS http://192.168.0.10:8002/v1/embeddings \
-  -H 'content-type: application/json' \
-  -d '{"model":"jina-embeddings-v4","input":"память агентов","input_type":"query"}'
+python scripts/real_embedding_eval.py \
+  --provider openai-compatible \
+  --base-url "$EMBEDDING_GATEWAY_URL" \
+  --model "$EMBEDDING_MODEL_ID" \
+  --dimension "$EMBEDDING_DIMENSION" \
+  --json-report ./ops/embedding.json
 ```
 
-Expected: one embedding vector with `2048` floats.
-
-Current verified process on `.10`:
-
-- wrapper PID file:
-  `/home/alex1257/llama-logs/uam-jina-wrapper-q8-8002.pid`;
-- wrapper log:
-  `/home/alex1257/llama-logs/uam-jina-wrapper-q8-8002.log`;
-- backend llama.cpp port: `127.0.0.1:18002`;
-- public embedding port: `0.0.0.0:8002`.
+Changing model or dimension requires a failure-safe full reindex and a verified
+rollback path. Do not mix vectors from different models or dimensions in one
+collection.

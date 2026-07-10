@@ -9,7 +9,7 @@ shared long-lived memory layer without turning the system into a SaaS dependency
 ## What it is
 
 Obelisk Memory is a Docker-deployable server that stores, indexes, curates, and
-serves agent memory through a stable HTTP API and native agent integration hooks.
+serves agent memory through a versioned HTTP API and native agent integration hooks.
 It is designed for a local-first or team-owned environment:
 
 - one server owned by the operator;
@@ -25,12 +25,12 @@ This is intentionally not a hosted SaaS architecture.
 
 ## Production status
 
-Current verified baseline, July 10, 2026:
+Repository capability baseline:
 
 | Area | Status |
 |---|---|
 | API server | Production-shaped FastAPI service with health, metrics, auth, OpenAPI |
-| Storage | PostgreSQL migrations, CAS supersede, idempotency, backup/restore |
+| Storage | PostgreSQL migrations, CAS revisions, idempotency, backup/restore tooling |
 | Vector search | Qdrant adapter + embedding worker + real embedding endpoint support |
 | Async pipeline | Transactional outbox, NATS JetStream relay, dead-letter path |
 | Memory reasoning | OpenAI-compatible chat endpoint, provider-neutral config, fail-soft fallback |
@@ -38,17 +38,19 @@ Current verified baseline, July 10, 2026:
 | Human vault | Markdown/Obsidian-style export, dry-run import, safe supersede |
 | UI | React/Vite operator dashboard served by Docker on `/ui` |
 | Agent integration | Native OpenClaw plugin and Hermes memory provider adapters |
-| Tests | Unit/integration contracts, Docker config checks, live benchmark suite |
+| Tests | Unit/API contracts, optional service integrations, Docker config and live evidence runners |
 
-This means the repository is ready for a trusted local/team pilot. It is not yet
-“full production” in the strong sense. Full production still requires
-target-environment preflight reports for schedules, secret custody, network
-boundary, OpenClaw/Hermes soak, live model endpoints and release evidence
-preservation.
+The repository is an engineering preview with production-shaped components. It
+must not be used for a trusted production pilot until the P0 runtime blockers in
+the production audit are fixed—especially fresh database credentials,
+agent/thread provisioning, authorization boundaries, active-head recall,
+fail-soft dependencies and safe reindex. Full production additionally requires
+target-environment operations and signed release evidence.
 
-Honest gap audit:
+Production gap audit:
 [docs/PRODUCTION_GAP_AUDIT_2026_07_10.md](docs/PRODUCTION_GAP_AUDIT_2026_07_10.md).
-Latest benchmark report: [docs/BENCHMARK_RESULTS_2026_07_09.md](docs/BENCHMARK_RESULTS_2026_07_09.md).
+Benchmark reports are generated into `ops/` and sealed into release evidence;
+environment-specific results are not committed as product documentation.
 
 ## Architecture
 
@@ -69,9 +71,9 @@ flowchart LR
   API --> Vault["Markdown vault export/import"]
 ```
 
-The API never depends on vector/LLM success to answer a request. Qdrant,
-embedding, and memory LLM failures degrade recall quality but should not make
-the agent runtime unusable.
+Memory-LLM curation has a deterministic fallback. Qdrant/embedding source
+isolation is not yet complete: a vector dependency outage can still fail startup
+or recall instead of falling back to PostgreSQL. This is a P0 production blocker.
 
 ## Quick start for local development
 
@@ -91,11 +93,12 @@ Local host ports are intentionally non-standard:
 | MinIO API/console | `6900` / `6901` | `9000` / `9001` |
 | NATS client/monitoring | `6422` / `6822` | `4222` / `8222` |
 
-The local compose file is convenient for debugging. For a real deployment, use
-the production compose described below: it exposes only the API/UI port and keeps
-PostgreSQL, Qdrant, NATS, and MinIO internal.
+The local compose file is convenient for debugging. The production compose is a
+reference topology that exposes only API/UI and keeps PostgreSQL, Qdrant, NATS,
+and MinIO internal. It is not an approved production deployment until the P0
+credential, identity, authorization, recall and reindex blockers are fixed.
 
-## Production deployment
+## Production reference deployment
 
 1. Create a production environment file:
 
@@ -127,62 +130,22 @@ PostgreSQL, Qdrant, NATS, and MinIO internal.
    curl -H "Authorization: Bearer $UAM_API_KEY" http://localhost:6798/metrics
    ```
 
-4. Run the benchmark/readiness gates:
+4. Validate the repository and deployment configuration:
 
    ```bash
+   ruff check src tests scripts agent-integrations
+   pytest -q
+   docker compose -f docker-compose.prod.yml --env-file .env.production config
    python scripts/validate_production_env.py .env.production \
      --require-public-tls \
      --require-signed-artifacts \
      --require-real-embeddings
-   python scripts/benchmark_suite.py
-   UAM_API_KEY=... python scripts/agent_soak_eval.py \
-     --base-url http://127.0.0.1:6798 \
-     --json-report ./ops/agent-soak.json
-   UAM_API_KEY=... python scripts/ui_walkthrough_eval.py \
-     --base-url http://127.0.0.1:6798 \
-     --json-report ./ops/ui-walkthrough.json
-   UAM_API_KEY=... python scripts/deployment_preflight.py \
-     --public-url https://memory.example.com \
-     --backend-url http://memory.example.com:6798 \
-     --report ./ops/deployment-preflight.json
-   python scripts/secret_files_preflight.py .env.production \
-     --report ./ops/secret-files.json
-   python scripts/ops_schedule_preflight.py .env.production \
-     --backup-schedule-file ./deploy/schedules/backup.timer \
-     --audit-retention-schedule-file ./deploy/schedules/audit-retention.timer \
-     --metrics-schedule-file ./deploy/schedules/metrics-health.timer \
-     --backup-artifact-root s3://obelisk-memory/backups \
-     --audit-artifact-root s3://obelisk-memory/audit \
-     --report ./ops/ops-schedule.json
-   python scripts/observability_preflight.py \
-     --grafana-dashboard ./deploy/observability/grafana-dashboard.json \
-     --prometheus-alerts ./deploy/observability/prometheus-alerts.yml \
-     --report ./ops/observability-preflight.json
-   UAM_VAULT_SIGNING_KEY=... python scripts/export_vault.py ./vault-review
-   UAM_VAULT_SIGNING_KEY=... python scripts/import_vault.py ./vault-review \
-     --require-signature \
-     --json-report ./ops/vault-import.json
-   python scripts/real_memory_llm_eval.py \
-     --base-url https://api.openai.com/v1 \
-     --model gpt-5.6-terra \
-     --json-report ./ops/memory-llm.json
-   UAM_API_KEY=... python scripts/conversation_pipeline_eval.py \
-     --base-url http://localhost:6798 \
-     --json-report ./ops/conversation-pipeline.json
-   python scripts/real_embedding_eval.py \
-     --provider openai-compatible \
-     --base-url https://api.openai.com/v1 \
-     --model text-embedding-3-large \
-     --dimension 3072 \
-     --json-report ./ops/embedding.json
-   python scripts/generate_release_notes.py \
-     --release 2026.07.10 \
-     --previous-ref v2026.07.09 \
-     --current-ref HEAD \
-     --evidence-manifest ./release-evidence.json \
-     --output ./ops/release-notes.json
-   python scripts/enterprise_readiness_check.py
    ```
+
+   These checks do not approve a release. Follow
+   [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md) exactly to collect the
+   complete target-environment reports and seal them into signed,
+   content-addressed release evidence.
 
 Production notes:
 
@@ -211,7 +174,6 @@ curl -X POST http://localhost:6798/v1/memory/retain \
     "scope": "workspace",
     "kind": "fact",
     "text": "Основной язык проекта — Python",
-    "agent_id": "11111111-1111-1111-1111-111111111111",
     "idempotency_key": "example-1"
   }'
 ```
@@ -225,18 +187,10 @@ curl -X POST http://localhost:6798/v1/memory/recall \
   -d '{"query":"Какой язык используется в проекте?","top_k":20}'
 ```
 
-Store a conversation turn for later curation:
-
-```bash
-curl -X POST http://localhost:6798/v1/conversations/turns \
-  -H "Authorization: Bearer $UAM_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "session_id": "agent-run-42",
-    "role": "user",
-    "text": "Запомни: продовый порт API — 6798."
-  }'
-```
+The raw-conversation API exists, but its PostgreSQL path requires a matching
+thread identity to be provisioned first. Automatic agent/thread provisioning is
+a P0 blocker, so the README does not present that endpoint as a working fresh
+production flow yet.
 
 OpenAPI docs are available at `http://localhost:6798/docs` when authorized.
 
@@ -244,35 +198,37 @@ OpenAPI docs are available at `http://localhost:6798/docs` when authorized.
 
 Obelisk Memory separates memory reasoning from embeddings. The memory LLM handles
 curation, proposals, compacting, and future graph extraction.
-OpenAI-compatible means the API shape, not provider lock-in. Obelisk uses the
-`/v1/chat/completions` contract so the same configuration can point at OpenAI,
-OpenRouter, LiteLLM, vLLM, llama.cpp, Spark/DGX, or another compatible gateway:
+OpenAI-compatible means the wire protocol, not the company that runs the
+model. Obelisk calls `/v1/chat/completions`; the target can be any provider that
+implements that contract directly, or any other provider placed behind a
+compatible router such as LiteLLM. Hosted and self-hosted models use the same
+configuration shape:
 
 ```dotenv
 UAM_MEMORY_LLM_PROVIDER=openai-compatible
-UAM_MEMORY_LLM_MODEL=gpt-5.6-terra
-UAM_MEMORY_LLM_BASE_URL=https://api.openai.com/v1
-UAM_MEMORY_LLM_API_KEY=...
+UAM_MEMORY_LLM_MODEL=provider/model-id
+UAM_MEMORY_LLM_BASE_URL=https://model-gateway.example.com/v1
+UAM_MEMORY_LLM_API_KEY=gateway-specific-key
 UAM_MEMORY_LLM_CONTEXT_TOKENS=131072
 UAM_MEMORY_LLM_MAX_TOKENS=1600
-UAM_MEMORY_LLM_ENABLE_THINKING=false
+UAM_MEMORY_LLM_EXTRA_BODY_JSON={}
 ```
 
-The values above are one deployable profile, not a product lock. Keep the
-contract and replace `UAM_MEMORY_LLM_BASE_URL`, `UAM_MEMORY_LLM_MODEL`, and the
-key with the selected provider's values. Examples: OpenAI model IDs, OpenRouter
-model IDs, a LiteLLM gateway route, vLLM served model names, llama.cpp server
-model aliases, or a Spark/DGX Qwen endpoint.
+`BASE_URL`, `MODEL`, `API_KEY`, and optional `EXTRA_BODY_JSON` belong to the
+selected deployment. They may identify a direct hosted endpoint, an
+OpenRouter/LiteLLM route, a vLLM or llama.cpp server, or an internal gateway.
+Credentials are read only from `UAM_MEMORY_LLM_API_KEY`; a generic gateway never
+inherits a vendor key implicitly.
 
 Embedding model configuration is separate:
 
 ```dotenv
 UAM_EMBEDDING_PROVIDER=openai-compatible
-UAM_EMBEDDING_MODEL=text-embedding-3-large
-UAM_EMBEDDING_DIM=3072
-UAM_EMBEDDING_BASE_URL=https://api.openai.com/v1
+UAM_EMBEDDING_MODEL=provider/embedding-model-id
+UAM_EMBEDDING_DIM=<actual-output-dimension>
+UAM_EMBEDDING_BASE_URL=https://embedding-gateway.example.com/v1
 UAM_EMBEDDING_SEND_DIMENSIONS=false
-UAM_EMBEDDING_API_KEY=...
+UAM_EMBEDDING_API_KEY=gateway-specific-key
 UAM_QDRANT_PAYLOAD_TEXT=false
 UAM_MEMORY_TEXT_ENCRYPTION=pgcrypto
 UAM_MEMORY_TEXT_ENCRYPTION_KEY=...
@@ -283,8 +239,8 @@ profile that requires a key and sends OpenAI's optional `dimensions` request
 field. The provider-neutral `openai-compatible` profile is better for gateways
 that implement `/v1/embeddings` but reject unknown OpenAI-specific fields.
 
-Production secrets can be supplied as mounted files instead of raw environment
-variables. For example:
+Application/runtime secrets can be read from mounted files instead of raw
+environment variables. For example:
 
 ```dotenv
 UAM_API_KEY_FILE=/run/secrets/uam_api_key
@@ -294,10 +250,13 @@ UAM_EMBEDDING_API_KEY_FILE=/run/secrets/embedding_gateway_key
 UAM_MEMORY_TEXT_ENCRYPTION_KEY_FILE=/run/secrets/memory_text_key
 UAM_AUDIT_SIGNING_KEY_FILE=/run/secrets/audit_signing_key
 UAM_VAULT_SIGNING_KEY_FILE=/run/secrets/vault_signing_key
+UAM_RELEASE_SIGNING_KEY_FILE=/run/secrets/release_signing_key
 ```
 
-Direct variables still work for development; `*_FILE` is preferred for
-production secret managers.
+Direct variables still work for development. The shipped production compose
+does not yet mount secret objects or correctly construct every database DSN from
+file-backed passwords; deployment-level `*_FILE` support remains a P0 blocker,
+not a completed production guarantee.
 
 For local self-hosted alternatives, see
 [docs/DGX_SPARK_MEMORY_LLM.md](docs/DGX_SPARK_MEMORY_LLM.md) and
@@ -355,87 +314,43 @@ Detailed integration guide:
 Operators can export memory to Markdown and open it in Obsidian or any editor:
 
 ```bash
-docker compose --profile ops run --rm vault-export
+docker compose --profile ops run --rm vault-export \
+  python scripts/export_vault.py /vault --no-manifest
 ```
 
 Imports default to dry-run and use safe CAS supersede instead of destructive
-overwrites:
+overwrites. Apply only after reviewing the dry-run plan:
 
 ```bash
 docker compose --profile ops run --rm vault-import
 docker compose --profile ops run --rm vault-import python scripts/import_vault.py /vault \
-  --require-signature \
-  --json-report /vault/vault-import.json \
   --apply
 ```
+
+The editable path is intentionally manifest-free. Signed release vault bundles
+are immutable integrity evidence: editing a covered note invalidates the
+signature, and the current CLI cannot re-sign an edited bundle. See the two
+separate workflows in [docs/VAULT.md](docs/VAULT.md).
 
 Vault guide: [docs/VAULT.md](docs/VAULT.md).
 
 ## Validation gates
 
-Recommended before every production rollout:
+Repository checks are intentionally separate from release approval:
 
 ```bash
 ruff check src tests scripts agent-integrations
 pytest -q
 docker compose --profile advanced config
-docker compose -f docker-compose.prod.yml config
-python scripts/validate_production_env.py .env.production \
-  --require-public-tls \
-  --require-signed-artifacts \
-  --require-real-embeddings
-UAM_API_KEY=... python scripts/agent_soak_eval.py --json-report ./ops/agent-soak.json
-UAM_API_KEY=... python scripts/load_smoke_eval.py --json-report ./ops/load-smoke.json
-UAM_API_KEY=... python scripts/ui_walkthrough_eval.py --json-report ./ops/ui-walkthrough.json
-UAM_API_KEY=... python scripts/deployment_preflight.py \
-  --public-url https://memory.example.com \
-  --backend-url http://memory.example.com:6798 \
-  --report ./ops/deployment-preflight.json
-python scripts/secret_files_preflight.py .env.production \
-  --report ./ops/secret-files.json
-python scripts/ops_schedule_preflight.py .env.production \
-  --backup-schedule-file ./deploy/schedules/backup.timer \
-  --audit-retention-schedule-file ./deploy/schedules/audit-retention.timer \
-  --metrics-schedule-file ./deploy/schedules/metrics-health.timer \
-  --backup-artifact-root s3://obelisk-memory/backups \
-  --audit-artifact-root s3://obelisk-memory/audit \
-  --report ./ops/ops-schedule.json
-python scripts/observability_preflight.py \
-  --grafana-dashboard ./deploy/observability/grafana-dashboard.json \
-  --prometheus-alerts ./deploy/observability/prometheus-alerts.yml \
-  --report ./ops/observability-preflight.json
-UAM_VAULT_SIGNING_KEY=... python scripts/export_vault.py ./vault-review
-UAM_VAULT_SIGNING_KEY=... python scripts/import_vault.py ./vault-review \
-  --require-signature \
-  --json-report ./ops/vault-import.json
-python scripts/real_memory_llm_eval.py --json-report ./ops/memory-llm.json
-UAM_API_KEY=... python scripts/conversation_pipeline_eval.py \
-  --base-url http://localhost:6798 \
-  --json-report ./ops/conversation-pipeline.json
-python scripts/real_embedding_eval.py \
-  --provider openai-compatible \
-  --base-url https://api.openai.com/v1 \
-  --model text-embedding-3-large \
-  --dimension 3072 \
-  --json-report ./ops/embedding.json
-UAM_AUDIT_SIGNING_KEY=... PYTHONPATH=src python scripts/audit_retention.py \
-  --database-url "$UAM_DATABASE_URL" \
-  --retain-days 365 \
-  --export-root ./audit-retention \
-  --json-report ./ops/audit-retention.json
-python scripts/generate_release_notes.py \
-  --release 2026.07.10 \
-  --previous-ref v2026.07.09 \
-  --current-ref HEAD \
-  --evidence-manifest ./release-evidence.json \
-  --output ./ops/release-notes.json
-python scripts/generate_release_evidence_manifest.py \
-  --release 2026.07.10 \
-  --output ./release-evidence.json
-python scripts/verify_release_evidence.py ./release-evidence.json
-python scripts/benchmark_suite.py
+docker compose -f docker-compose.prod.yml --env-file .env.production config
 python scripts/enterprise_readiness_check.py
 ```
+
+For a release, run the complete target-environment procedure in
+[docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md). Its report set and
+signed manifest are authoritative; a green repository check alone is not
+production evidence. The manifest contract is documented in
+[docs/RELEASE_EVIDENCE.md](docs/RELEASE_EVIDENCE.md).
 
 The benchmark suite covers config contracts, API memory contracts, memory LLM
 wiring, in-memory vector recall, 128k context compilation, agent integration

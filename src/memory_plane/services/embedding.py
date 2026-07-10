@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 from uuid import UUID
 
 if TYPE_CHECKING:
@@ -65,9 +65,7 @@ class EmbeddingService:
                 return 0
 
             superseded_ids = {
-                item.supersedes_id
-                for item in items
-                if item.supersedes_id is not None
+                item.supersedes_id for item in items if item.supersedes_id is not None
             }
             pairs = []
             for item in items:
@@ -122,5 +120,5 @@ class EmbeddingService:
         """Use document-specific embeddings when the provider exposes them."""
         embed_document = getattr(self._client, "embed_document", None)
         if callable(embed_document):
-            return embed_document(text)
+            return cast(list[float], embed_document(text))
         return self._client.embed(text)

@@ -8,6 +8,7 @@ import re
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from urllib.parse import urlsplit
 
 PLACEHOLDER_PATTERNS = (
     "replace-",
@@ -68,6 +69,7 @@ def validate_env(
         _check_embedding_dim(values),
         _check_qdrant_payload_text(values),
         _check_memory_text_encryption(values),
+        _check_memory_llm_endpoint(values),
     ]
     if require_public_tls:
         checks.append(_check_public_tls(values))
@@ -76,6 +78,7 @@ def validate_env(
             [
                 _check_secret(values, "UAM_AUDIT_SIGNING_KEY", min_length=32),
                 _check_secret(values, "UAM_VAULT_SIGNING_KEY", min_length=32),
+                _check_secret(values, "UAM_RELEASE_SIGNING_KEY", min_length=32),
             ]
         )
     if require_real_embeddings:
@@ -225,6 +228,42 @@ def _check_real_embeddings(values: dict[str, str]) -> EnvCheck:
     if not base_url.startswith(("http://", "https://")):
         return EnvCheck("real-embeddings", False, "embedding base URL must be HTTP(S)")
     return EnvCheck("real-embeddings", True, f"{provider} {base_url}")
+
+
+def _check_memory_llm_endpoint(values: dict[str, str]) -> EnvCheck:
+    """Validate the provider-neutral chat gateway selected for memory workers."""
+    provider = values.get("UAM_MEMORY_LLM_PROVIDER", "").strip().lower()
+    model = values.get("UAM_MEMORY_LLM_MODEL", "").strip()
+    base_url = values.get("UAM_MEMORY_LLM_BASE_URL", "").strip().rstrip("/")
+    if provider not in {"openai-compatible", "openai"}:
+        return EnvCheck(
+            "memory-llm",
+            False,
+            "provider must be openai-compatible or explicit hosted openai",
+        )
+    if not model or any(pattern in model.lower() for pattern in PLACEHOLDER_PATTERNS):
+        return EnvCheck("memory-llm", False, "model ID is missing or looks like a placeholder")
+    try:
+        parsed = urlsplit(base_url)
+        _ = parsed.port
+    except ValueError:
+        return EnvCheck("memory-llm", False, "base URL contains an invalid port")
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        return EnvCheck("memory-llm", False, "base URL must be absolute HTTP(S)")
+    if parsed.username is not None or parsed.password is not None:
+        return EnvCheck("memory-llm", False, "base URL must not contain credentials")
+    if parsed.query or parsed.fragment:
+        return EnvCheck("memory-llm", False, "base URL must not contain query or fragment")
+    if any(pattern in base_url.lower() for pattern in PLACEHOLDER_PATTERNS):
+        return EnvCheck("memory-llm", False, "base URL looks like a placeholder")
+    if parsed.path.rstrip("/").endswith("/chat/completions"):
+        return EnvCheck("memory-llm", False, "configure a gateway root or /v1 base URL")
+    if provider == "openai":
+        uam_key, _ = _value_or_file(values, "UAM_MEMORY_LLM_API_KEY")
+        vendor_key, _ = _value_or_file(values, "OPENAI_API_KEY")
+        if not (uam_key or vendor_key):
+            return EnvCheck("memory-llm", False, "hosted OpenAI profile requires an API key")
+    return EnvCheck("memory-llm", True, f"{provider} {base_url} model={model}")
 
 
 def _value_or_file(values: dict[str, str], key: str) -> tuple[str, str]:

@@ -68,9 +68,7 @@ class AppendConversationTurnCommand:
     namespace: str = "default"
     agent_id: UUID | None = None
     source_kind: str = "api"
-    retention_policy: ConversationRetentionPolicy = (
-        ConversationRetentionPolicy.RAW_AND_CURATED
-    )
+    retention_policy: ConversationRetentionPolicy = ConversationRetentionPolicy.RAW_AND_CURATED
     metadata: dict[str, Any] = field(default_factory=dict)
     idempotency_key: str | None = None
 
@@ -109,18 +107,14 @@ class ConversationService:
         self._ledger = ledger
         self._privacy = privacy or PrivacyGuard.from_env()
 
-    def append_turn(
-        self, command: AppendConversationTurnCommand
-    ) -> AppendConversationTurnResult:
+    def append_turn(self, command: AppendConversationTurnCommand) -> AppendConversationTurnResult:
         """Append a redacted raw turn to the immutable conversation ledger."""
         messages = []
         redaction_metadata: dict[str, Any] = {}
         for message in command.messages:
             decision = self._privacy.apply(message.content)
             if decision.metadata:
-                redaction_metadata = _merge_privacy_metadata(
-                    redaction_metadata, decision.metadata
-                )
+                redaction_metadata = _merge_privacy_metadata(redaction_metadata, decision.metadata)
             messages.append(
                 ConversationMessage(
                     role=message.role,
@@ -214,15 +208,14 @@ class ConversationCurator:
                 importance=command.importance,
                 confidence=command.confidence,
                 metadata=llm_metadata,
-                idempotency_key=(
-                    command.idempotency_key or f"curate-conversation-turn:{turn.id}"
-                ),
+                idempotency_key=(command.idempotency_key or f"curate-conversation-turn:{turn.id}"),
             )
         )
 
     def _summary_text(self, turn: ConversationTurn) -> tuple[str, dict[str, Any]]:
-        if self._memory_llm is not None:
-            llm_result = self._llm_summary_text(turn)
+        memory_llm = self._memory_llm
+        if memory_llm is not None:
+            llm_result = self._llm_summary_text(turn, memory_llm)
             if llm_result is not None:
                 return llm_result
         return self._deterministic_summary_text(turn), {
@@ -231,10 +224,12 @@ class ConversationCurator:
         }
 
     def _llm_summary_text(
-        self, turn: ConversationTurn
+        self,
+        turn: ConversationTurn,
+        memory_llm: MemoryReasoner,
     ) -> tuple[str, dict[str, Any]] | None:
         try:
-            payload = self._memory_llm.chat_json(
+            payload = memory_llm.chat_json(
                 [
                     {
                         "role": "system",
@@ -294,9 +289,7 @@ class ConversationCurator:
         return _trim_text("\n".join(lines), 6000)
 
 
-def _merge_privacy_metadata(
-    left: dict[str, Any], right: dict[str, Any]
-) -> dict[str, Any]:
+def _merge_privacy_metadata(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]:
     """Merge PrivacyGuard metadata without retaining raw secret values."""
     merged = dict(left)
     for key, value in right.items():

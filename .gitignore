@@ -5,6 +5,9 @@ __pycache__/
 .ruff_cache/
 *.pyc
 .env
+.env.production
+.env.production.*
+!.env.production.example
 dist/
 build/
 node_modules/
@@ -16,3 +19,5 @@ web/vite.config.js
 data/
 backups/
 vault/
+ops/
+release-evidence.json

@@ -3,8 +3,14 @@
 Goal: integrate Obelisk Memory as an OpenClaw runtime/plugin extension,
 not as a skill and not only as an MCP tool.
 
-The installable plugin lives in `plugin/` and matches the OpenClaw extension
-shape verified against the `.14` runtime:
+> **Engineering preview:** stable OpenClaw agent/thread IDs are not yet
+> provisioned automatically in the PostgreSQL ledger. A fresh persistent
+> deployment can reject plugin writes with foreign-key violations. Use this
+> adapter with the in-memory development server, or pre-provision matching
+> identities, until the production identity blocker is resolved.
+
+The installable plugin lives in `plugin/` and uses the OpenClaw extension
+contract:
 
 - `package.json` exposes `openclaw.extensions: ["./index.js"]`;
 - `index.js` exports a default plugin entry object with `register(api)`;

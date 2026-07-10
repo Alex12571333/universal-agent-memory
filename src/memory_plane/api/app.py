@@ -33,6 +33,7 @@ from memory_plane.bootstrap import (
     build_in_memory_container,
     build_postgres_container,
 )
+from memory_plane.build_info import BuildInfo
 from memory_plane.config.secrets import read_secret_env
 from memory_plane.contracts.dto import (
     ContextRecipe,
@@ -74,12 +75,8 @@ from memory_plane.services.vault import VaultImportSource, editable_vault_conten
 DEFAULT_SERVER_ID = UUID("00000000-0000-0000-0000-000000000001")
 DEFAULT_PROJECT_ID = UUID("00000000-0000-0000-0000-000000000002")
 DEFAULT_THREAD_ID = UUID("00000000-0000-0000-0000-000000000003")
-DEFAULT_CONTEXT_BUDGET_TOKENS = int(
-    os.getenv("UAM_CONTEXT_BUDGET_TOKENS", "131072")
-)
-DEFAULT_CONTEXT_PER_LAYER_LIMIT = int(
-    os.getenv("UAM_CONTEXT_PER_LAYER_LIMIT", "1000")
-)
+DEFAULT_CONTEXT_BUDGET_TOKENS = int(os.getenv("UAM_CONTEXT_BUDGET_TOKENS", "131072"))
+DEFAULT_CONTEXT_PER_LAYER_LIMIT = int(os.getenv("UAM_CONTEXT_PER_LAYER_LIMIT", "1000"))
 PROCESS_STARTED_AT = time.time()
 
 
@@ -170,9 +167,7 @@ class ConversationTurnBody(BaseModel):
     namespace: str = Field(default="default", min_length=1)
     agent_id: UUID | None = None
     source_kind: str = Field(default="api", min_length=1)
-    retention_policy: ConversationRetentionPolicy = (
-        ConversationRetentionPolicy.RAW_AND_CURATED
-    )
+    retention_policy: ConversationRetentionPolicy = ConversationRetentionPolicy.RAW_AND_CURATED
     messages: list[ConversationMessageBody] = Field(min_length=1)
     metadata: dict[str, Any] = Field(default_factory=dict)
     idempotency_key: str | None = None
@@ -316,9 +311,7 @@ def _api_key_response(record: Any) -> dict[str, Any]:
         "fingerprint": f"{fingerprint[:12]}…{fingerprint[-6:]}",
         "scopes": list(record.scopes),
         "created_at": record.created_at.isoformat(),
-        "last_used_at": record.last_used_at.isoformat()
-        if record.last_used_at
-        else None,
+        "last_used_at": record.last_used_at.isoformat() if record.last_used_at else None,
         "revoked_at": record.revoked_at.isoformat() if record.revoked_at else None,
         "revoked": bool(record.revoked),
         "revoked_reason": record.revoked_reason,
@@ -332,9 +325,7 @@ def _memory_write_response(result: Any) -> dict[str, Any]:
         "created": result.created,
         "revision": result.item.revision,
         "supersedes_id": (
-            str(result.item.supersedes_id)
-            if result.item.supersedes_id is not None
-            else None
+            str(result.item.supersedes_id) if result.item.supersedes_id is not None else None
         ),
         "queued_event_ids": [str(event_id) for event_id in result.queued_event_ids],
     }
@@ -368,9 +359,7 @@ def _conversation_turn_response(turn: Any, *, created: bool | None = None) -> di
     return payload
 
 
-def _memory_proposal_response(
-    proposal: Any, *, created: bool | None = None
-) -> dict[str, Any]:
+def _memory_proposal_response(proposal: Any, *, created: bool | None = None) -> dict[str, Any]:
     """Render a Memory Gateway proposal."""
     payload = {
         "id": str(proposal.id),
@@ -388,9 +377,7 @@ def _memory_proposal_response(
         "status": proposal.status.value,
         "metadata": proposal.metadata,
         "created_at": proposal.created_at.isoformat(),
-        "reviewed_at": proposal.reviewed_at.isoformat()
-        if proposal.reviewed_at
-        else None,
+        "reviewed_at": proposal.reviewed_at.isoformat() if proposal.reviewed_at else None,
         "reviewer": proposal.reviewer,
         "review_reason": proposal.review_reason,
     }
@@ -403,9 +390,7 @@ def _memory_proposal_review_response(result: Any) -> dict[str, Any]:
     """Render proposal review result and optional retained memory."""
     return {
         "proposal": _memory_proposal_response(result.proposal),
-        "memory": _memory_write_response(result.retained)
-        if result.retained is not None
-        else None,
+        "memory": _memory_write_response(result.retained) if result.retained is not None else None,
     }
 
 
@@ -530,9 +515,7 @@ def _graph_edge_response(edge: MemoryEdge) -> dict[str, Any]:
         "dst_id": str(edge.dst_id),
         "edge_type": edge.edge_type.value,
         "weight": edge.weight,
-        "provenance_item_id": (
-            str(edge.provenance_item_id) if edge.provenance_item_id else None
-        ),
+        "provenance_item_id": (str(edge.provenance_item_id) if edge.provenance_item_id else None),
         "created_at": edge.created_at.isoformat(),
     }
 
@@ -766,9 +749,10 @@ def create_app(
     configured_scoped_keys = _parse_scoped_api_keys(read_secret_env("UAM_API_KEYS"))
     auth_tenant_id = _registry_tenant_id()
     model_settings = _load_model_settings()
+    build_info = BuildInfo.from_env()
     app = FastAPI(
         title="Obelisk Memory Server",
-        version="0.1.0",
+        version=build_info.version,
         description="Self-hosted memory API for local and team AI agents.",
     )
     web_dist = _web_dist_dir()
@@ -827,30 +811,36 @@ def create_app(
                         )
                         break
         if principal is None:
-            return _apply_security_headers(JSONResponse(
-                status_code=401,
-                content={"detail": "invalid or missing API key"},
-                headers={"WWW-Authenticate": "Bearer"},
-            ))
+            return _apply_security_headers(
+                JSONResponse(
+                    status_code=401,
+                    content={"detail": "invalid or missing API key"},
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+            )
         if principal.secret_fingerprint:
             record = services.api_keys.get_by_fingerprint(
                 auth_tenant_id,
                 principal.secret_fingerprint,
             )
             if record is not None and record.revoked:
-                return _apply_security_headers(JSONResponse(
-                    status_code=401,
-                    content={"detail": "API key has been revoked"},
-                    headers={"WWW-Authenticate": "Bearer"},
-                ))
+                return _apply_security_headers(
+                    JSONResponse(
+                        status_code=401,
+                        content={"detail": "API key has been revoked"},
+                        headers={"WWW-Authenticate": "Bearer"},
+                    )
+                )
         if not _scope_allowed(principal, required_scope):
-            return _apply_security_headers(JSONResponse(
-                status_code=403,
-                content={
-                    "detail": "API key scope is insufficient",
-                    "required_scope": required_scope,
-                },
-            ))
+            return _apply_security_headers(
+                JSONResponse(
+                    status_code=403,
+                    content={
+                        "detail": "API key scope is insufficient",
+                        "required_scope": required_scope,
+                    },
+                )
+            )
         request.state.api_principal = principal
         if principal.secret_fingerprint:
             services.api_keys.touch(auth_tenant_id, principal.secret_fingerprint)
@@ -949,12 +939,18 @@ def create_app(
         load_average: tuple[float, float, float] | None = None
         if hasattr(os, "getloadavg"):
             try:
-                load_average = tuple(round(value, 2) for value in os.getloadavg())
+                raw_load_average = os.getloadavg()
+                load_average = (
+                    round(raw_load_average[0], 2),
+                    round(raw_load_average[1], 2),
+                    round(raw_load_average[2], 2),
+                )
             except OSError:
                 load_average = None
         return {
             "status": "ok",
             "version": app.version,
+            "build": build_info.public_dict(),
             "uptime_seconds": round(time.time() - PROCESS_STARTED_AT),
             "storage": _disk_usage_response(),
             "process": {
@@ -1284,9 +1280,7 @@ def create_app(
             resource_id=str(proposal_id),
             metadata={
                 "reviewer": body.reviewer,
-                "memory_item_id": (
-                    str(result.retained.item.id) if result.retained else None
-                ),
+                "memory_item_id": (str(result.retained.item.id) if result.retained else None),
             },
         )
         return _memory_proposal_review_response(result)
@@ -1395,9 +1389,7 @@ def create_app(
                 MemoryLayer.ERROR,
                 MemoryLayer.SOCIAL,
             ),
-            per_layer_limit={
-                layer: DEFAULT_CONTEXT_PER_LAYER_LIMIT for layer in MemoryLayer
-            },
+            per_layer_limit={layer: DEFAULT_CONTEXT_PER_LAYER_LIMIT for layer in MemoryLayer},
         )
         package = services.context.compile(result, recipe)
         return {
@@ -1801,9 +1793,7 @@ def create_app(
         return _checkpoint_response(cp)
 
     @app.put("/v1/checkpoints/{thread_id}")
-    def update_checkpoint(
-        thread_id: UUID, body: CheckpointUpdateBody
-    ) -> dict[str, Any]:
+    def update_checkpoint(thread_id: UUID, body: CheckpointUpdateBody) -> dict[str, Any]:
         """CAS-update a checkpoint; returns 409 on stale revision."""
         try:
             cp = services.checkpoint.update(
@@ -1826,9 +1816,7 @@ def create_app(
         return _checkpoint_response(cp)
 
     @app.post("/v1/checkpoints/{thread_id}/compact")
-    def compact_checkpoint(
-        thread_id: UUID, body: CheckpointCompactBody
-    ) -> dict[str, Any]:
+    def compact_checkpoint(thread_id: UUID, body: CheckpointCompactBody) -> dict[str, Any]:
         """Delete old revisions keeping the most recent *keep_last*."""
         deleted = services.checkpoint.compact(
             tenant_id=body.tenant_id,
