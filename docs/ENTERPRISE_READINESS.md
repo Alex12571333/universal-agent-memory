@@ -68,6 +68,8 @@ remaining hard requirements.
       release evidence.
 - [x] OpenClaw and Hermes integration guides exist.
 - [x] OpenClaw/Hermes soak runner exists and writes JSON release evidence.
+- [x] Conversation pipeline runner exists and writes JSON release evidence for
+      raw transcript capture, explicit curation and recall.
 - [x] Concurrent load smoke runner exists and writes JSON evidence for
       parallel retain/recall correctness, p95 latency and backlog health.
 - [x] UI walkthrough runner exists and writes JSON evidence for served UI,
@@ -105,6 +107,8 @@ remaining hard requirements.
 - [x] Enforce GitHub branch protection and PR-only merges to `main`.
 - [ ] Run real OpenClaw/Hermes soak tests against the `.14` agents and preserve
       the generated report.
+- [ ] Run conversation pipeline tests against the target release server and
+      preserve `ops/conversation-pipeline.json`.
 - [ ] Run load smoke tests against the target release server and preserve the
       generated report.
 - [ ] Run live embedding and memory LLM regression tests against the configured

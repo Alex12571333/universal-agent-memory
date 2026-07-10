@@ -1,6 +1,6 @@
 # Production envelope report — 2026-07-10
 
-Passed: 140
+Passed: 143
 Failed: 0
 
 | Check | Status | Detail |
@@ -24,6 +24,7 @@ Failed: 0
 | `file:scripts/validate_production_env.py` | PASS | required production artifact |
 | `file:scripts/export_audit.py` | PASS | required production artifact |
 | `file:scripts/agent_soak_eval.py` | PASS | required production artifact |
+| `file:scripts/conversation_pipeline_eval.py` | PASS | required production artifact |
 | `file:scripts/load_smoke_eval.py` | PASS | required production artifact |
 | `file:scripts/ui_walkthrough_eval.py` | PASS | required production artifact |
 | `file:scripts/real_embedding_eval.py` | PASS | required production artifact |
@@ -137,6 +138,8 @@ Failed: 0
 | `tests:qdrant-redacted-payload` | PASS | Qdrant payload redaction and ledger hydration are covered |
 | `postgres:pgcrypto-text` | PASS | PostgreSQL canonical memory text can be encrypted with pgcrypto by scope |
 | `tests:postgres-pgcrypto-text` | PASS | PostgreSQL memory text encryption behavior is covered |
+| `conversation:pipeline-runner` | PASS | conversation pipeline runner validates raw capture, curation and recall |
+| `tests:conversation-pipeline-runner` | PASS | conversation pipeline runner behavior is covered |
 | `embedding:live-regression-runner` | PASS | live OpenAI-compatible embedding runner validates dimension and semantic recall |
 | `tests:embedding-live-regression-runner` | PASS | embedding live regression runner behavior is covered |
 | `llm:live-regression-runner` | PASS | live OpenAI-compatible memory LLM runner validates chat and curation |

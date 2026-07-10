@@ -12,6 +12,7 @@ MANIFEST_FORMAT = "obelisk-release-evidence-manifest-v1"
 
 REQUIRED_ARTIFACTS = {
     "agent_soak",
+    "conversation_pipeline",
     "embedding",
     "memory_llm",
     "load_smoke",
@@ -111,6 +112,7 @@ def verify_manifest(path: Path) -> list[EvidenceCheck]:
     base = path.parent
     readers = {
         "agent_soak": _verify_agent_soak,
+        "conversation_pipeline": _verify_conversation_pipeline,
         "embedding": _verify_embedding,
         "memory_llm": _verify_memory_llm,
         "load_smoke": _verify_load_smoke,
@@ -204,6 +206,36 @@ def _verify_memory_llm(payload: dict[str, Any]) -> list[EvidenceCheck]:
             "memory_llm:required-checks",
             not missing,
             "required checks present" if not missing else "missing: " + ", ".join(missing),
+        ),
+    ]
+
+
+def _verify_conversation_pipeline(payload: dict[str, Any]) -> list[EvidenceCheck]:
+    names = _check_names(payload)
+    required = {
+        "raw-turn-stored",
+        "raw-turn-listed",
+        "raw-turn-not-recalled",
+        "curation-created-memory",
+        "curated-memory-recalled",
+    }
+    missing = sorted(required - names)
+    return [
+        _format_check(
+            "conversation_pipeline",
+            payload,
+            "obelisk-conversation-pipeline-v1",
+        ),
+        _ok_check("conversation_pipeline", payload),
+        EvidenceCheck(
+            "conversation_pipeline:required-checks",
+            not missing,
+            "required checks present" if not missing else "missing: " + ", ".join(missing),
+        ),
+        EvidenceCheck(
+            "conversation_pipeline:turn-and-memory",
+            bool(payload.get("turn_id")) and bool(payload.get("memory_id")),
+            "raw turn and curated memory ids present",
         ),
     ]
 

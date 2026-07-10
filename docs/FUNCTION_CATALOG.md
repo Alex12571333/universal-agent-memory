@@ -169,6 +169,7 @@
 | `scheduled_backup.py` | Backup → restore drill → audit export → JSON report | Webhook alert при fail; подходит для cron/systemd |
 | `audit_retention.py` | Audit export → verify → optional prune → JSON report | Dry-run by default; `--apply` requires signed export |
 | `agent_soak_eval.py` | Live OpenClaw/Hermes soak gate → JSON report | Retain/recall/idempotency/leakage checks against a running server |
+| `conversation_pipeline_eval.py` | Live raw transcript → curation → recall gate | Verifies raw turns do not leak into recall before explicit curation |
 | `load_smoke_eval.py` | Concurrent retain/recall load smoke → JSON report | p95 latency, error-rate and backlog gate |
 | `real_embedding_eval.py` | Live OpenAI-compatible embedding gate → JSON report | Dimension check plus semantic recall scenarios |
 | `real_memory_llm_eval.py` | Live OpenAI-compatible memory LLM gate → JSON report | Chat completion + JSON curation regression |
