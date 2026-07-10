@@ -4,7 +4,7 @@ from uuid import uuid4
 
 import pytest
 
-from memory_plane.adapters.postgres import PostgresMemoryLedger
+from memory_plane.adapters.postgres import _CONVERSATION_CONTENT_SQL, PostgresMemoryLedger
 from memory_plane.domain.models import MemoryItem, MemoryLayer, MemoryScope, Provenance
 
 
@@ -113,3 +113,19 @@ def test_postgres_reads_memory_text_encryption_key_file(
     ledger = PostgresMemoryLedger("postgresql://example/memory")
 
     assert ledger._text_encryption_key == "memtext_" + "b" * 40
+
+
+def test_postgres_encrypts_and_decrypts_raw_conversation_content(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("UAM_MEMORY_TEXT_ENCRYPTION", "pgcrypto")
+    monkeypatch.setenv("UAM_MEMORY_TEXT_ENCRYPTION_KEY", "memtext_" + "a" * 40)
+    ledger = PostgresMemoryLedger("postgresql://example/memory")
+    connection = _FakeRowConnection()
+
+    ciphertext = ledger._stored_sensitive_text(connection, "raw agent conversation")
+
+    assert ciphertext == "enc:pgcrypto:v1:ciphertext"
+    assert connection.calls[0][1][1] == "raw agent conversation"
+    assert "pgp_sym_decrypt" in _CONVERSATION_CONTENT_SQL
+    assert "m.content" in _CONVERSATION_CONTENT_SQL
