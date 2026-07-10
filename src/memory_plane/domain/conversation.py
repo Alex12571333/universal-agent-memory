@@ -8,6 +8,8 @@ from enum import StrEnum
 from typing import Any
 from uuid import UUID, uuid4
 
+PURGED_CONVERSATION_CONTENT = "[PURGED_AFTER_CURATION]"
+
 
 class ConversationRetentionPolicy(StrEnum):
     """How a runtime wants a raw turn to be treated by maintenance workers."""

@@ -801,6 +801,43 @@ def test_conversation_curate_endpoint_creates_recallable_memory() -> None:
     assert "Интерфейс должен быть на русском" in recalled.json()["results"][0]["text"]
 
 
+def test_curated_only_policy_purges_raw_text_after_successful_curation() -> None:
+    client = TestClient(create_app(build_in_memory_container()))
+    secret_marker = "temporary transcript marker 91c0b0"
+    turn = client.post(
+        "/v1/conversations/turns",
+        json={
+            "namespace": "privacy-sensitive",
+            "thread_id": str(DEFAULT_THREAD_ID),
+            "retention_policy": "curated_only",
+            "messages": [{"role": "user", "content": secret_marker}],
+        },
+    )
+
+    curated = client.post(
+        f"/v1/conversations/turns/{turn.json()['id']}/curate",
+        json={"idempotency_key": "curated-only-purge"},
+    )
+    listed = client.get(
+        "/v1/conversations/turns?namespace=privacy-sensitive"
+    )
+    retry = client.post(
+        f"/v1/conversations/turns/{turn.json()['id']}/curate",
+        json={"idempotency_key": "curated-only-purge"},
+    )
+
+    assert curated.status_code == 201
+    assert curated.json()["created"] is True
+    assert retry.status_code == 201
+    assert retry.json()["created"] is False
+    stored_turn = listed.json()["turns"][0]
+    assert secret_marker not in json.dumps(stored_turn)
+    assert stored_turn["messages"][0]["content"] == "[PURGED_AFTER_CURATION]"
+    assert stored_turn["metadata"]["retention"]["raw_content"] == (
+        "purged_after_curation"
+    )
+
+
 def test_memory_proposal_endpoint_stores_review_item_not_recall_memory() -> None:
     client = TestClient(create_app(build_in_memory_container()))
     body = {

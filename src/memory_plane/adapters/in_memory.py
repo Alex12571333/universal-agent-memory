@@ -13,7 +13,11 @@ from memory_plane.domain.api_key import ApiKeyRecord
 from memory_plane.domain.audit import AuditEvent
 from memory_plane.domain.checkpoint import Checkpoint, StaleRevisionError
 from memory_plane.domain.conflict import ConflictReviewDecision
-from memory_plane.domain.conversation import ConversationTurn
+from memory_plane.domain.conversation import (
+    PURGED_CONVERSATION_CONTENT,
+    ConversationMessage,
+    ConversationTurn,
+)
 from memory_plane.domain.graph import MemoryEdge, MemoryEdgeType
 from memory_plane.domain.identity import AgentIdentity, ThreadIdentity
 from memory_plane.domain.models import (
@@ -307,6 +311,36 @@ class InMemoryMemoryStore:
         ]
         rows.sort(key=lambda turn: (turn.created_at, turn.id), reverse=True)
         return tuple(rows[:limit])
+
+    def purge_turn_content(self, tenant_id: UUID, turn_id: UUID) -> bool:
+        """Replace transcript text after curated-only curation, preserving audit IDs."""
+        with self._lock:
+            turn = self._turns.get(turn_id)
+            if turn is None or turn.tenant_id != tenant_id:
+                return False
+            retention = {"raw_content": "purged_after_curation"}
+            self._turns[turn_id] = ConversationTurn(
+                id=turn.id,
+                tenant_id=turn.tenant_id,
+                workspace_id=turn.workspace_id,
+                thread_id=turn.thread_id,
+                agent_id=turn.agent_id,
+                namespace=turn.namespace,
+                source_kind=turn.source_kind,
+                retention_policy=turn.retention_policy,
+                created_at=turn.created_at,
+                metadata={**turn.metadata, "retention": retention},
+                messages=tuple(
+                    ConversationMessage(
+                        role=message.role,
+                        name=message.name,
+                        content=PURGED_CONVERSATION_CONTENT,
+                        metadata={**message.metadata, "retention": retention},
+                    )
+                    for message in turn.messages
+                ),
+            )
+            return True
 
     def append_proposal(
         self, proposal: MemoryProposal, idempotency_key: str | None = None

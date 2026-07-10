@@ -15,6 +15,12 @@ from memory_plane.contracts.dto import RecallQuery
 from memory_plane.contracts.events import ConsumerClaim, IntegrationEvent
 from memory_plane.domain.checkpoint import Checkpoint, StaleRevisionError
 from memory_plane.domain.conflict import ConflictReviewDecision, ConflictReviewStatus
+from memory_plane.domain.conversation import (
+    PURGED_CONVERSATION_CONTENT,
+    ConversationMessage,
+    ConversationRetentionPolicy,
+    ConversationTurn,
+)
 from memory_plane.domain.identity import AgentIdentity
 from memory_plane.domain.models import (
     MemoryItem,
@@ -120,6 +126,34 @@ class PostgresMemoryLedgerTest(unittest.TestCase):
                 (item.id,),
             ).fetchone()["count"]
         self.assertEqual(1, count)
+
+    def test_curated_only_raw_content_can_be_purged_without_losing_turn_identity(
+        self,
+    ) -> None:
+        turn = ConversationTurn(
+            tenant_id=self.tenant,
+            workspace_id=self.workspace,
+            thread_id=uuid4(),
+            retention_policy=ConversationRetentionPolicy.CURATED_ONLY,
+            messages=(
+                ConversationMessage(role="user", content="temporary raw transcript"),
+            ),
+        )
+        stored, created = self.store.append_turn(turn, "curated-only-postgres")
+
+        purged = self.store.purge_turn_content(self.tenant, turn.id)
+        loaded = self.store.get_turn(self.tenant, turn.id)
+
+        self.assertTrue(created)
+        self.assertEqual(turn.id, stored.id)
+        self.assertTrue(purged)
+        self.assertIsNotNone(loaded)
+        assert loaded is not None
+        self.assertEqual(PURGED_CONVERSATION_CONTENT, loaded.messages[0].content)
+        self.assertEqual(
+            "purged_after_curation",
+            loaded.metadata["retention"]["raw_content"],
+        )
 
     def test_provisioned_agent_and_thread_satisfy_memory_foreign_keys(self) -> None:
         agent_id = uuid4()

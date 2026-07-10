@@ -235,7 +235,7 @@
 | `POST /v1/memory/retain` | REST boundary для retain |
 | `POST /v1/conversations/turns` | Append immutable raw transcript turn | Не создаёт recallable memory автоматически |
 | `GET /v1/conversations/turns` | Operator transcript listing | Workspace/thread/namespace filters и bounded limit |
-| `POST /v1/conversations/turns/{id}/curate` | Raw turn → curated memory | Через обычный append-only retention pipeline |
+| `POST /v1/conversations/turns/{id}/curate` | Raw turn → curated memory | Append-only retention; `curated_only` затем purge raw text |
 | `POST /v1/memory/proposals` | Создаёт evidence-backed memory proposal | Proposal остаётся вне recall до accept |
 | `GET /v1/memory/proposals` | Proposal review listing | Namespace/status filters |
 | `POST /v1/memory/proposals/{id}/accept` | Accept proposal → `MemoryItem` | Идемпотентный append с provenance |

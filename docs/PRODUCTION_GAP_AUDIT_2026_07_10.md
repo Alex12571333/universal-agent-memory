@@ -145,11 +145,14 @@ static readiness script are green.
     egress-deny policy and target probe evidence remain required defense in
     depth.
 
-11. **Conversation retention policies do not implement their names.**
-    Every call first appends a raw turn, including `curated_only`; there is no
-    automatic expiry or deletion after curation. A privacy-sensitive caller
-    cannot rely on the selected policy to prevent or bound raw transcript
-    storage.
+11. **Conversation staging still needs bounded expiry.**
+    `raw_only` rejects curation, `raw_and_curated` preserves the source, and
+    `curated_only` now purges message text immediately after successful
+    idempotent curation while retaining audit identity. However, `curated_only`
+    still stores raw staging text until curation runs, and abandoned turns have
+    no TTL sweeper. Production needs an expiry timestamp, scheduled purge and
+    evidence that backlog/worker failure cannot retain staging transcripts
+    indefinitely.
 
 12. **LLM curation bypasses the proposal/evidence safety boundary.**
     `ConversationCurator` converts model JSON directly into a recallable memory

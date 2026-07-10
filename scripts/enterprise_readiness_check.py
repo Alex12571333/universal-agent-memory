@@ -865,6 +865,12 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 "conversation pipeline runner validates raw capture, curation and recall",
             ),
             Check(
+                "conversation:curated-only-purge",
+                "purge_turn_content" in read("src/memory_plane/services/conversations.py")
+                and "test_curated_only_policy_purges_raw_text" in tests,
+                "curated-only policy purges raw message content after curation",
+            ),
+            Check(
                 "tests:conversation-pipeline-runner",
                 "test_conversation_pipeline_eval_passes_full_pipeline"
                 in read("tests/test_conversation_pipeline_eval.py")
