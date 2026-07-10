@@ -7,12 +7,15 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.request
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+from backup_encryption import BackupEncryptionError, encrypt_file, key_fingerprint, parse_key
 
 from memory_plane.config.database import read_database_dsn
 from memory_plane.config.secrets import read_secret_env
@@ -59,6 +62,11 @@ def main() -> int:
         help="Optional HTTP webhook called when the job fails",
     )
     parser.add_argument(
+        "--encryption-key",
+        default=read_secret_env("UAM_BACKUP_ENCRYPTION_KEY"),
+        help="URL-safe base64 AES-256 backup key; defaults to UAM_BACKUP_ENCRYPTION_KEY[_FILE]",
+    )
+    parser.add_argument(
         "--skip-audit-export",
         action="store_true",
         help="Skip audit bundle export",
@@ -75,12 +83,18 @@ def main() -> int:
     args = parser.parse_args()
     if not args.database_url:
         parser.error("database URL is required")
+    if not args.encryption_key:
+        parser.error("UAM_BACKUP_ENCRYPTION_KEY or --encryption-key is required")
+    try:
+        encryption_key = parse_key(args.encryption_key)
+    except BackupEncryptionError as exc:
+        parser.error(str(exc))
 
     timestamp = args.timestamp or datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     backup_dir = Path(args.backup_dir)
     audit_root = Path(args.audit_dir)
     report_path = Path(args.report)
-    backup_path = backup_dir / f"obelisk-memory-{timestamp}.dump"
+    backup_path = backup_dir / f"obelisk-memory-{timestamp}.dump.enc"
     audit_path = audit_root / timestamp
     started = time.time()
     steps: list[dict[str, Any]] = []
@@ -91,18 +105,25 @@ def main() -> int:
         audit_path.mkdir(parents=True, exist_ok=True)
 
     success = True
+    plaintext_backup: Path | None = None
     try:
+        descriptor, name = tempfile.mkstemp(prefix="obelisk-backup-", suffix=".dump")
+        os.close(descriptor)
+        plaintext_backup = Path(name)
+        plaintext_backup.chmod(0o600)
         success &= _run_step(
             steps,
             "backup",
             [
                 sys.executable,
                 str(ROOT / "scripts" / "backup.py"),
-                str(backup_path),
+                str(plaintext_backup),
                 "--database-url",
                 args.database_url,
             ],
         )
+        if steps[-1]["ok"]:
+            success &= _encrypt_step(steps, plaintext_backup, backup_path, encryption_key)
         if not args.skip_restore_drill and steps[-1]["ok"]:
             success &= _run_step(
                 steps,
@@ -144,14 +165,21 @@ def main() -> int:
                 "stderr": str(exc),
             }
         )
+    finally:
+        if plaintext_backup is not None:
+            plaintext_backup.unlink(missing_ok=True)
 
     report = {
-        "format": "obelisk-scheduled-backup-report-v1",
+        "format": "obelisk-scheduled-backup-report-v2",
         "ok": success,
         "started_at": datetime.fromtimestamp(started, UTC).isoformat(),
         "finished_at": datetime.now(UTC).isoformat(),
         "duration_seconds": round(time.time() - started, 3),
         "backup_path": str(backup_path),
+        "backup_encryption": {
+            "algorithm": "AES-256-GCM",
+            "key_fingerprint": key_fingerprint(encryption_key),
+        },
         "audit_export_path": None if args.skip_audit_export else str(audit_path),
         "restore_drill_required": not args.skip_restore_drill,
         "steps": steps,
@@ -185,6 +213,36 @@ def _run_step(
         }
     )
     return result.returncode == 0
+
+
+def _encrypt_step(steps: list[dict[str, Any]], source: Path, target: Path, key: bytes) -> bool:
+    """Encrypt a temporary dump without placing a key in a subprocess command."""
+    started = time.time()
+    try:
+        metadata = encrypt_file(source, target, key)
+    except Exception as exc:
+        steps.append(
+            {
+                "name": "backup_encryption",
+                "ok": False,
+                "returncode": None,
+                "duration_seconds": round(time.time() - started, 3),
+                "stdout": "",
+                "stderr": str(exc),
+            }
+        )
+        return False
+    steps.append(
+        {
+            "name": "backup_encryption",
+            "ok": True,
+            "returncode": 0,
+            "duration_seconds": round(time.time() - started, 3),
+            "stdout": json.dumps(metadata, sort_keys=True),
+            "stderr": "",
+        }
+    )
+    return True
 
 
 def _skipped_step(name: str, reason: str) -> dict[str, Any]:

@@ -163,7 +163,7 @@
 |---|---|---|
 | `render_prometheus(metrics)` | Numeric mapping → Prometheus text | Stable sort, `uam_` prefix |
 | `backup.py` | Запускает `pg_dump --format=custom` | URL из `UAM_BACKUP_DATABASE_URL`/admin/database env |
-| `restore.py` | Запускает `pg_restore` | Non-destructive by default; `--clean` opt-in |
+| `restore.py` | Запускает `pg_restore` | Расшифровывает `.dump.enc` в защищённый временный файл; `--clean` opt-in |
 | `check_branch_protection.py` | Проверяет GitHub release gate для `main` | Требует PR, status checks, strict mode и admin enforcement |
 | `check_metrics_health.py` | `/metrics`/file/stdin → JSON health gate | Fail по outbox lag/dead-letter; webhook alert |
 | `deployment_preflight.py` | Public/backend URLs → JSON deployment-boundary gate | Requires HTTPS public health/security headers and blocked direct backend |
@@ -174,7 +174,7 @@
 | `generate_release_evidence_manifest.py` | Reports + commit/image/deployment identity → signed `release-evidence.json` v2 | SHA-256 per artifact, safe relative paths, HMAC-SHA256 manifest signature |
 | `verify_release_evidence.py` | Signed release bundle → pass/fail | Verifies identity, freshness, signature, paths, hashes and report semantics |
 | `generate_release_notes.py` | Git refs → release changelog and rollback JSON evidence | Records previous/current commits plus restore/redeploy rollback steps |
-| `scheduled_backup.py` | Backup → restore drill → audit export → JSON report | Webhook alert при fail; подходит для cron/systemd |
+| `scheduled_backup.py` | Backup → AES-256-GCM → restore drill → audit export → JSON report | Ключ только из secret env/file; webhook alert при fail; подходит для cron/systemd |
 | `audit_retention.py` | Audit export → verify → optional prune → JSON report | Dry-run by default; `--apply` requires signed export |
 | `agent_soak_eval.py` | Live OpenClaw/Hermes soak gate → JSON report | Retain/recall/idempotency/leakage checks against a running server |
 | `conversation_pipeline_eval.py` | Live raw transcript → curation → recall gate | Verifies raw turns do not leak into recall before explicit curation |

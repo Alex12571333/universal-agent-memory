@@ -209,14 +209,19 @@ the rotation permanent.
 docker compose -f docker-compose.prod.yml --env-file .env.production --profile ops run --rm backup
 ```
 
-Move `./backups/obelisk-memory.dump` to durable storage outside Docker volumes.
+The `ops` profile creates an authenticated encrypted artifact named
+`./backups/obelisk-memory-<timestamp>.dump.enc`. Move this artifact and its
+JSON report to durable storage outside Docker volumes. The Compose job omits
+the Docker-based restore drill; run that drill from a trusted host or CI runner
+with Docker access before accepting a release.
 Before a destructive maintenance task, make two backups and test restore on a
 separate stack.
 
 Run a non-destructive restore drill after creating a backup and before upgrades:
 
 ```bash
-python scripts/restore_drill.py ./backups/obelisk-memory.dump
+UAM_BACKUP_ENCRYPTION_KEY_FILE=/absolute/path/to/backup_encryption_key \
+python scripts/restore_drill.py ./backups/obelisk-memory-<timestamp>.dump.enc
 ```
 
 The drill creates a temporary PostgreSQL Docker container and volume, restores
@@ -230,6 +235,7 @@ systemd timer, launchd, or your orchestrator:
 
 ```bash
 UAM_BACKUP_DATABASE_URL=postgresql://... \
+UAM_BACKUP_ENCRYPTION_KEY_FILE=/absolute/path/to/backup_encryption_key \
 UAM_BACKUP_ALERT_WEBHOOK=https://alerts.example/obelisk-backup \
 PYTHONPATH=src python scripts/scheduled_backup.py \
   --backup-dir ./backups \
@@ -239,14 +245,14 @@ PYTHONPATH=src python scripts/scheduled_backup.py \
 
 The job:
 
-- creates a timestamped PostgreSQL dump;
-- runs the isolated restore drill against that dump;
+- creates a timestamped AES-256-GCM encrypted PostgreSQL dump;
+- runs the isolated restore drill, including authenticated decryption;
 - exports a recent audit bundle;
 - writes a JSON report with every step and return code;
 - posts the report to `UAM_BACKUP_ALERT_WEBHOOK` when any required step fails.
 
 Production deployments should run this on a fixed schedule and ship
-`latest-backup-report.json`, backup dumps, and audit bundles to durable storage
+`latest-backup-report.json`, encrypted backup artifacts, and audit bundles to durable storage
 outside the Docker host. The repository provides the runner and alert hook; the
 actual cron/systemd/orchestrator schedule is an environment-level control.
 

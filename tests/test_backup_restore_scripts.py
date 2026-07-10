@@ -6,6 +6,7 @@ import json
 import subprocess
 import sys
 import urllib.error
+from base64 import urlsafe_b64encode
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -21,6 +22,7 @@ RELEASE_SOURCE_COMMIT = "1" * 40
 RELEASE_IMAGE_DIGEST = "sha256:" + "2" * 64
 RELEASE_API_URL = "http://localhost:6798"
 RELEASE_PUBLIC_URL = "https://memory.example.com"
+BACKUP_ENCRYPTION_KEY = urlsafe_b64encode(b"k" * 32).decode("ascii")
 
 
 def _load_script(name: str) -> ModuleType:
@@ -34,6 +36,7 @@ def _load_script(name: str) -> ModuleType:
 
 
 backup = _load_script("backup")
+backup_encryption = _load_script("backup_encryption")
 restore = _load_script("restore")
 restore_drill = _load_script("restore_drill")
 check_branch_protection = _load_script("check_branch_protection")
@@ -179,6 +182,7 @@ def test_validate_production_env_accepts_strict_real_config(tmp_path: Path) -> N
                 "UAM_MEMORY_TEXT_ENCRYPTION=pgcrypto",
                 "UAM_MEMORY_TEXT_ENCRYPTION_SCOPES=all",
                 "UAM_MEMORY_TEXT_ENCRYPTION_KEY=memtext_" + "f" * 40,
+                "UAM_BACKUP_ENCRYPTION_KEY=" + BACKUP_ENCRYPTION_KEY,
                 "UAM_AUDIT_SIGNING_KEY=audit_" + "b" * 40,
                 "UAM_VAULT_SIGNING_KEY=vault_" + "c" * 40,
                 "UAM_RELEASE_SIGNING_KEY=release_" + "d" * 40,
@@ -220,6 +224,7 @@ def test_validate_production_env_accepts_secret_files(tmp_path: Path) -> None:
         "UAM_APP_DB_PASSWORD": "app_" + "f" * 40,
         "MINIO_ROOT_PASSWORD": "minio_" + "a" * 40,
         "UAM_MEMORY_TEXT_ENCRYPTION_KEY": "memtext_" + "f" * 40,
+        "UAM_BACKUP_ENCRYPTION_KEY": BACKUP_ENCRYPTION_KEY,
         "UAM_AUDIT_SIGNING_KEY": "audit_" + "b" * 40,
         "UAM_VAULT_SIGNING_KEY": "vault_" + "c" * 40,
         "UAM_RELEASE_SIGNING_KEY": "release_" + "d" * 40,
@@ -315,6 +320,7 @@ def test_validate_production_env_rejects_placeholders_and_missing_public_tls() -
         "UAM_VAULT_SIGNING_KEY",
         "UAM_RELEASE_SIGNING_KEY",
         "UAM_MEMORY_TEXT_ENCRYPTION_KEY",
+        "UAM_BACKUP_ENCRYPTION_KEY",
     } <= failed
 
 
@@ -355,9 +361,7 @@ def test_validate_production_env_requires_all_model_origins_in_allowlist() -> No
         }
     )
 
-    allowlist = next(
-        check for check in checks if check.name == "model-endpoint-allowlist"
-    )
+    allowlist = next(check for check in checks if check.name == "model-endpoint-allowlist")
     assert allowlist.ok is False
     assert "https://llm.example:443" in allowlist.detail
 
@@ -420,11 +424,12 @@ def test_production_compose_wires_memory_text_encryption() -> None:
     assert compose.count("UAM_MEMORY_TEXT_ENCRYPTION: ${UAM_MEMORY_TEXT_ENCRYPTION:-pgcrypto}") >= 2
     assert compose.count("UAM_MEMORY_TEXT_ENCRYPTION_SCOPES: ") >= 2
     assert compose.count("UAM_MEMORY_TEXT_ENCRYPTION_KEY_FILE: ") >= 2
+    assert "UAM_BACKUP_ENCRYPTION_KEY_FILE: /run/secrets/backup_encryption_key" in compose
+    assert "backup_encryption_key:" in compose
     assert "UAM_API_KEY_FILE: ${UAM_API_KEY_FILE:-}" in compose
     assert "UAM_API_KEYS_FILE: ${UAM_API_KEYS_FILE:-}" in compose
     assert (
-        "UAM_API_PRINCIPAL_BINDINGS_JSON_FILE: "
-        "${UAM_API_PRINCIPAL_BINDINGS_JSON_FILE:-}"
+        "UAM_API_PRINCIPAL_BINDINGS_JSON_FILE: ${UAM_API_PRINCIPAL_BINDINGS_JSON_FILE:-}"
     ) in compose
     assert "UAM_REQUIRE_IDENTITY_BINDINGS: ${UAM_REQUIRE_IDENTITY_BINDINGS:-true}" in compose
     assert compose.count("UAM_QDRANT_PAYLOAD_TEXT: ${UAM_QDRANT_PAYLOAD_TEXT:-false}") >= 2
@@ -468,13 +473,9 @@ def test_validate_production_env_rejects_qdrant_text_payloads(tmp_path: Path) ->
 
 
 def test_validate_production_env_rejects_unsafe_qdrant_collection_name() -> None:
-    checks = validate_production_env.validate_env(
-        {"UAM_QDRANT_COLLECTION": "memory/items;drop"}
-    )
+    checks = validate_production_env.validate_env({"UAM_QDRANT_COLLECTION": "memory/items;drop"})
 
-    collection = next(
-        check for check in checks if check.name == "UAM_QDRANT_COLLECTION"
-    )
+    collection = next(check for check in checks if check.name == "UAM_QDRANT_COLLECTION")
     assert collection.ok is False
     assert "stable" in collection.detail
 
@@ -528,6 +529,41 @@ def test_restore_invokes_pg_restore_with_optional_clean(
     )
 
 
+def test_restore_decrypts_encrypted_artifact_to_temporary_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    plain = tmp_path / "obelisk.dump"
+    encrypted = tmp_path / "obelisk.dump.enc"
+    plain.write_bytes(b"PGDMP-encrypted-restore")
+    key = backup_encryption.parse_key(BACKUP_ENCRYPTION_KEY)
+    backup_encryption.encrypt_file(plain, encrypted, key)
+    run = Mock()
+    monkeypatch.setattr(restore.subprocess, "run", run)
+    monkeypatch.setenv("UAM_RESTORE_DATABASE_URL", "postgresql://example/db")
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "restore.py",
+            str(encrypted),
+            "--encryption-key",
+            BACKUP_ENCRYPTION_KEY,
+        ],
+    )
+
+    assert restore.main() == 0
+
+    command = run.call_args.args[0]
+    temporary = Path(command[-1])
+    assert command[:4] == [
+        "pg_restore",
+        "--no-owner",
+        "--no-acl",
+        "--dbname=postgresql://example/db",
+    ]
+    assert temporary.suffix == ".dump"
+    assert not temporary.exists()
+
+
 def test_restore_drill_uses_temporary_docker_target(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -562,6 +598,25 @@ def test_restore_drill_uses_temporary_docker_target(
     assert any(command[:4] == ["docker", "exec", container, "psql"] for command in commands)
     assert commands[-2] == ["docker", "rm", "-f", container]
     assert commands[-1] == ["docker", "volume", "rm", "-f", volume]
+
+
+def test_backup_encryption_round_trip_rejects_tampering(tmp_path: Path) -> None:
+    source = tmp_path / "source.dump"
+    encrypted = tmp_path / "source.dump.enc"
+    restored = tmp_path / "restored.dump"
+    source.write_bytes(b"PGDMP" + b"memory-data" * 100_000)
+    key = backup_encryption.parse_key(BACKUP_ENCRYPTION_KEY)
+
+    metadata = backup_encryption.encrypt_file(source, encrypted, key)
+    backup_encryption.decrypt_file(encrypted, restored, key)
+
+    assert metadata["algorithm"] == "AES-256-GCM"
+    assert restored.read_bytes() == source.read_bytes()
+    tampered = bytearray(encrypted.read_bytes())
+    tampered[-1] ^= 1
+    encrypted.write_bytes(tampered)
+    with pytest.raises(backup_encryption.BackupEncryptionError, match="authentication"):
+        backup_encryption.decrypt_file(encrypted, tmp_path / "tampered.dump", key)
 
 
 def test_export_audit_writes_jsonl_manifest_and_checksum(
@@ -1028,6 +1083,14 @@ def test_scheduled_backup_runs_backup_drill_audit_and_writes_report(
     report = tmp_path / "report.json"
     monkeypatch.setattr(scheduled_backup.subprocess, "run", fake_run)
     monkeypatch.setattr(
+        scheduled_backup,
+        "encrypt_file",
+        lambda _source, target, _key: (
+            target.write_bytes(b"encrypted"),
+            {"algorithm": "AES-256-GCM", "key_fingerprint": "test", "plaintext_bytes": 5},
+        )[1],
+    )
+    monkeypatch.setattr(
         "sys.argv",
         [
             "scheduled_backup.py",
@@ -1039,6 +1102,8 @@ def test_scheduled_backup_runs_backup_drill_audit_and_writes_report(
             str(report),
             "--database-url",
             "postgresql://example/db",
+            "--encryption-key",
+            BACKUP_ENCRYPTION_KEY,
             "--timestamp",
             "20260710T120000Z",
         ],
@@ -1049,8 +1114,9 @@ def test_scheduled_backup_runs_backup_drill_audit_and_writes_report(
     payload = json.loads(report.read_text(encoding="utf-8"))
     names = [step["name"] for step in payload["steps"]]
     assert payload["ok"] is True
-    assert payload["backup_path"].endswith("obelisk-memory-20260710T120000Z.dump")
-    assert names == ["backup", "restore_drill", "audit_export"]
+    assert payload["backup_path"].endswith("obelisk-memory-20260710T120000Z.dump.enc")
+    assert payload["backup_encryption"]["algorithm"] == "AES-256-GCM"
+    assert names == ["backup", "backup_encryption", "restore_drill", "audit_export"]
     assert "backup.py" in commands[0][1]
     assert "restore_drill.py" in commands[1][1]
     assert "export_audit.py" in commands[2][1]
@@ -1086,6 +1152,8 @@ def test_scheduled_backup_alerts_on_failure(
             str(report),
             "--database-url",
             "postgresql://example/db",
+            "--encryption-key",
+            BACKUP_ENCRYPTION_KEY,
             "--alert-webhook",
             "https://alerts.example/backup",
             "--skip-audit-export",
@@ -1120,6 +1188,7 @@ def test_verify_release_evidence_accepts_complete_manifest(tmp_path: Path) -> No
         "load_smoke:parallelism",
         "observability:required-checks",
         "scheduled_backup:restore-drill",
+        "scheduled_backup:encrypted-artifact",
         "audit_retention:verified-export",
         "deployment_preflight:backend-not-public",
         "ops_schedule:required-checks",
@@ -1822,10 +1891,13 @@ def _write_release_evidence_bundle(tmp_path: Path) -> Path:
     _write_json(
         tmp_path / "scheduled-backup.json",
         {
-            "format": "obelisk-scheduled-backup-report-v1",
+            "format": "obelisk-scheduled-backup-report-v2",
             "ok": True,
+            "backup_path": "s3://obelisk-memory/backups/obelisk-memory.dump.enc",
+            "backup_encryption": {"algorithm": "AES-256-GCM"},
             "steps": [
                 {"name": "backup", "ok": True},
+                {"name": "backup_encryption", "ok": True},
                 {"name": "restore_drill", "ok": True},
                 {"name": "audit_export", "ok": True},
             ],
@@ -1887,7 +1959,11 @@ def _write_release_evidence_bundle(tmp_path: Path) -> Path:
         {
             "format": "obelisk-secret-files-preflight-v1",
             "ok": True,
-            "required_secrets": ["UAM_API_KEY", "UAM_API_KEYS"],
+            "required_secrets": [
+                "UAM_API_KEY",
+                "UAM_API_KEYS",
+                "UAM_BACKUP_ENCRYPTION_KEY",
+            ],
             "allowed_prefixes": [str(tmp_path / "secrets")],
             "checks": [
                 {"name": "UAM_API_KEY:raw-empty", "ok": True},
@@ -1898,6 +1974,10 @@ def _write_release_evidence_bundle(tmp_path: Path) -> Path:
                 {"name": "UAM_API_KEYS:file-configured", "ok": True},
                 {"name": "UAM_API_KEYS:file-readable", "ok": True},
                 {"name": "UAM_API_KEYS:file-prefix", "ok": True},
+                {"name": "UAM_BACKUP_ENCRYPTION_KEY:raw-empty", "ok": True},
+                {"name": "UAM_BACKUP_ENCRYPTION_KEY:file-configured", "ok": True},
+                {"name": "UAM_BACKUP_ENCRYPTION_KEY:file-readable", "ok": True},
+                {"name": "UAM_BACKUP_ENCRYPTION_KEY:file-prefix", "ok": True},
             ],
         },
     )

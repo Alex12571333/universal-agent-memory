@@ -23,7 +23,7 @@ RUN apt-get update \
 COPY pyproject.toml README.md ./
 COPY src ./src
 COPY migrations ./migrations
-COPY scripts/migrate.py scripts/backup.py scripts/restore.py scripts/export_vault.py scripts/import_vault.py ./scripts/
+COPY scripts ./scripts
 COPY --from=web-builder /web/dist ./web/dist
 RUN python -m pip install ".[api,postgres,qdrant,nats,documents]"
 

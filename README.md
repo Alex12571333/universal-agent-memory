@@ -167,6 +167,8 @@ Production notes:
   its provisioned tenant/workspace/agent UUID in
   `UAM_API_PRINCIPAL_BINDINGS_JSON` (or the matching `*_FILE` variable);
 - keep backups outside Docker volumes;
+- configure `UAM_BACKUP_ENCRYPTION_KEY_FILE` with a dedicated 32-byte,
+  URL-safe-base64 key; scheduled backup artifacts use authenticated AES-256-GCM;
 - pin and test embedding/model dimensions before changing providers.
 
 Full runbook: [docs/OPERATIONS_RUNBOOK.md](docs/OPERATIONS_RUNBOOK.md). TLS

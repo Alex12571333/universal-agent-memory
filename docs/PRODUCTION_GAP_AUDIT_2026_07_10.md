@@ -82,9 +82,11 @@ static readiness script are green.
 5. **Encryption-at-rest coverage is incomplete.**
    pgcrypto now protects new `memory_items.text` rows, raw conversation content,
    proposals and proposal evidence. Provenance quotes, observations,
-   checkpoints, audit metadata, legacy plaintext rows and PostgreSQL dumps can
-   still contain plaintext. Production documentation must not describe
-   `UAM_MEMORY_TEXT_ENCRYPTION_SCOPES=all` as full-database or backup
+   checkpoints, audit metadata and legacy plaintext rows can still contain
+   plaintext. New scheduled PostgreSQL artifacts use authenticated AES-256-GCM,
+   but direct `backup.py` is intentionally a low-level raw-dump primitive and
+   must not be used for a production schedule. Production documentation must
+   not describe `UAM_MEMORY_TEXT_ENCRYPTION_SCOPES=all` as full-database
    encryption.
 
 6. **Fail-soft recall is implemented; target outage evidence remains required.**
@@ -174,9 +176,10 @@ static readiness script are green.
 3. PostgreSQL opens a new connection per operation. The deployment has one API
    process and single-node PostgreSQL/Qdrant/NATS volumes, with no HA or safe
    horizontal-scaling design.
-4. Backup covers PostgreSQL only and is not encrypted or signed. Restore drill
-   checks schema presence, not source/restore row-count parity, decryption,
-   recall, RLS or required Qdrant reindex after restore.
+4. Backup covers PostgreSQL only. The scheduled runner encrypts new dumps with
+   AES-256-GCM and verifies decryption through the restore drill, but artifacts
+   are not signed and the drill still checks schema presence rather than
+   source/restore row-count parity, recall, RLS or required Qdrant reindex.
 5. Embedding metrics exposed by the API describe the API process, while actual
    embedding work runs in another container. Worker failures can remain absent
    from the metrics used by alerts.
@@ -366,8 +369,9 @@ Required gates:
    coverage are complete.
 5. Preserve target evidence for Qdrant outage/recovery, workspace reindex and
    the verified model/dimension collection migration.
-6. Complete encryption/backup coverage, then preserve target evidence for the
-   authenticated UI session and model-egress boundaries.
+6. Complete remaining sensitive-table/legacy-data encryption and signed backup
+   coverage, then preserve target evidence for the authenticated UI session and
+   model-egress boundaries.
 7. Install schedules, immutable storage, monitoring and alert routing; then run
    native-agent, conversation, load, UI, embedding and LLM target gates.
 8. Seal every release with the signed content-addressed v2 evidence manifest,

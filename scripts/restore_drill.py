@@ -3,10 +3,16 @@
 from __future__ import annotations
 
 import argparse
+import os
 import secrets
 import subprocess
+import tempfile
 import time
 from pathlib import Path
+
+from backup_encryption import BackupEncryptionError, decrypt_file, parse_key
+
+from memory_plane.config.secrets import read_secret_env
 
 REQUIRED_TABLES = (
     "schema_migrations",
@@ -23,7 +29,12 @@ REQUIRED_TABLES = (
 def main() -> int:
     """Run a non-destructive restore drill against an isolated Docker volume."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("backup", help="Path to a pg_dump custom-format .dump file")
+    parser.add_argument("backup", help="Path to a .dump or AES-256-GCM encrypted .dump.enc file")
+    parser.add_argument(
+        "--encryption-key",
+        default=read_secret_env("UAM_BACKUP_ENCRYPTION_KEY"),
+        help="Required for .enc artifacts; defaults to UAM_BACKUP_ENCRYPTION_KEY[_FILE]",
+    )
     parser.add_argument(
         "--image",
         default="postgres:17-alpine",
@@ -59,6 +70,25 @@ def main() -> int:
     password = f"drill-{secrets.token_hex(12)}"
     dsn = f"postgresql://{user}:{password}@localhost:5432/{db}"
     remote_backup = "/tmp/obelisk-memory.dump"
+    decrypted_backup: Path | None = None
+
+    if backup.suffix == ".enc":
+        if not args.encryption_key:
+            parser.error("encrypted backup requires UAM_BACKUP_ENCRYPTION_KEY or --encryption-key")
+        try:
+            key = parse_key(args.encryption_key)
+        except BackupEncryptionError as exc:
+            parser.error(str(exc))
+        descriptor, name = tempfile.mkstemp(prefix="obelisk-restore-", suffix=".dump")
+        os.close(descriptor)
+        decrypted_backup = Path(name)
+        decrypted_backup.chmod(0o600)
+        try:
+            decrypt_file(backup, decrypted_backup, key)
+        except BackupEncryptionError as exc:
+            decrypted_backup.unlink(missing_ok=True)
+            raise RuntimeError(f"unable to decrypt backup: {exc}") from exc
+        backup = decrypted_backup
 
     try:
         _run(["docker", "volume", "create", volume])
@@ -98,6 +128,8 @@ def main() -> int:
         print(f"restore_drill=PASS container={container} volume={volume}")
         return 0
     finally:
+        if decrypted_backup is not None:
+            decrypted_backup.unlink(missing_ok=True)
         if not args.keep:
             _run(["docker", "rm", "-f", container], check=False)
             _run(["docker", "volume", "rm", "-f", volume], check=False)

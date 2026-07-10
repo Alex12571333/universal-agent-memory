@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import base64
+import binascii
 import json
 import re
 from collections.abc import Iterable
@@ -74,6 +76,7 @@ def validate_env(
         _check_qdrant_collection(values),
         _check_qdrant_payload_text(values),
         _check_memory_text_encryption(values),
+        _check_backup_encryption(values),
         _check_memory_llm_endpoint(values),
         _check_model_endpoint_allowlist(values),
     ]
@@ -102,6 +105,28 @@ def _check_secret(values: dict[str, str], key: str, *, min_length: int) -> EnvCh
     if any(pattern in lowered for pattern in PLACEHOLDER_PATTERNS):
         return EnvCheck(key, False, "contains placeholder-looking text")
     return EnvCheck(key, True, f"configured via {source}")
+
+
+def _check_backup_encryption(values: dict[str, str]) -> EnvCheck:
+    """Require an exact URL-safe-base64 AES-256 key for backup artifacts."""
+    value, source = _value_or_file(values, "UAM_BACKUP_ENCRYPTION_KEY")
+    if not value:
+        return EnvCheck("UAM_BACKUP_ENCRYPTION_KEY", False, "missing or empty")
+    try:
+        decoded = base64.b64decode(value.encode("ascii"), altchars=b"-_", validate=True)
+    except (UnicodeEncodeError, binascii.Error):
+        return EnvCheck(
+            "UAM_BACKUP_ENCRYPTION_KEY",
+            False,
+            "must be URL-safe base64 encoding of 32 random bytes",
+        )
+    if len(decoded) != 32:
+        return EnvCheck(
+            "UAM_BACKUP_ENCRYPTION_KEY",
+            False,
+            "must decode to exactly 32 bytes",
+        )
+    return EnvCheck("UAM_BACKUP_ENCRYPTION_KEY", True, f"AES-256 key configured via {source}")
 
 
 def _check_scoped_api_keys(values: dict[str, str]) -> EnvCheck:
@@ -151,8 +176,7 @@ def _check_principal_bindings(values: dict[str, str]) -> EnvCheck:
     agent_names = {
         parts[0].strip()
         for entry in scoped_keys.split(",")
-        if len(parts := entry.split(":")) == 3
-        and "agent" in re.split(r"[+|]", parts[2])
+        if len(parts := entry.split(":")) == 3 and "agent" in re.split(r"[+|]", parts[2])
     }
     missing = sorted(agent_names - payload.keys())
     if missing:
