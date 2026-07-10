@@ -68,7 +68,7 @@ from memory_plane.services.proposals import (
     ReviewMemoryProposalCommand,
     SubmitMemoryProposalCommand,
 )
-from memory_plane.services.vault import VaultImportSource
+from memory_plane.services.vault import VaultImportSource, editable_vault_content
 
 DEFAULT_SERVER_ID = UUID("00000000-0000-0000-0000-000000000001")
 DEFAULT_PROJECT_ID = UUID("00000000-0000-0000-0000-000000000002")
@@ -1639,6 +1639,7 @@ def create_app(
                 {
                     "path": file.path,
                     "content": file.content,
+                    "editable_content": editable_vault_content(file.content),
                 }
                 for file in vault.files
             ],

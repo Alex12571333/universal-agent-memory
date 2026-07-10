@@ -742,7 +742,7 @@ function MemoryGraph({
 
 function VaultPreview({ files, selectedPath, setSelectedFile }: { files: VaultFile[]; selectedPath?: string; setSelectedFile: (path: string) => void }) {
   const file = files.find((item) => item.path === selectedPath) ?? files[0];
-  const readable = vaultReadableBody(file?.content ?? "");
+  const readable = vaultReadableBody(file);
   return (
     <div className="vault-preview-grid">
       <div className="file-tree">
@@ -774,8 +774,8 @@ function VaultEditor(props: {
   onArchive: (file?: VaultFile) => Promise<void>;
 }) {
   const file = props.files.find((item) => item.path === props.selectedPath) ?? props.files[0];
-  const [text, setText] = useState(vaultReadableBody(file?.content ?? ""));
-  useEffect(() => setText(vaultReadableBody(file?.content ?? "")), [file?.path, file?.content]);
+  const [text, setText] = useState(vaultReadableBody(file));
+  useEffect(() => setText(vaultReadableBody(file)), [file?.path, file?.content, file?.editable_content]);
   const canEdit = !!file && isVaultEditable(file);
 
   async function save(dryRun: boolean) {
@@ -1086,7 +1086,7 @@ function fileDisplayName(path: string) {
 
 function vaultFileTitle(file: VaultFile) {
   if (file.path.endsWith("README.md")) return "README";
-  const readable = vaultReadableBody(file.content)
+  const readable = vaultReadableBody(file)
     .split(/\n+/)
     .map((line) => line.replace(/^#{1,6}\s*/, "").replace(/^[-*]\s*/, "").trim())
     .find(Boolean);
@@ -1180,7 +1180,11 @@ function conflictRationale(item: ConflictCase) {
   return item.rationale ?? item.suggested_reason ?? "Сервер предлагает самую свежую активную версию, исходные записи остаются append-only.";
 }
 
-function vaultReadableBody(content: string) {
+function vaultReadableBody(fileOrContent: VaultFile | string | undefined) {
+  if (typeof fileOrContent === "object" && fileOrContent?.editable_content !== undefined) {
+    return sanitizeVaultEditableBody(fileOrContent.editable_content);
+  }
+  const content = typeof fileOrContent === "string" ? fileOrContent : fileOrContent?.content ?? "";
   return splitVaultMarkdown(content).body;
 }
 

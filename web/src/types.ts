@@ -64,6 +64,7 @@ export interface ConflictsResponse {
 export interface VaultFile {
   path: string;
   content: string;
+  editable_content?: string;
 }
 
 export interface VaultResponse {

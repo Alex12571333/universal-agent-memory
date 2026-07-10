@@ -219,6 +219,54 @@ def test_vault_import_strips_leaked_vector_payload_without_heading() -> None:
     assert all("qwen-on-spark" not in row.text for row in memories)
 
 
+def test_vault_import_strips_multiline_vector_array_from_editable_body() -> None:
+    container = build_in_memory_container()
+    tenant = uuid4()
+    workspace = uuid4()
+    container.retention.retain(
+        RetainCommand(
+            tenant_id=tenant,
+            workspace_id=workspace,
+            layer=MemoryLayer.SEMANTIC,
+            scope=MemoryScope.WORKSPACE,
+            kind="fact",
+            text="Редактор хранит человеческий текст.",
+            provenance=Provenance(source_kind="api"),
+        )
+    )
+    export = container.vault.export(tenant, workspace)
+    note = next(file for file in export.files if file.path.startswith("semantic/"))
+    edited = note.content.replace(
+        "Редактор хранит человеческий текст.",
+        "\n".join(
+            [
+                "Редактор показывает только смысловую заметку.",
+                "[",
+                "0.11,",
+                "0.22,",
+                "0.33,",
+                "]",
+                "Обычная строка после вектора остается.",
+            ]
+        ),
+    )
+
+    result = container.vault.apply_import(
+        tenant,
+        workspace,
+        (VaultImportSource(note.path, edited),),
+    )
+
+    memories = container.store.list_for_workspace(tenant, workspace)
+    assert result.changes[0].action == "supersede"
+    assert any(
+        row.text
+        == "Редактор показывает только смысловую заметку.\nОбычная строка после вектора остается."
+        for row in memories
+    )
+    assert all("0.11" not in row.text for row in memories)
+
+
 def test_vault_import_apply_creates_superseding_revision_without_overwrite() -> None:
     container = build_in_memory_container()
     tenant = uuid4()

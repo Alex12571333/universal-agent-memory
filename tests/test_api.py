@@ -931,10 +931,14 @@ def test_vault_endpoint_exports_markdown_files() -> None:
     payload = response.json()
     assert payload["file_count"] == 2
     files = {row["path"]: row["content"] for row in payload["files"]}
+    editable_files = {row["path"]: row["editable_content"] for row in payload["files"]}
     assert "README.md" in files
     memory_path = next(path for path in files if path.startswith("core/"))
     assert "type: \"memory\"" in files[memory_path]
     assert "Obelisk Memory exposes an Obsidian vault." in files[memory_path]
+    assert editable_files[memory_path] == "Obelisk Memory exposes an Obsidian vault."
+    assert "Provenance" not in editable_files[memory_path]
+    assert "tenant_id" not in editable_files[memory_path]
 
 
 def test_vault_import_endpoint_plans_and_applies_supersede() -> None:

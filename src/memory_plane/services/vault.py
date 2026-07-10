@@ -592,6 +592,14 @@ class VaultExporter:
         )
 
 
+def editable_vault_content(content: str) -> str:
+    """Return the human-editable body of a vault note without service payloads."""
+    try:
+        return _parse_markdown_note(content).body
+    except ValueError:
+        return _sanitize_editable_body(content)
+
+
 def _frontmatter(values: dict[str, Any]) -> str:
     """Render dependency-free YAML-compatible frontmatter for simple values."""
     lines = ["---"]
@@ -719,12 +727,19 @@ def _is_system_heading(line: str) -> bool:
 def _sanitize_editable_body(value: str) -> str:
     """Drop technical vector/provenance payloads that leaked into editable text."""
     kept: list[str] = []
-    dropping_json_block = False
+    dropping_structured_block = 0
     for line in value.splitlines():
         stripped = line.strip()
-        if dropping_json_block:
-            if stripped in {"}", "],", "]"}:
-                dropping_json_block = False
+        if dropping_structured_block:
+            if "{" in stripped or "[" in stripped:
+                dropping_structured_block += stripped.count("{") + stripped.count("[")
+            if "}" in stripped or "]" in stripped:
+                dropping_structured_block = max(
+                    0,
+                    dropping_structured_block
+                    - stripped.count("}")
+                    - stripped.count("]"),
+                )
             continue
         if not stripped:
             kept.append("")
@@ -733,9 +748,10 @@ def _sanitize_editable_body(value: str) -> str:
             _is_system_heading(line)
             or _looks_like_system_field(stripped)
             or _looks_like_vector_payload(stripped)
+            or _looks_like_vector_block_start(stripped)
         ):
             if stripped.endswith(("{", "[")) or stripped in {"{", "["}:
-                dropping_json_block = True
+                dropping_structured_block = 1
             continue
         kept.append(line)
     return _collapse_blank_lines("\n".join(kept)).strip()
@@ -802,6 +818,17 @@ def _looks_like_vector_payload(line: str) -> bool:
         return len(parts) >= 4 and all(_is_float_like(part) for part in parts)
     parts = compact.split()
     return len(parts) >= 9 and all(_is_float_like(part) for part in parts)
+
+
+def _looks_like_vector_block_start(line: str) -> bool:
+    """Detect multi-line numeric vector arrays before individual numbers leak."""
+    stripped = line.strip()
+    if stripped == "[":
+        return True
+    if not stripped.startswith("["):
+        return False
+    remainder = stripped[1:].strip().rstrip(",")
+    return bool(remainder) and _is_float_like(remainder)
 
 
 def _is_float_like(value: str) -> bool:
