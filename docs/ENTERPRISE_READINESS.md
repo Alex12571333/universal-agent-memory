@@ -63,8 +63,8 @@ remaining hard requirements.
       conflict decision, vault editable text/archive, model probe, reindex and
       metrics.
 - [x] Release evidence verifier checks saved agent, LLM, UI walkthrough,
-      metrics, backup and branch-protection reports before a full-production
-      claim.
+      metrics, backup, signed vault import and branch-protection reports before
+      a full-production claim.
 - [x] CI workflow validates lint, tests, web build, and compose configs.
 - [x] Enterprise readiness check script exists.
 - [x] Branch-protection verifier exists for the `main` release gate.
@@ -82,8 +82,8 @@ remaining hard requirements.
 - [ ] Install environment-level backup schedule and immutable artifact storage.
 - [ ] Install the provided metrics dashboard/alert rules and scheduled-backup
       report routing in the target deployment.
-- [ ] Enforce signed vault import manifests in production operating procedure
-      and keep signing keys outside the repository.
+- [x] Require signed vault import manifests in production operating procedure
+      and release evidence.
 - [x] Enforce GitHub branch protection and PR-only merges to `main`.
 - [ ] Run real OpenClaw/Hermes soak tests against the `.14` agents and preserve
       the generated report.

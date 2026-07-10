@@ -141,6 +141,10 @@ PostgreSQL, Qdrant, NATS, and MinIO internal.
    UAM_API_KEY=... python scripts/ui_walkthrough_eval.py \
      --base-url http://127.0.0.1:6798 \
      --json-report ./ops/ui-walkthrough.json
+   UAM_VAULT_SIGNING_KEY=... python scripts/export_vault.py ./vault-review
+   UAM_VAULT_SIGNING_KEY=... python scripts/import_vault.py ./vault-review \
+     --require-signature \
+     --json-report ./ops/vault-import.json
    python scripts/real_memory_llm_eval.py \
      --base-url https://api.openai.com/v1 \
      --model gpt-5.6-terra \
@@ -321,7 +325,10 @@ overwrites:
 
 ```bash
 docker compose --profile ops run --rm vault-import
-docker compose --profile ops run --rm vault-import python scripts/import_vault.py /vault --apply
+docker compose --profile ops run --rm vault-import python scripts/import_vault.py /vault \
+  --require-signature \
+  --json-report /vault/vault-import.json \
+  --apply
 ```
 
 Vault guide: [docs/VAULT.md](docs/VAULT.md).
@@ -342,6 +349,10 @@ python scripts/validate_production_env.py .env.production \
 UAM_API_KEY=... python scripts/agent_soak_eval.py --json-report ./ops/agent-soak.json
 UAM_API_KEY=... python scripts/load_smoke_eval.py --json-report ./ops/load-smoke.json
 UAM_API_KEY=... python scripts/ui_walkthrough_eval.py --json-report ./ops/ui-walkthrough.json
+UAM_VAULT_SIGNING_KEY=... python scripts/export_vault.py ./vault-review
+UAM_VAULT_SIGNING_KEY=... python scripts/import_vault.py ./vault-review \
+  --require-signature \
+  --json-report ./ops/vault-import.json
 python scripts/real_memory_llm_eval.py --json-report ./ops/memory-llm.json
 UAM_AUDIT_SIGNING_KEY=... PYTHONPATH=src python scripts/audit_retention.py \
   --database-url "$UAM_DATABASE_URL" \

@@ -523,8 +523,12 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 and "agent_soak" in read("scripts/verify_release_evidence.py")
                 and "load_smoke" in read("scripts/verify_release_evidence.py")
                 and "audit_retention" in read("scripts/verify_release_evidence.py")
+                and "vault_import" in read("scripts/verify_release_evidence.py")
+                and "obelisk-vault-import-report-v1"
+                in read("scripts/verify_release_evidence.py")
                 and "branch_protection" in read("scripts/verify_release_evidence.py")
                 and "ui_walkthrough" in read("scripts/verify_release_evidence.py")
+                and "ops/vault-import.json" in read("docs/RELEASE_EVIDENCE.md")
                 and "release_evidence=PASS" in read("docs/RELEASE_EVIDENCE.md"),
                 "release evidence verifier checks saved production reports",
             ),
@@ -533,6 +537,8 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 "test_verify_release_evidence_accepts_complete_manifest"
                 in read("tests/test_backup_restore_scripts.py")
                 and "test_verify_release_evidence_rejects_skipped_restore_drill"
+                in read("tests/test_backup_restore_scripts.py")
+                and "test_verify_release_evidence_rejects_unsigned_vault_import"
                 in read("tests/test_backup_restore_scripts.py"),
                 "release evidence verifier behavior is covered",
             ),
@@ -595,8 +601,10 @@ def run_checks(*, static_only: bool) -> list[Check]:
                     "scripts/vault_manifest.py"
                 )
                 and "--require-signature" in read("scripts/import_vault.py")
+                and "--json-report" in read("scripts/import_vault.py")
+                and "obelisk-vault-import-report-v1" in read("scripts/import_vault.py")
                 and "UAM_VAULT_SIGNING_KEY" in read("scripts/export_vault.py"),
-                "vault export/import supports manifest checksum and HMAC signatures",
+                "vault export/import supports manifest checksum, HMAC signatures and evidence",
             ),
             Check(
                 "tests:vault-signed-manifest",
