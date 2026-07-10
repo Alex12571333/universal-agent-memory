@@ -8,6 +8,10 @@ pytest -q
 PYTHONPATH=src python scripts/production_readiness_eval.py
 PYTHONPATH=src python scripts/export_audit.py ./audit-export --limit 500
 python scripts/restore_drill.py ./backups/obelisk-memory.dump
+GITHUB_TOKEN=... python scripts/check_branch_protection.py \
+  --repo Alex12571333/universal-agent-memory \
+  --required-check python \
+  --required-check web
 docker compose --profile advanced config
 docker compose -f docker-compose.prod.yml --env-file .env.production config
 python scripts/benchmark_suite.py
@@ -29,6 +33,7 @@ Manual checks:
 - Confirm `.env.production` is not staged.
 - Confirm the release was merged through PR with green CI, not pushed directly
   to `main`.
+- Confirm GitHub no longer reports `Bypassed rule violations` for `main`.
 
 Do not release if:
 

@@ -157,6 +157,7 @@
 | `render_prometheus(metrics)` | Numeric mapping → Prometheus text | Stable sort, `uam_` prefix |
 | `backup.py` | Запускает `pg_dump --format=custom` | URL из `UAM_BACKUP_DATABASE_URL`/admin/database env |
 | `restore.py` | Запускает `pg_restore` | Non-destructive by default; `--clean` opt-in |
+| `check_branch_protection.py` | Проверяет GitHub release gate для `main` | Требует PR, status checks, strict mode и admin enforcement |
 
 ## Vault — `services/vault.py`, `scripts/export_vault.py`, `scripts/import_vault.py`
 

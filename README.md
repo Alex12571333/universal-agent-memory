@@ -42,9 +42,9 @@ Current verified baseline, July 10, 2026:
 
 This means the repository is ready for a trusted local/team pilot. It is not yet
 “full production” in the strong sense. Full production still requires branch
-protection/PR-only releases, tested restore drills, alerting, signed audit
-exports, security review, and real OpenClaw/Hermes soak tests on the target
-machines.
+protection/PR-only releases, automated restore-drill alerting, private-key audit
+bundle signing, security review, and real OpenClaw/Hermes soak tests on the
+target machines.
 
 Honest gap audit:
 [docs/PRODUCTION_GAP_AUDIT_2026_07_10.md](docs/PRODUCTION_GAP_AUDIT_2026_07_10.md).
@@ -272,6 +272,7 @@ substitute for the production gates in the gap audit.
 - [docs/PRODUCTION_GAP_AUDIT_2026_07_10.md](docs/PRODUCTION_GAP_AUDIT_2026_07_10.md) — honest production gaps.
 - [docs/OPERATIONS_RUNBOOK.md](docs/OPERATIONS_RUNBOOK.md) — production operations.
 - [docs/ENTERPRISE_READINESS.md](docs/ENTERPRISE_READINESS.md) — readiness checklist.
+- [docs/GITHUB_BRANCH_PROTECTION.md](docs/GITHUB_BRANCH_PROTECTION.md) — PR-only release gate.
 - [docs/ROADMAP_PHASE_4_ARCHIVAL_MEMORY.md](docs/ROADMAP_PHASE_4_ARCHIVAL_MEMORY.md) — archival memory roadmap.
 - [docs/WEB_DASHBOARD.md](docs/WEB_DASHBOARD.md) — UI guide.
 

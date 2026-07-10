@@ -33,6 +33,7 @@ remaining hard requirements.
 - [x] OpenClaw and Hermes integration guides exist.
 - [x] CI workflow validates lint, tests, web build, and compose configs.
 - [x] Enterprise readiness check script exists.
+- [x] Branch-protection verifier exists for the `main` release gate.
 - [x] Production gap audit exists and forbids over-claiming readiness.
 
 ## Required before calling it full production

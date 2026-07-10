@@ -4,6 +4,7 @@ import hashlib
 import importlib.util
 import json
 import subprocess
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from types import ModuleType
@@ -27,6 +28,7 @@ def _load_script(name: str) -> ModuleType:
 backup = _load_script("backup")
 restore = _load_script("restore")
 restore_drill = _load_script("restore_drill")
+check_branch_protection = _load_script("check_branch_protection")
 export_audit = _load_script("export_audit")
 export_vault = _load_script("export_vault")
 import_vault = _load_script("import_vault")
@@ -200,6 +202,66 @@ def test_export_audit_writes_jsonl_manifest_and_checksum(
     assert checksum == f"{manifest_digest}  manifest.json\n"
 
 
+def test_check_branch_protection_accepts_pr_checks_and_admin_enforcement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = {
+        "required_pull_request_reviews": {"required_approving_review_count": 1},
+        "required_status_checks": {
+            "strict": True,
+            "contexts": ["python", "web"],
+        },
+        "enforce_admins": {"enabled": True},
+    }
+    monkeypatch.setattr(
+        check_branch_protection.urllib.request,
+        "urlopen",
+        _fake_urlopen(payload),
+    )
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "check_branch_protection.py",
+            "--repo",
+            "Alex12571333/universal-agent-memory",
+            "--token",
+            "ghp_test",
+        ],
+    )
+
+    assert check_branch_protection.main() == 0
+
+
+def test_check_branch_protection_rejects_missing_required_status_check(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = {
+        "required_pull_request_reviews": {"required_approving_review_count": 1},
+        "required_status_checks": {
+            "strict": True,
+            "contexts": ["python"],
+        },
+        "enforce_admins": {"enabled": True},
+    }
+    monkeypatch.setattr(
+        check_branch_protection.urllib.request,
+        "urlopen",
+        _fake_urlopen(payload),
+    )
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "check_branch_protection.py",
+            "--repo",
+            "Alex12571333/universal-agent-memory",
+            "--token",
+            "ghp_test",
+        ],
+    )
+
+    assert check_branch_protection.main() == 1
+
+
 def test_export_vault_builds_postgres_exporter(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -282,3 +344,13 @@ def test_import_vault_apply_uses_apply_import(
     build_container.assert_called_once()
     vault.apply_import.assert_called_once()
     vault.plan_import.assert_not_called()
+
+
+def _fake_urlopen(payload: dict[str, object]):
+    @contextmanager
+    def opener(*_args: object, **_kwargs: object):
+        response = Mock()
+        response.read.return_value = json.dumps(payload).encode("utf-8")
+        yield response
+
+    return opener

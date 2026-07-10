@@ -1,6 +1,6 @@
 # Production envelope report — 2026-07-10
 
-Passed: 53
+Passed: 57
 Failed: 0
 
 | Check | Status | Detail |
@@ -12,9 +12,11 @@ Failed: 0
 | `file:.github/workflows/ci.yml` | PASS | required production artifact |
 | `file:migrations/008_audit_events.sql` | PASS | required production artifact |
 | `file:migrations/009_api_key_registry.sql` | PASS | required production artifact |
+| `file:scripts/check_branch_protection.py` | PASS | required production artifact |
 | `file:scripts/export_audit.py` | PASS | required production artifact |
 | `file:scripts/restore_drill.py` | PASS | required production artifact |
 | `file:docs/assets/obelisk-memory-hero.png` | PASS | required production artifact |
+| `file:docs/GITHUB_BRANCH_PROTECTION.md` | PASS | required production artifact |
 | `file:docs/OPERATIONS_RUNBOOK.md` | PASS | required production artifact |
 | `file:docs/ENTERPRISE_READINESS.md` | PASS | required production artifact |
 | `file:docs/PRODUCTION_GAP_AUDIT_2026_07_10.md` | PASS | required production artifact |
@@ -38,6 +40,8 @@ Failed: 0
 | `ci:web-build` | PASS | CI builds web UI |
 | `ci:production-readiness-eval` | PASS | CI runs in-process production readiness eval |
 | `ci:prod-compose` | PASS | CI validates production compose |
+| `release:branch-protection-verifier` | PASS | branch-protection verifier checks PR, status, and admin enforcement |
+| `tests:branch-protection-verifier` | PASS | branch-protection verifier behavior is covered by tests |
 | `env:memory-llm` | PASS | Qwen memory LLM endpoint |
 | `env:embeddings` | PASS | embedding endpoint |
 | `env:privacy` | PASS | privacy defaults |

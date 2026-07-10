@@ -47,9 +47,11 @@ def run_checks(*, static_only: bool) -> list[Check]:
         ".github/workflows/ci.yml",
         "migrations/008_audit_events.sql",
         "migrations/009_api_key_registry.sql",
+        "scripts/check_branch_protection.py",
         "scripts/export_audit.py",
         "scripts/restore_drill.py",
         "docs/assets/obelisk-memory-hero.png",
+        "docs/GITHUB_BRANCH_PROTECTION.md",
         "docs/OPERATIONS_RUNBOOK.md",
         "docs/ENTERPRISE_READINESS.md",
         "docs/PRODUCTION_GAP_AUDIT_2026_07_10.md",
@@ -133,6 +135,21 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 "ci:prod-compose",
                 "docker-compose.prod.yml" in ci,
                 "CI validates production compose",
+            ),
+            Check(
+                "release:branch-protection-verifier",
+                "required_pull_request_reviews" in read("scripts/check_branch_protection.py")
+                and "enforce_admins" in read("scripts/check_branch_protection.py")
+                and "required_status_checks" in read("scripts/check_branch_protection.py"),
+                "branch-protection verifier checks PR, status, and admin enforcement",
+            ),
+            Check(
+                "tests:branch-protection-verifier",
+                "test_check_branch_protection_accepts_pr_checks_and_admin_enforcement"
+                in read("tests/test_backup_restore_scripts.py")
+                and "test_check_branch_protection_rejects_missing_required_status_check"
+                in read("tests/test_backup_restore_scripts.py"),
+                "branch-protection verifier behavior is covered by tests",
             ),
         ]
     )
