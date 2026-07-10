@@ -154,13 +154,12 @@ static readiness script are green.
     needs an installed schedule, alerting and target evidence that a backlog or
     worker failure cannot retain staging transcripts indefinitely.
 
-12. **LLM curation bypasses the proposal/evidence safety boundary.**
-    `ConversationCurator` converts model JSON directly into a recallable memory
-    item and uses generated summary text as its provenance quote. It should
-    create an evidence-linked proposal, then require policy or operator
-    acceptance before becoming durable truth. Proposal acceptance itself is a
-    retention write followed by a separate status write, so a failure can leave
-    durable memory while the proposal remains pending.
+12. **Proposal accept still needs one transaction.**
+    `ConversationCurator` now emits an evidence-linked proposal and never makes
+    LLM output recallable by itself. Proposal acceptance still performs the
+    retention write and proposal-status update separately; a failure can leave
+    durable memory while the proposal remains pending. PostgreSQL needs a
+    single atomic accept boundary before this gate is closed.
 
 ### P1 — reliability, scale and operations
 

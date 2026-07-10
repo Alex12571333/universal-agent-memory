@@ -84,6 +84,7 @@ def build_in_memory_container() -> Container:
     conflict_reviews = InMemoryConflictReviewRepository(store)
     graph = InMemoryGraphRepository(store)
 
+    proposals = MemoryProposalService(store, retention)
     return Container(
         retention=retention,
         ingestion=IngestionService(retention),
@@ -95,8 +96,8 @@ def build_in_memory_container() -> Container:
         graph=GraphService(store, graph),
         checkpoint=CheckpointService(InMemoryCheckpointStore()),
         conversations=ConversationService(store),
-        curator=ConversationCurator(store, retention),
-        proposals=MemoryProposalService(store, retention),
+        curator=ConversationCurator(store, retention, proposals=proposals),
+        proposals=proposals,
         audit=AuditLogService(store),
         api_keys=ApiKeyRegistryService(store),
         embedding=embedding,
@@ -181,6 +182,7 @@ def build_postgres_container(
     embedding = EmbeddingService(store, qdrant, client)
     memory_llm = build_memory_llm_client()
 
+    proposals = MemoryProposalService(store, retention, memory_llm=memory_llm)
     return Container(
         retention=retention,
         ingestion=IngestionService(retention),
@@ -192,12 +194,13 @@ def build_postgres_container(
         graph=GraphService(store, graph),
         checkpoint=CheckpointService(PostgresCheckpointStore(store)),
         conversations=ConversationService(store),
-        curator=ConversationCurator(store, retention, memory_llm=memory_llm),
-        proposals=MemoryProposalService(
+        curator=ConversationCurator(
             store,
             retention,
             memory_llm=memory_llm,
+            proposals=proposals,
         ),
+        proposals=proposals,
         audit=AuditLogService(store),
         api_keys=ApiKeyRegistryService(store),
         embedding=embedding,

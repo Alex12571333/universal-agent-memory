@@ -270,9 +270,10 @@ The first deterministic curation bridge is:
 POST /v1/conversations/turns/{turn_id}/curate
 ```
 
-It creates a recallable `MemoryItem` summary with provenance
-`conversation://{turn_id}`. This is intentionally explicit: storing a raw
-transcript and making curated memory are different operations.
+It creates an evidence-backed memory proposal, not a recallable `MemoryItem`.
+Review and accept it through `/v1/memory/proposals/{proposal_id}/accept`; only
+then does it enter the normal retention/outbox pipeline. This keeps model output
+from becoming durable truth without a review boundary.
 
 Use this split:
 

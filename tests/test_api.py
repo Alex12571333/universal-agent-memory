@@ -761,7 +761,7 @@ def test_conversation_turn_endpoint_applies_privacy_guard() -> None:
     assert message["metadata"]["privacy"]["finding_count"] == 1
 
 
-def test_conversation_curate_endpoint_creates_recallable_memory() -> None:
+def test_conversation_curate_endpoint_creates_reviewable_proposal_before_memory() -> None:
     client = TestClient(create_app(build_in_memory_container()))
     turn = client.post(
         "/v1/conversations/turns",
@@ -790,16 +790,31 @@ def test_conversation_curate_endpoint_creates_recallable_memory() -> None:
             "thread_id": str(DEFAULT_THREAD_ID),
         },
     )
+    accepted = client.post(
+        f"/v1/memory/proposals/{curated.json()['id']}/accept",
+        json={"reason": "operator verified conversation evidence"},
+    )
+    recalled_after_accept = client.post(
+        "/v1/memory/recall",
+        json={
+            "query": "русский интерфейс",
+            "thread_id": str(DEFAULT_THREAD_ID),
+        },
+    )
 
     assert curated.status_code == 201
     assert curated.json()["created"] is True
+    assert curated.json()["status"] == "open"
     assert retry.status_code == 201
     assert retry.json()["created"] is False
     assert retry.json()["id"] == curated.json()["id"]
     assert recalled.status_code == 200
-    assert recalled.json()["results"][0]["id"] == curated.json()["id"]
-    assert "Conversation turn summary" in recalled.json()["results"][0]["text"]
-    assert "Интерфейс должен быть на русском" in recalled.json()["results"][0]["text"]
+    assert recalled.json()["results"] == []
+    assert accepted.status_code == 201
+    assert accepted.json()["proposal"]["status"] == "accepted"
+    assert recalled_after_accept.json()["results"][0]["id"] == accepted.json()["memory"]["id"]
+    assert "Conversation turn summary" in recalled_after_accept.json()["results"][0]["text"]
+    assert "Интерфейс должен быть на русском" in recalled_after_accept.json()["results"][0]["text"]
 
 
 def test_curated_only_policy_purges_raw_text_after_successful_curation() -> None:
