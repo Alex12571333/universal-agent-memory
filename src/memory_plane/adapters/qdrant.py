@@ -242,7 +242,16 @@ class QdrantCandidateSource:
         )
         results: list[Candidate] = []
         with self._mem_lock:
-            for item, vec in self._mem_items.values():
+            stored = tuple(self._mem_items.values())
+            superseded_ids = {
+                item.supersedes_id
+                for item, _ in stored
+                if item.supersedes_id is not None
+            }
+            recallable_ids = self._recallable_head_ids(tuple(item for item, _ in stored))
+            for item, vec in stored:
+                if item.id in superseded_ids or item.id not in recallable_ids:
+                    continue
                 if not self._matches_filter(item, query):
                     continue
                 # Cosine similarity against the real query vector when an
@@ -376,9 +385,13 @@ class QdrantCandidateSource:
         )
         candidates: list[Candidate] = []
         query_terms = self._terms(query.text)
-        for row in rows:
-            payload = row.payload or {}
-            item = self._payload_to_candidate_item(payload)
+        hydrated = tuple(
+            (row, self._payload_to_candidate_item(row.payload or {})) for row in rows
+        )
+        recallable_ids = self._recallable_head_ids(tuple(item for _, item in hydrated))
+        for row, item in hydrated:
+            if item.id not in recallable_ids:
+                continue
             if not self._matches_filter(item, query):
                 continue
             item_terms = self._terms(item.text)
@@ -399,6 +412,30 @@ class QdrantCandidateSource:
         return tuple(candidates)
 
     # ---- helpers --------------------------------------------------------
+
+    def _recallable_head_ids(self, items: tuple[MemoryItem, ...]) -> frozenset[UUID]:
+        """Consult PostgreSQL once so eventually stale vector points cannot leak."""
+        if self._ledger is None:
+            return frozenset(item.id for item in items)
+        if not items:
+            return frozenset()
+        checker = getattr(self._ledger, "filter_recallable_heads", None)
+        if callable(checker):
+            by_tenant: dict[UUID, list[UUID]] = {}
+            for item in items:
+                by_tenant.setdefault(item.tenant_id, []).append(item.id)
+            allowed: set[UUID] = set()
+            for tenant_id, item_ids in by_tenant.items():
+                allowed.update(checker(tenant_id, tuple(item_ids)))
+            return frozenset(allowed)
+        single_checker = getattr(self._ledger, "is_recallable_head", None)
+        if callable(single_checker):
+            return frozenset(
+                item.id
+                for item in items
+                if single_checker(item.tenant_id, item.id)
+            )
+        return frozenset(item.id for item in items)
 
     @staticmethod
     def _matches_filter(item: MemoryItem, query: RecallQuery) -> bool:
@@ -518,6 +555,17 @@ class QdrantCandidateSource:
     ) -> Sequence[_ScoredPoint]:
         """Run a named-vector query across qdrant-client API versions."""
         assert self._client is not None
+        query_points = getattr(self._client, "query_points", None)
+        if callable(query_points):
+            response = cast(_QueryPointsClient, self._client).query_points(
+                collection_name=self.collection,
+                query=query_vector,
+                using="dense",
+                query_filter=query_filter,
+                limit=limit,
+                with_payload=True,
+            )
+            return response.points
         search = getattr(self._client, "search", None)
         if callable(search):
             return cast(_SearchMethod, search)(
@@ -527,12 +575,4 @@ class QdrantCandidateSource:
                 limit=limit,
                 with_payload=True,
             )
-        response = cast(_QueryPointsClient, self._client).query_points(
-            collection_name=self.collection,
-            query=query_vector,
-            using="dense",
-            query_filter=query_filter,
-            limit=limit,
-            with_payload=True,
-        )
-        return response.points
+        raise RuntimeError("qdrant client exposes neither query_points nor search")

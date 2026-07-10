@@ -49,6 +49,8 @@ class EmbeddingService:
             vector = self._embed_document(item.text)
             self._validate_dimension(vector)
             self._qdrant.upsert(item, dense_vector=vector, model_name=self._client.model_name)
+            if item.supersedes_id is not None:
+                self._qdrant.delete(item.supersedes_id)
         except Exception:
             self._embed_failures_total += 1
             raise

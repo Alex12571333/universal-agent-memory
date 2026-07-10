@@ -204,6 +204,16 @@ class PostgresMemoryLedgerTest(unittest.TestCase):
         self.assertEqual(stored.id, retry.id)
         self.assertEqual(2, stored.revision)
         self.assertEqual(item.id, stored.supersedes_id)
+        recalled = self.store.search(
+            RecallQuery(
+                tenant_id=self.tenant,
+                workspace_id=self.workspace,
+                text="Alpha release July",
+            )
+        )
+        self.assertEqual((stored.id,), tuple(row.item.id for row in recalled))
+        self.assertFalse(self.store.is_recallable_head(self.tenant, item.id))
+        self.assertTrue(self.store.is_recallable_head(self.tenant, stored.id))
         with self.assertRaises(MemoryRevisionConflictError) as raised:
             self.store.supersede_if_current(
                 stale,

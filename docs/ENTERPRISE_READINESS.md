@@ -111,8 +111,9 @@ remaining hard requirements.
 - [ ] Preserve target PostgreSQL evidence for operator-provisioned agent/thread
       retain and concurrent checkpoint-CAS tests. The provisioning endpoint and
       optional integration test exist; live target proof remains required.
-- [ ] Enforce one active-head recall policy for superseded, archived and
-      conflict-resolved memories in PostgreSQL and Qdrant.
+- [ ] Atomically apply accepted/overridden conflict winners as canonical
+      revisions. Superseded/archived active-head filtering is implemented in
+      PostgreSQL, in-memory fallback and Qdrant with live integration coverage.
 - [ ] Implement retention-policy semantics and route LLM-derived durable memory
       through evidence-linked proposal/review with atomic acceptance.
 - [ ] Complete authenticated browser UI flow and model-endpoint egress/SSRF

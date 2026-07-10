@@ -1129,6 +1129,38 @@ class PostgresMemoryLedger:
             ).fetchone()
             return None if row is None else self._to_item(row)
 
+    def is_recallable_head(self, tenant_id: UUID, item_id: UUID) -> bool:
+        """Check canonical active-head state under the tenant RLS boundary."""
+        return item_id in self.filter_recallable_heads(tenant_id, (item_id,))
+
+    def filter_recallable_heads(
+        self,
+        tenant_id: UUID,
+        item_ids: tuple[UUID, ...],
+    ) -> frozenset[UUID]:
+        """Resolve active heads for vector candidates in one SQL query."""
+        if not item_ids:
+            return frozenset()
+        with self._connection() as connection:
+            self._set_tenant(connection, tenant_id)
+            rows = connection.execute(
+                """
+                select m.id
+                from memory_items m
+                where m.id = any(%s)
+                  and m.deleted_at is null
+                  and m.status not in ('rejected', 'archived')
+                  and not exists (
+                    select 1
+                    from memory_items child
+                    where child.supersedes_id = m.id
+                      and child.deleted_at is null
+                  )
+                """,
+                (list(item_ids),),
+            ).fetchall()
+        return frozenset(row["id"] for row in rows)
+
     def list_for_workspace(
         self,
         tenant_id: UUID,
@@ -1162,9 +1194,17 @@ class PostgresMemoryLedger:
         """Provide a durable lexical fallback until the optional vector index is enabled."""
         query_terms = self._terms(query.text)
         candidates: list[Candidate] = []
-        for item in self.list_for_workspace(
+        items = self.list_for_workspace(
             query.tenant_id, query.workspace_id, layers=query.layers
-        ):
+        )
+        superseded_ids = {
+            item.supersedes_id for item in items if item.supersedes_id is not None
+        }
+        for item in items:
+            if item.id in superseded_ids:
+                continue
+            if item.status in (MemoryStatus.REJECTED, MemoryStatus.ARCHIVED):
+                continue
             if item.scope == MemoryScope.THREAD and item.thread_id != query.thread_id:
                 continue
             if query.labels and not set(query.labels).issubset(item.labels):

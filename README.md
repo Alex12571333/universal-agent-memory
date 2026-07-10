@@ -43,7 +43,9 @@ Repository capability baseline:
 The repository is an engineering preview with production-shaped components. It
 must not be used for a trusted production pilot until the remaining P0 runtime
 blockers in the production audit are fixed—especially identity-bound
-authorization, active-head recall, fail-soft dependencies and safe reindex.
+authorization, atomic conflict-winner precedence, fail-soft dependencies and
+safe reindex. Supersede/archive active-head recall is enforced in PostgreSQL
+and Qdrant.
 Database-role and operator-controlled agent/thread provisioning are implemented
 but still require target-deployment evidence and native installer wiring. Full
 production additionally requires target-environment operations and signed
@@ -98,7 +100,7 @@ Local host ports are intentionally non-standard:
 The local compose file is convenient for debugging. The production compose is a
 reference topology that exposes only API/UI and keeps PostgreSQL, Qdrant, NATS,
 and MinIO internal. It is not an approved production deployment until the P0
-authorization, active-head recall, dependency isolation and reindex blockers
+authorization, conflict precedence, dependency isolation and reindex blockers
 are fixed and the target credential/identity evidence passes.
 
 ## Production reference deployment

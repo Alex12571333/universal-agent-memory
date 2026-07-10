@@ -44,5 +44,8 @@ module = [
     "pypdf.*",
     "qdrant_client.*",
     "nats.*",
+    "numpy",
+    "numpy.*",
 ]
 ignore_missing_imports = true
+follow_imports = "skip"

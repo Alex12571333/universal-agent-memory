@@ -10,6 +10,7 @@ import unittest
 from types import SimpleNamespace
 from uuid import UUID, uuid4
 
+from memory_plane.adapters.in_memory import InMemoryMemoryStore
 from memory_plane.adapters.qdrant import QdrantCandidateSource
 from memory_plane.contracts.dto import RecallQuery
 from memory_plane.domain.models import MemoryItem, MemoryLayer, MemoryScope, Provenance
@@ -145,6 +146,27 @@ class QdrantAdapterTest(unittest.TestCase):
 
         query = RecallQuery(tenant_id=_T, workspace_id=_W, text="deletable")
         results = self.source.search(query)
+        self.assertEqual((), results)
+
+    def test_canonical_ledger_blocks_stale_point_during_index_lag(self) -> None:
+        ledger = InMemoryMemoryStore()
+        source = QdrantCandidateSource(
+            url="http://localhost:6333",
+            collection="test_memory",
+            dense_dim=4,
+            ledger=ledger,
+        )
+        source._use_in_memory_backend()
+        old = _item("Alpha releases on July 15")
+        replacement = old.supersede("Alpha releases on July 16")
+        ledger.append(old)
+        ledger.append(replacement)
+        source.upsert(old, dense_vector=[0.5, 0.5, 0.5, 0.5])
+
+        results = source.search(
+            RecallQuery(tenant_id=_T, workspace_id=_W, text="Alpha release")
+        )
+
         self.assertEqual((), results)
 
     def test_reindex_replaces_all_points(self) -> None:
@@ -300,6 +322,7 @@ class QdrantAdapterTest(unittest.TestCase):
             )
             item = _item("production q8 embeddings")
             source._client = MagicMock()
+            source._client.query_points = None
             source._client.search.return_value = [
                 SimpleNamespace(
                     payload=QdrantCandidateSource._item_to_payload(item),
@@ -348,6 +371,7 @@ class QdrantAdapterTest(unittest.TestCase):
                 payload_text=False,
             )
             source._client = MagicMock()
+            source._client.query_points = None
             source._client.search.return_value = [
                 SimpleNamespace(
                     payload=QdrantCandidateSource._item_to_payload(
