@@ -755,8 +755,16 @@ def test_conflict_inbox_endpoint_lists_and_persists_review_decision() -> None:
     assert case["suggested_winner_value"] == "july 16"
     assert decision.status_code == 200
     assert decision.json()["status"] == "accepted"
+    assert decision.json()["applied_memory_id"] is not None
     assert unresolved.json()["count"] == 0
     assert resolved.json()["cases"][0]["review_status"] == "accepted"
+    recalled = client.post(
+        "/v1/memory/recall",
+        json={"query": "Alpha release July", "top_k": 10},
+    )
+    assert [row["text"] for row in recalled.json()["results"]] == [
+        "Alpha releases on July 16"
+    ]
 
 
 def test_conflict_decision_can_dismiss_without_winner() -> None:

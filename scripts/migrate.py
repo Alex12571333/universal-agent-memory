@@ -23,6 +23,7 @@ MIGRATIONS = (
     ROOT / "migrations/007_memory_proposals.sql",
     ROOT / "migrations/008_audit_events.sql",
     ROOT / "migrations/009_api_key_registry.sql",
+    ROOT / "migrations/010_conflict_resolution_memory.sql",
 )
 
 

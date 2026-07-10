@@ -4,16 +4,22 @@ from __future__ import annotations
 
 import re
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from uuid import NAMESPACE_URL, UUID, uuid5
 
+from memory_plane.contracts.events import IntegrationEvent
 from memory_plane.domain.conflict import (
     ConflictCandidate,
     ConflictCase,
     ConflictReviewDecision,
     ConflictReviewStatus,
 )
-from memory_plane.domain.models import MemoryItem, MemoryLayer
+from memory_plane.domain.models import (
+    MemoryItem,
+    MemoryLayer,
+    MemoryStatus,
+    Provenance,
+)
 from memory_plane.ports.repositories import ConflictReviewRepository, MemoryLedger
 
 _DATE_SEPARATORS = re.compile(r"[-/,]+")
@@ -78,10 +84,16 @@ class ConflictService:
                 continue
 
             latest = max((item for _, item in facts), key=lambda row: row.created_at)
+            first_slot = facts[0][0]
+            case_id = self._case_id(tenant_id, workspace_id, first_slot)
+            review = reviews.get(case_id)
             candidates: list[ConflictCandidate] = []
             for value, rows in sorted(by_value.items()):
                 newest_for_value = max(rows, key=lambda row: row.created_at)
-                status = "active" if newest_for_value.id == latest.id else "stale"
+                if review is not None and review.applied_memory_id is not None:
+                    status = "active" if value == review.winner_value else "stale"
+                else:
+                    status = "active" if newest_for_value.id == latest.id else "stale"
                 confidence = self._candidate_confidence(rows, is_active=status == "active")
                 candidates.append(
                     ConflictCandidate(
@@ -92,17 +104,20 @@ class ConflictService:
                         latest_created_at=newest_for_value.created_at,
                     )
                 )
-
-            first_slot = facts[0][0]
-            case_id = self._case_id(tenant_id, workspace_id, first_slot)
-            review = reviews.get(case_id)
             if (
                 not include_resolved
                 and review is not None
                 and review.status != ConflictReviewStatus.UNRESOLVED
             ):
                 continue
-            suggested = max(candidates, key=lambda row: (row.status == "active", row.confidence))
+            suggested = max(
+                candidates,
+                key=lambda row: (
+                    row.status == "active",
+                    row.latest_created_at,
+                    row.confidence,
+                ),
+            )
             cases.append(
                 ConflictCase(
                     id=case_id,
@@ -131,10 +146,18 @@ class ConflictService:
         winner_value: str | None,
         reason: str,
     ) -> ConflictReviewDecision:
-        """Persist a human review decision for one case."""
+        """Persist review and atomically make its winner canonical when required."""
         if status in (ConflictReviewStatus.ACCEPTED, ConflictReviewStatus.OVERRIDDEN):
             if not winner_value or not winner_value.strip():
                 raise ValueError("winner_value is required for accepted/overridden decisions")
+        cases = self.list_cases(tenant_id, workspace_id, include_resolved=True)
+        case = next((row for row in cases if row.id == case_id), None)
+        if case is None:
+            raise ValueError("conflict case not found")
+        if case.review is not None and case.review.applied_memory_id is not None:
+            if case.review.status == status and case.review.winner_value == winner_value:
+                return case.review
+            raise ValueError("conflict resolution is already applied and immutable")
         decision = ConflictReviewDecision(
             tenant_id=tenant_id,
             workspace_id=workspace_id,
@@ -143,7 +166,108 @@ class ConflictService:
             winner_value=winner_value,
             reason=reason,
         )
-        return self._reviews.save(decision)
+        if status not in (ConflictReviewStatus.ACCEPTED, ConflictReviewStatus.OVERRIDDEN):
+            return self._reviews.save(decision)
+        assert winner_value is not None
+        return self._apply_winner(case, decision, winner_value.strip())
+
+    def _apply_winner(
+        self,
+        case: ConflictCase,
+        decision: ConflictReviewDecision,
+        winner_value: str,
+    ) -> ConflictReviewDecision:
+        by_value = {candidate.value: candidate for candidate in case.candidates}
+        winner = by_value.get(winner_value)
+        if winner is None:
+            raise ValueError("winner_value must match one of the conflict candidates")
+        evidence_ids = tuple(
+            evidence_id
+            for candidate in case.candidates
+            for evidence_id in candidate.evidence_ids
+        )
+        items = {
+            item_id: item
+            for item_id in evidence_ids
+            if (item := self._ledger.get(case.tenant_id, item_id)) is not None
+        }
+        if len(items) != len(set(evidence_ids)):
+            raise ValueError("conflict evidence is incomplete")
+        recallable = self._ledger.filter_recallable_heads(
+            case.tenant_id,
+            tuple(items),
+        )
+        winner_items = [items[item_id] for item_id in winner.evidence_ids]
+        winner_source = max(winner_items, key=lambda item: (item.created_at, item.id))
+        winner_heads = [item for item in winner_items if item.id in recallable]
+        loser_heads = [
+            items[item_id]
+            for candidate in case.candidates
+            if candidate.value != winner_value
+            for item_id in candidate.evidence_ids
+            if item_id in recallable
+        ]
+
+        writes: list[tuple[MemoryItem, IntegrationEvent, int]] = []
+        if winner_heads:
+            applied = max(winner_heads, key=lambda item: (item.created_at, item.id))
+        else:
+            if not loser_heads:
+                raise ValueError("conflict has no recallable head to supersede")
+            parent = max(loser_heads, key=lambda item: (item.created_at, item.id))
+            loser_heads.remove(parent)
+            applied = parent.supersede(
+                winner_source.text,
+                confidence=winner_source.confidence,
+                status=MemoryStatus.ACTIVE,
+            )
+            applied = replace(
+                applied,
+                provenance=Provenance(
+                    source_kind="conflict-review",
+                    origin_uri=f"conflict://{case.id}",
+                    object_key=str(winner_source.id),
+                    quote=winner_source.text,
+                    extraction_version="operator-resolution-v1",
+                ),
+                metadata={
+                    **applied.metadata,
+                    "conflict_case_id": str(case.id),
+                    "winner_evidence_id": str(winner_source.id),
+                },
+            )
+            writes.append((applied, self._resolution_event(applied), parent.revision))
+
+        for loser in loser_heads:
+            tombstone = loser.supersede(loser.text, status=MemoryStatus.ARCHIVED)
+            tombstone = replace(
+                tombstone,
+                metadata={
+                    **tombstone.metadata,
+                    "conflict_case_id": str(case.id),
+                    "archived_by_conflict_resolution": True,
+                },
+            )
+            writes.append((tombstone, self._resolution_event(tombstone), loser.revision))
+        applied_decision = replace(decision, applied_memory_id=applied.id)
+        return self._reviews.apply_resolution(applied_decision, tuple(writes))
+
+    @staticmethod
+    def _resolution_event(item: MemoryItem) -> IntegrationEvent:
+        return IntegrationEvent(
+            name="memory.retained.v1",
+            tenant_id=item.tenant_id,
+            workspace_id=item.workspace_id,
+            correlation_id=item.id,
+            payload={
+                "memory_id": str(item.id),
+                "supersedes_id": str(item.supersedes_id),
+                "revision": item.revision,
+                "layer": item.layer.value,
+                "jobs": ["embed", "dedupe", "graph", "reflect"],
+                "reason": "conflict-resolution",
+            },
+        )
 
     def _extract_slot(self, text: str) -> _BeliefSlot:
         normalized = self._normalize(text)

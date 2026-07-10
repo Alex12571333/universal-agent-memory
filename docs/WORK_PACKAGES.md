@@ -27,7 +27,7 @@ SSO, SaaS quotas и hosted multi-region operation.
 Единственный канонический список текущих production-блокеров находится в
 [PRODUCTION_GAP_AUDIT_2026_07_10.md](PRODUCTION_GAP_AUDIT_2026_07_10.md). В P0
 входят target proof для database credentials, identity provisioning и checkpoint
-CAS, identity-bound authorization, atomic conflict-winner precedence, полное
+CAS и conflict-winner transactions, identity-bound authorization, полное
 шифрование чувствительных данных, fail-soft dependencies/readiness, безопасный
 multi-workspace reindex, browser authentication и model-endpoint SSRF policy.
 
