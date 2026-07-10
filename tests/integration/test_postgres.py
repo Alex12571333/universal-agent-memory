@@ -373,6 +373,61 @@ class PostgresMemoryLedgerTest(unittest.TestCase):
         self.assertEqual(expected.id, rows[0].item.id)
         self.assertEqual("postgres_lexical", rows[0].source)
 
+    def test_private_recall_and_thread_ownership_are_agent_isolated(self) -> None:
+        agent_a = uuid4()
+        agent_b = uuid4()
+        thread_a = uuid4()
+        thread_b = uuid4()
+        for agent_id, thread_id, name in (
+            (agent_a, thread_a, "Private agent A"),
+            (agent_b, thread_b, "Private agent B"),
+        ):
+            self.store.provision_agent_thread(
+                AgentIdentity(
+                    id=agent_id,
+                    tenant_id=self.tenant,
+                    workspace_id=self.workspace,
+                    name=name,
+                    role="integration",
+                ),
+                thread_id=thread_id,
+            )
+
+        private_a = replace(
+            self._item("shared private marker agent alpha"),
+            agent_id=agent_a,
+            scope=MemoryScope.PRIVATE,
+        )
+        private_b = replace(
+            self._item("shared private marker agent beta"),
+            agent_id=agent_b,
+            scope=MemoryScope.PRIVATE,
+        )
+        self.store.retain(private_a, self._event(private_a))
+        self.store.retain(private_b, self._event(private_b))
+
+        recalled = self.store.search(
+            RecallQuery(
+                tenant_id=self.tenant,
+                workspace_id=self.workspace,
+                agent_id=agent_a,
+                text="shared private marker agent",
+                top_k=10,
+            )
+        )
+
+        self.assertEqual((private_a.id,), tuple(row.item.id for row in recalled))
+        self.assertTrue(
+            self.store.thread_belongs_to_agent(
+                self.tenant, self.workspace, agent_a, thread_a
+            )
+        )
+        self.assertFalse(
+            self.store.thread_belongs_to_agent(
+                self.tenant, self.workspace, agent_a, thread_b
+            )
+        )
+
     def test_outbox_lease_prevents_concurrent_delivery_and_acknowledges(self) -> None:
         item = self._item("leased event")
         event = self._event(item)

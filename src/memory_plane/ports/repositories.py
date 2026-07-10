@@ -76,6 +76,16 @@ class IdentityRegistry(Protocol):
         """Create/update an agent and optional thread without moving scope."""
         ...
 
+    def thread_belongs_to_agent(
+        self,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        agent_id: UUID,
+        thread_id: UUID,
+    ) -> bool:
+        """Return whether a thread is owned by the bound agent in scope."""
+        ...
+
 
 class RetentionStore(MemoryLedger, Protocol):
     """Atomic boundary for canonical memory and its outbox event."""

@@ -89,6 +89,22 @@ class InMemoryMemoryStore:
                 self._threads[thread_id] = thread
             return agent, thread
 
+    def thread_belongs_to_agent(
+        self,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        agent_id: UUID,
+        thread_id: UUID,
+    ) -> bool:
+        """Validate an owned thread under its full identity boundary."""
+        thread = self._threads.get(thread_id)
+        return bool(
+            thread
+            and thread.tenant_id == tenant_id
+            and thread.workspace_id == workspace_id
+            and thread.owner_agent_id == agent_id
+        )
+
     def append(
         self, item: MemoryItem, idempotency_key: str | None = None
     ) -> tuple[MemoryItem, bool]:
@@ -221,6 +237,8 @@ class InMemoryMemoryStore:
             if not self.is_recallable_head(query.tenant_id, item.id):
                 continue
             if item.scope == MemoryScope.THREAD and item.thread_id != query.thread_id:
+                continue
+            if item.scope == MemoryScope.PRIVATE and item.agent_id != query.agent_id:
                 continue
             if query.labels and not set(query.labels).issubset(item.labels):
                 continue

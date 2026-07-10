@@ -170,7 +170,7 @@ class MemoryServerClient:
         return UUID(str(data["id"]))
 
     def reflect(self, *, tenant_id: UUID, workspace_id: UUID) -> None:
-        """Trigger reflection after a completed agent run."""
+        """Trigger an operator-authorized workspace reflection."""
         self._post_json(
             f"/v1/workspaces/{workspace_id}/reflect?tenant_id={tenant_id}",
             {},

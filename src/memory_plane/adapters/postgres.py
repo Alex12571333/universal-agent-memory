@@ -256,6 +256,29 @@ class PostgresMemoryLedger:
                 status=thread_row["status"],
             )
 
+    def thread_belongs_to_agent(
+        self,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        agent_id: UUID,
+        thread_id: UUID,
+    ) -> bool:
+        """Validate a thread owner under RLS in one bounded query."""
+        with self._connection() as connection:
+            self._set_tenant(connection, tenant_id)
+            row = connection.execute(
+                """
+                select exists (
+                  select 1 from threads
+                  where id = %s
+                    and workspace_id = %s
+                    and owner_agent_id = %s
+                ) as owned
+                """,
+                (thread_id, workspace_id, agent_id),
+            ).fetchone()
+        return bool(row and row["owned"])
+
     def retain(
         self,
         item: MemoryItem,
@@ -1207,6 +1230,8 @@ class PostgresMemoryLedger:
             if item.status in (MemoryStatus.REJECTED, MemoryStatus.ARCHIVED):
                 continue
             if item.scope == MemoryScope.THREAD and item.thread_id != query.thread_id:
+                continue
+            if item.scope == MemoryScope.PRIVATE and item.agent_id != query.agent_id:
                 continue
             if query.labels and not set(query.labels).issubset(item.labels):
                 continue

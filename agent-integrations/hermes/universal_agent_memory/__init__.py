@@ -11,7 +11,6 @@ import json
 import os
 from typing import TYPE_CHECKING, Any
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 from uuid import NAMESPACE_URL, UUID, uuid5
 
@@ -62,7 +61,6 @@ class UniversalAgentMemoryProvider(MemoryProvider):
         self._thread_id = _stable_uuid("thread:hermes")
         self._top_k = int(os.getenv("UAM_MEMORY_RECALL_TOP_K", "8"))
         self._context_budget_tokens = int(os.getenv("UAM_CONTEXT_BUDGET_TOKENS", "131072"))
-        self._reflect_on_session_end = _env_bool("UAM_REFLECT_ON_RUN_COMPLETE", False)
         self._labels: tuple[str, ...] = ("hermes",)
 
     @property
@@ -154,9 +152,6 @@ class UniversalAgentMemoryProvider(MemoryProvider):
             text=summary,
             idempotency_key=f"hermes-session:{self._thread_id}:{_digest(summary)}",
         )
-        if self._reflect_on_session_end:
-            query = urlencode({"tenant_id": str(self._tenant_id)})
-            self._post_json(f"/v1/workspaces/{self._workspace_id}/reflect?{query}", {})
 
     def get_tool_schemas(self) -> list[dict[str, Any]]:
         return [SEARCH_SCHEMA, ADD_SCHEMA]

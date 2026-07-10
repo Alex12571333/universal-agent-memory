@@ -3,11 +3,10 @@
 Goal: integrate Obelisk Memory as an OpenClaw runtime/plugin extension,
 not as a skill and not only as an MCP tool.
 
-> **Engineering preview:** stable OpenClaw agent/thread IDs are not yet
-> provisioned automatically in the PostgreSQL ledger. A fresh persistent
-> deployment can reject plugin writes with foreign-key violations. Use this
-> adapter with the in-memory development server, or pre-provision matching
-> identities, until the production identity blocker is resolved.
+> **Production setup:** provision the stable OpenClaw agent and thread IDs with
+> an operator key, bind the `openclaw` agent principal to the same tenant,
+> workspace and agent UUIDs, then enable strict identity bindings. Unprovisioned
+> or mismatched identities are rejected intentionally.
 
 The installable plugin lives in `plugin/` and uses the OpenClaw extension
 contract:
@@ -23,7 +22,8 @@ Implemented behavior:
    budgeted context package.
 3. `after_tool_call`: retain successful tool traces or tool errors.
 4. `agent_end`: retain final run summary.
-5. Optional reflection after successful runs via `UAM_REFLECT_ON_RUN_COMPLETE`.
+5. Reflection/reindex stay in the operator control plane and are not called by
+   the agent plugin.
 
 Install outline:
 

@@ -62,6 +62,7 @@ def validate_env(
         _check_secret(values, "UAM_APP_DB_PASSWORD", min_length=32),
         _check_secret(values, "MINIO_ROOT_PASSWORD", min_length=32),
         _check_scoped_api_keys(values),
+        _check_principal_bindings(values),
         _check_uuid(values, "UAM_SERVER_ID"),
         _check_uuid(values, "UAM_PROJECT_ID"),
         _check_context_budget(values),
@@ -121,6 +122,74 @@ def _check_scoped_api_keys(values: dict[str, str]) -> EnvCheck:
     if missing:
         return EnvCheck("UAM_API_KEYS", False, f"missing recommended scoped keys: {missing}")
     return EnvCheck("UAM_API_KEYS", True, f"scoped keys configured via {source}")
+
+
+def _check_principal_bindings(values: dict[str, str]) -> EnvCheck:
+    if values.get("UAM_REQUIRE_IDENTITY_BINDINGS", "").strip().lower() != "true":
+        return EnvCheck(
+            "UAM_API_PRINCIPAL_BINDINGS_JSON",
+            False,
+            "UAM_REQUIRE_IDENTITY_BINDINGS must be true",
+        )
+    raw, source = _value_or_file(values, "UAM_API_PRINCIPAL_BINDINGS_JSON")
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        return EnvCheck("UAM_API_PRINCIPAL_BINDINGS_JSON", False, "invalid JSON")
+    if not isinstance(payload, dict):
+        return EnvCheck(
+            "UAM_API_PRINCIPAL_BINDINGS_JSON",
+            False,
+            "must be a JSON object",
+        )
+    scoped_keys, _ = _value_or_file(values, "UAM_API_KEYS")
+    agent_names = {
+        parts[0].strip()
+        for entry in scoped_keys.split(",")
+        if len(parts := entry.split(":")) == 3
+        and "agent" in re.split(r"[+|]", parts[2])
+    }
+    missing = sorted(agent_names - payload.keys())
+    if missing:
+        return EnvCheck(
+            "UAM_API_PRINCIPAL_BINDINGS_JSON",
+            False,
+            "missing agent principals: " + ", ".join(missing),
+        )
+    expected_tenant = values.get("UAM_SERVER_ID", "")
+    expected_workspace = values.get("UAM_PROJECT_ID", "")
+    for name in sorted(agent_names):
+        binding = payload.get(name)
+        if not isinstance(binding, dict):
+            return EnvCheck(
+                "UAM_API_PRINCIPAL_BINDINGS_JSON",
+                False,
+                f"binding for {name} must be an object",
+            )
+        for field, expected in (
+            ("tenant_id", expected_tenant),
+            ("workspace_id", expected_workspace),
+        ):
+            if binding.get(field) != expected:
+                return EnvCheck(
+                    "UAM_API_PRINCIPAL_BINDINGS_JSON",
+                    False,
+                    f"{name}.{field} must match deployment identity",
+                )
+        if not re.fullmatch(
+            r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}",
+            str(binding.get("agent_id", "")),
+        ):
+            return EnvCheck(
+                "UAM_API_PRINCIPAL_BINDINGS_JSON",
+                False,
+                f"{name}.agent_id must be a UUID",
+            )
+    return EnvCheck(
+        "UAM_API_PRINCIPAL_BINDINGS_JSON",
+        True,
+        f"{len(agent_names)} agent principals bound via {source}",
+    )
 
 
 def _check_uuid(values: dict[str, str], key: str) -> EnvCheck:

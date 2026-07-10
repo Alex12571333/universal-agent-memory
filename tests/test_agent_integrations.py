@@ -27,7 +27,6 @@ class FakeMemoryClient:
     def __init__(self) -> None:
         self.retained: list[dict[str, object]] = []
         self.recalled: list[dict[str, object]] = []
-        self.reflected: list[tuple[UUID, UUID]] = []
         self.checkpoints: list[dict[str, object]] = []
 
     def recall(self, **kwargs: object) -> dict[str, object]:
@@ -47,10 +46,6 @@ class FakeMemoryClient:
     def save_checkpoint(self, **kwargs: object) -> UUID:
         self.checkpoints.append(kwargs)
         return uuid4()
-
-    def reflect(self, *, tenant_id: UUID, workspace_id: UUID) -> None:
-        self.reflected.append((tenant_id, workspace_id))
-
 
 def test_before_agent_run_recalls_context_package() -> None:
     client = FakeMemoryClient()
@@ -94,19 +89,15 @@ def test_after_tool_event_retains_procedural_memory() -> None:
     assert str(context.thread_id) in str(retained["idempotency_key"])
 
 
-def test_run_complete_retains_summary_and_triggers_reflection_when_enabled() -> None:
+def test_run_complete_retains_summary_without_operator_actions() -> None:
     client = FakeMemoryClient()
-    plugin = UniversalAgentMemoryPlugin(
-        client,
-        AgentMemoryConfig(trigger_reflection_on_complete=True),
-    )
+    plugin = UniversalAgentMemoryPlugin(client, AgentMemoryConfig())
     context = AgentRunContext(tenant_id=uuid4(), workspace_id=uuid4())
 
     ids = plugin.on_run_complete(context, "Implemented memory plugin.")
 
     assert len(ids) == 1
     assert client.retained[0]["kind"] == "run_summary"
-    assert client.reflected == [(context.tenant_id, context.workspace_id)]
 
 
 def test_disabled_plugin_does_not_call_memory_server() -> None:

@@ -12,7 +12,7 @@ under failure.
 |---|---|---|
 | Architecture | PostgreSQL source of truth, Qdrant index, outbox, NATS workers, vault, API, UI | Good foundation |
 | Docker | Dev/prod compose plus Caddy TLS proxy example exist; prod hides internal infra ports; database secrets use dedicated mounts; deployment preflight writes boundary evidence | Fresh role provisioning is implemented but still needs clean target-boot evidence and a verified TLS boundary |
-| API auth | Bearer keys, coarse scopes, env validator and non-secret key registry exist; `/health` is public | Basic authentication only; tenant/workspace/agent authorization is a P0 blocker |
+| API auth | Bearer keys, route capabilities, strict principal bindings, env validation and non-secret key registry exist; `/health` is public | Identity isolation is implemented and locally proven; target-deployment evidence remains required |
 | Audit trail | `audit_events`, export/signing and retention tools exist | Coverage is incomplete and most audit writes are not atomic with the operation they describe |
 | Browser/API hardening | Security headers are enforced by middleware and tests | Baseline present |
 | Data model | Append-only memory, CAS supersede, atomic conflict-winner revisions, canonical active-head recall, provenance, statuses and optional ciphertext for `memory_items.text` exist | Sensitive-table encryption remains incomplete |
@@ -21,7 +21,7 @@ under failure.
 | Memory LLM | Provider-neutral OpenAI-compatible contract, deterministic fallback and live runner exist | LLM output currently bypasses proposal/review and cannot be autonomous in production |
 | OpenClaw/Hermes | Native adapter scaffolds, tests and live soak runner exist | Needs saved soak evidence from the deployed runtime versions |
 | UI | React dashboard supports memory/vault editing, conflict decisions and a JSON walkthrough runner | Authenticated browser flow, endpoint egress policy and durable settings are incomplete |
-| Testing | Unit/API tests, optional integrations, benchmark scripts, web build and load runner exist | PostgreSQL concurrency, failure isolation, authorization and target chaos/security evidence are missing |
+| Testing | Unit/API tests, live PostgreSQL/Qdrant isolation tests, benchmark scripts, web build and load runner exist | Failure isolation and target chaos/security evidence are still missing |
 | Release process | PR flow, release reports and a signed content-addressed evidence manifest exist | OCI build provenance, SBOM, scanning and image signing are still required |
 | Operations | Runbook, backup/restore scripts, isolated restore drill, schedule/observability preflights, signed vault/audit bundles and release evidence verifier | Needs target evidence and the runtime blockers below resolved |
 
@@ -46,19 +46,25 @@ static readiness script are green.
    The same proof must still be executed and preserved on the target Docker
    runtime before this gate is closed.
 
-2. **Identity provisioning exists, but identity-bound bootstrap is incomplete.**
+2. **Identity provisioning and binding exist, but installer bootstrap needs target proof.**
    An operator-only, audited and idempotent endpoint now provisions an agent and
    optional owned thread atomically, refuses cross-scope ID reuse, and has API,
    service and optional PostgreSQL retain coverage. Agent keys intentionally
    cannot self-provision arbitrary identities. Native OpenClaw/Hermes installers
-   still need an operator bootstrap step, and the remaining API-key binding
-   blocker must be closed before safe automatic first-use registration.
+   still need an operator bootstrap step and saved evidence from the deployed
+   runtime versions before safe automatic first-use registration is claimed.
 
-3. **API keys are not bound to an identity boundary.**
-   Authentication scopes are read/write/operator labels only; they are not
-   bound to tenant, workspace or agent IDs. A client chooses those IDs in the
-   request. `private`, `team` and `organization` visibility is not enforced as
-   an authorization policy, so agent keys do not yet provide memory isolation.
+3. **Identity-bound authorization needs target evidence.**
+   Production configuration can now require each `agent` principal to map to a
+   fixed tenant/workspace/agent UUID. Startup rejects missing bindings; request
+   middleware rejects forged identity fields and foreign threads; administrative
+   memory, graph, vault, conflict, settings and review routes require operator
+   scope. Private recall is owner-filtered independently by PostgreSQL,
+   in-memory storage, Qdrant and retrieval fusion. API tests cover two competing
+   agent principals and the control-plane matrix. A live local PostgreSQL 17 and
+   Qdrant run passed 21/21 scenarios, including cross-agent private-vector and
+   thread-ownership isolation. The same tests and native-agent soak must be
+   preserved from the target deployment before this release gate is closed.
 
 4. **Conflict-winner transactions need target evidence.**
    Supersede/archive active-head semantics are now enforced in PostgreSQL and
@@ -318,7 +324,8 @@ Required gates:
 2. Prove agent/thread provisioning on PostgreSQL and wire the operator bootstrap
    into OpenClaw/Hermes installation; then add real checkpoint concurrency
    coverage.
-3. Bind API principals to tenant/workspace/agent visibility policy.
+3. Preserve identity-bound authorization and native-agent soak evidence from
+   the target deployment.
 4. Preserve target evidence for atomic accepted/overridden conflict winners,
    stale-CAS rollback and Qdrant precedence; the implementation and local live
    coverage are complete.

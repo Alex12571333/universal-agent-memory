@@ -6,8 +6,8 @@ lifecycle.
 
 Stable agent/thread identities must be registered once by an operator before an
 adapter starts retaining durable PostgreSQL records. Agent-scoped keys cannot
-create arbitrary identities. This is intentional until API principals are
-cryptographically bound to a tenant/workspace/agent boundary.
+create arbitrary identities. Production also requires a server-enforced
+tenant/workspace/agent binding for each agent principal.
 
 ```bash
 curl -X POST "$UAM_URL/v1/identities/provision" \
@@ -28,6 +28,19 @@ The operation is idempotent and may update display metadata/status, but it
 refuses to move an existing agent or thread ID into another scope. Give the
 adapter its own `agent`-scoped API key only after this operator step.
 
+Bind that key name to the provisioned identity and enable strict startup:
+
+```dotenv
+UAM_API_KEYS=openclaw:<random-key>:agent,operator:<random-key>:operator
+UAM_API_PRINCIPAL_BINDINGS_JSON={"openclaw":{"tenant_id":"00000000-0000-0000-0000-000000000001","workspace_id":"00000000-0000-0000-0000-000000000002","agent_id":"00000000-0000-0000-0000-000000000010"}}
+UAM_REQUIRE_IDENTITY_BINDINGS=true
+```
+
+An agent request cannot switch those UUIDs or use a thread owned by another
+agent. Agent-only keys cannot open the operator control plane. Private memories
+are returned only when the recall `agent_id` matches the stored owner; the same
+filter is enforced by the canonical store, vector source and fusion layer.
+
 ## Runtime flow
 
 ```text
@@ -43,7 +56,8 @@ tool/model loop
   ↓
 run complete
   retain concise run summary
-  optionally reflect + reindex
+operator scheduler/UI
+  reflect + reindex with an operator-scoped key
 ```
 
 The memory server stays self-hosted. Agents call it over HTTP through the SDK or
@@ -59,8 +73,8 @@ Registered hooks:
   prepend the returned `context.markdown` before the model turn.
 - `after_tool_call` — retain durable tool outcomes, failures and environment
   facts.
-- `agent_end` — retain a compact run summary and optionally call
-  `/v1/workspaces/{workspace}/reflect`.
+- `agent_end` — retain a compact run summary. Reflection stays in the operator
+  control plane.
 
 Minimal env:
 
@@ -84,7 +98,7 @@ Provider lifecycle:
 
 - `prefetch()` before model invocation;
 - `sync_turn()` after a completed user/assistant turn;
-- `on_session_end()` for summary retention and optional reflection;
+- `on_session_end()` for summary retention;
 - `system_prompt_block()`, `get_tool_schemas()` and `handle_tool_call()` for
   native Hermes context/tool integration.
 

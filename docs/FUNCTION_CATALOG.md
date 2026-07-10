@@ -32,6 +32,10 @@
 | `ApiKeyRegistryService.ensure_configured_key(...)` | Env key → registry metadata | Создаёт/обновляет fingerprint без bearer secret |
 | `ApiKeyRegistryService.touch(...)` | Successful auth → `last_used_at` | Не меняет scopes/revocation |
 | `ApiKeyRegistryService.revoke(...)` | Operator revocation | Сохраняет row для audit/forensics |
+| `PrincipalBinding` / `_parse_principal_bindings()` | Principal name → tenant/workspace/agent UUIDs | Strict startup rejects every unbound agent principal |
+| `_required_scope_for_request()` | HTTP path/method → minimum capability | Control-plane and review routes are operator-only unless explicitly agent-safe |
+| `_agent_binding_error()` | Authenticated request + principal + identity registry → allow/deny | Agent cannot forge scope IDs or use a foreign thread |
+| `thread_belongs_to_agent()` | Tenant/workspace/agent/thread → boolean | Implemented by in-memory and PostgreSQL identity registries |
 
 ## Contracts — `contracts/dto.py`, `contracts/events.py`
 
