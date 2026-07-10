@@ -13,6 +13,7 @@ sys.path.insert(0, str(INTEGRATIONS))
 from hermes.plugin import create_plugin as create_hermes_plugin  # noqa: E402
 from hermes.universal_agent_memory import (  # noqa: E402
     UniversalAgentMemoryProvider,
+    register,
     register_memory_provider,
 )
 from openclaw.plugin import create_plugin as create_openclaw_plugin  # noqa: E402
@@ -139,15 +140,28 @@ def test_hermes_provider_discovery_and_tools(monkeypatch: MonkeyPatch) -> None:
         "universal_agent_memory_add",
     }
 
+    registered: list[UniversalAgentMemoryProvider] = []
+
+    class Context:
+        def register_memory_provider(self, candidate: UniversalAgentMemoryProvider) -> None:
+            registered.append(candidate)
+
+    register(Context())
+    assert len(registered) == 1
+    assert isinstance(registered[0], UniversalAgentMemoryProvider)
+
 
 def test_openclaw_installable_plugin_package_exists() -> None:
     package_json = ROOT / "agent-integrations" / "openclaw" / "plugin" / "package.json"
+    manifest = ROOT / "agent-integrations" / "openclaw" / "plugin" / "openclaw.plugin.json"
     index_js = ROOT / "agent-integrations" / "openclaw" / "plugin" / "index.js"
 
     assert package_json.exists()
+    assert manifest.exists()
     assert index_js.exists()
     assert "openclaw" in package_json.read_text()
     index = index_js.read_text()
     assert "registerHook(\"agent_turn_prepare\"" in index
+    assert "obelisk-memory-recall" in index
     assert "definePluginEntry" not in index
     assert "export default {" in index

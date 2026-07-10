@@ -308,6 +308,11 @@ ADD_SCHEMA = {
 }
 
 
+def register(ctx: Any) -> None:
+    """Register with the current Hermes exclusive memory-provider loader."""
+    ctx.register_memory_provider(UniversalAgentMemoryProvider())
+
+
 def register_memory_provider() -> UniversalAgentMemoryProvider:
-    """Hermes discovery hook for memory providers."""
+    """Compatibility factory for older Hermes integration tests."""
     return UniversalAgentMemoryProvider()

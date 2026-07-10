@@ -182,7 +182,7 @@ export default {
         api.logger.warn(`UAM recall failed: ${error.message}`);
         return undefined;
       }
-    });
+    }, { name: "obelisk-memory-recall", description: "Recall Obelisk context before an agent turn." });
 
     api.registerHook("after_tool_call", async (event, ctx) => {
       if (!config.enabled || !config.retainToolTraces) return;
@@ -205,7 +205,7 @@ export default {
       } catch (error) {
         api.logger.warn(`UAM tool retention failed: ${error.message}`);
       }
-    });
+    }, { name: "obelisk-memory-tool-retain", description: "Retain durable tool outcomes in Obelisk." });
 
     api.registerHook("agent_end", async (event, ctx) => {
       if (!config.enabled || !event?.success) return;
@@ -227,6 +227,6 @@ export default {
       } catch (error) {
         api.logger.warn(`UAM run retention failed: ${error.message}`);
       }
-    });
+    }, { name: "obelisk-memory-run-retain", description: "Retain completed OpenClaw runs in Obelisk." });
   },
 };
