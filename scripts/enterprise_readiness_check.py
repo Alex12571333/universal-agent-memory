@@ -47,6 +47,7 @@ def run_checks(*, static_only: bool) -> list[Check]:
         "deploy/reverse-proxy/Caddyfile",
         "deploy/reverse-proxy/docker-compose.caddy.yml",
         ".github/workflows/ci.yml",
+        "src/memory_plane/config/secrets.py",
         "migrations/008_audit_events.sql",
         "migrations/009_api_key_registry.sql",
         "scripts/check_branch_protection.py",
@@ -126,7 +127,9 @@ def run_checks(*, static_only: bool) -> list[Check]:
             Check("readme:128k", "131072" in readme, "128k context budget documented"),
             Check(
                 "readme:openai-compatible-llm",
-                "OpenAI-compatible `/v1/chat/completions`" in readme
+                "OpenAI-compatible means the API shape" in readme
+                and "`/v1/chat/completions`" in readme
+                and "provider lock-in" in readme
                 and "gpt-5.6-terra" in readme,
                 "README documents provider-neutral memory LLM endpoint",
             ),
@@ -154,9 +157,14 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 "NATS JetStream has monitoring healthcheck",
             ),
             Check(
-                "prod-compose:required-api-key",
-                "${UAM_API_KEY:?set UAM_API_KEY" in prod_compose,
-                "production API key is required",
+                "prod-compose:secret-files",
+                "UAM_API_KEY_FILE: ${UAM_API_KEY_FILE:-}" in prod_compose
+                and "UAM_API_KEYS_FILE: ${UAM_API_KEYS_FILE:-}" in prod_compose
+                and "UAM_MEMORY_LLM_API_KEY_FILE: ${UAM_MEMORY_LLM_API_KEY_FILE:-}"
+                in prod_compose
+                and "UAM_EMBEDDING_API_KEY_FILE: ${UAM_EMBEDDING_API_KEY_FILE:-}"
+                in prod_compose,
+                "production compose supports mounted secret files",
             ),
             Check(
                 "prod-compose:text-encryption",
@@ -164,10 +172,7 @@ def run_checks(*, static_only: bool) -> list[Check]:
                     "UAM_MEMORY_TEXT_ENCRYPTION: ${UAM_MEMORY_TEXT_ENCRYPTION:-pgcrypto}"
                 )
                 >= 2
-                and prod_compose.count(
-                    "UAM_MEMORY_TEXT_ENCRYPTION_KEY: "
-                    "${UAM_MEMORY_TEXT_ENCRYPTION_KEY:?set UAM_MEMORY_TEXT_ENCRYPTION_KEY"
-                )
+                and prod_compose.count("UAM_MEMORY_TEXT_ENCRYPTION_KEY_FILE: ")
                 >= 2,
                 "production API and embedding worker receive canonical text encryption settings",
             ),
@@ -272,6 +277,15 @@ def run_checks(*, static_only: bool) -> list[Check]:
             ),
             Check("env:privacy", "UAM_PRIVACY_ACTION=redact" in env, "privacy defaults"),
             Check("env:scoped-keys", "UAM_API_KEYS=" in env, "scoped API keys documented"),
+            Check(
+                "env:secret-files",
+                "UAM_API_KEY_FILE=" in env
+                and "UAM_API_KEYS_FILE=" in env
+                and "UAM_MEMORY_TEXT_ENCRYPTION_KEY_FILE=" in env
+                and "UAM_MEMORY_LLM_API_KEY_FILE=" in env
+                and "UAM_EMBEDDING_API_KEY_FILE=" in env,
+                "mounted secret-file env alternatives are documented",
+            ),
             Check(
                 "env:signing-keys",
                 "UAM_AUDIT_SIGNING_KEY=" in env and "UAM_VAULT_SIGNING_KEY=" in env,

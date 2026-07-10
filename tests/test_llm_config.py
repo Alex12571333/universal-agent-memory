@@ -41,6 +41,20 @@ def test_memory_llm_reads_openai_api_key_fallback(monkeypatch) -> None:
     assert config.public_dict()["context_window_tokens"] == 131072
 
 
+def test_memory_llm_reads_api_key_file(monkeypatch, tmp_path) -> None:
+    secret_file = tmp_path / "model_gateway_key"
+    secret_file.write_text("file-secret\n", encoding="utf-8")
+    monkeypatch.delenv("UAM_MEMORY_LLM_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("SPARK_API_KEY", raising=False)
+    monkeypatch.setenv("UAM_MEMORY_LLM_API_KEY_FILE", str(secret_file))
+
+    config = MemoryLLMConfig.from_env()
+
+    assert config.api_key == "file-secret"
+    assert config.public_dict()["api_key_configured"] is True
+
+
 def test_memory_llm_chat_posts_openai_compatible_payload(monkeypatch) -> None:
     captured = {}
 

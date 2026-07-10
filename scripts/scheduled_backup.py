@@ -14,6 +14,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from memory_plane.config.secrets import read_secret_env
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -37,14 +39,16 @@ def main() -> int:
     )
     parser.add_argument(
         "--database-url",
-        default=os.getenv("UAM_BACKUP_DATABASE_URL")
-        or os.getenv("UAM_ADMIN_DATABASE_URL")
-        or os.getenv("UAM_DATABASE_URL"),
+        default=read_secret_env(
+            "UAM_BACKUP_DATABASE_URL",
+            "UAM_ADMIN_DATABASE_URL",
+            "UAM_DATABASE_URL",
+        ),
         help="PostgreSQL URL passed to backup.py",
     )
     parser.add_argument(
         "--alert-webhook",
-        default=os.getenv("UAM_BACKUP_ALERT_WEBHOOK"),
+        default=read_secret_env("UAM_BACKUP_ALERT_WEBHOOK"),
         help="Optional HTTP webhook called when the job fails",
     )
     parser.add_argument(

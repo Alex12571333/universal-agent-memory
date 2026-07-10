@@ -10,6 +10,7 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from memory_plane.config.secrets import read_secret_env
 from memory_plane.ports.embeddings import EmbeddingClient
 
 
@@ -68,7 +69,7 @@ class EmbeddingProviderConfig:
             model_name=model,
             dimension=dimension,
             base_url=os.getenv("UAM_EMBEDDING_BASE_URL") or _default_base_url(provider),
-            api_key=os.getenv("UAM_EMBEDDING_API_KEY") or os.getenv("OPENAI_API_KEY"),
+            api_key=read_secret_env("UAM_EMBEDDING_API_KEY", "OPENAI_API_KEY"),
             timeout_seconds=timeout,
         )
 

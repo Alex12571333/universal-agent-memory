@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
@@ -20,6 +19,8 @@ from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 from uuid import UUID, uuid4
+
+from memory_plane.config.secrets import read_secret_env
 
 TENANT = UUID("00000000-0000-0000-0000-000000000001")
 WORKSPACE = UUID("00000000-0000-0000-0000-000000000002")
@@ -193,7 +194,7 @@ def main() -> int:
     """CLI entrypoint."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base-url", default="http://127.0.0.1:6798")
-    parser.add_argument("--api-key", default=os.getenv("UAM_API_KEY"))
+    parser.add_argument("--api-key", default=read_secret_env("UAM_API_KEY"))
     parser.add_argument("--tenant-id", type=UUID, default=TENANT)
     parser.add_argument("--workspace-id", type=UUID, default=WORKSPACE)
     parser.add_argument("--timeout-seconds", type=float, default=20.0)

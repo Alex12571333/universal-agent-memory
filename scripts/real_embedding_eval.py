@@ -9,10 +9,11 @@ from __future__ import annotations
 import argparse
 import json
 import math
-import os
 from dataclasses import dataclass
 from typing import Any
 from urllib.request import Request, urlopen
+
+from memory_plane.config.secrets import read_secret_env
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,7 +123,7 @@ def main() -> int:
     parser.add_argument("--model", default="text-embedding-3-large")
     parser.add_argument(
         "--api-key",
-        default=os.getenv("UAM_EMBEDDING_API_KEY") or os.getenv("OPENAI_API_KEY"),
+        default=read_secret_env("UAM_EMBEDDING_API_KEY", "OPENAI_API_KEY"),
     )
     args = parser.parse_args()
 

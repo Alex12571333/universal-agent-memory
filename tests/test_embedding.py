@@ -54,6 +54,23 @@ class EmbeddingServiceTest(unittest.TestCase):
         self.assertEqual("test-fake", client.model_name)
         self.assertEqual(8, client.dimension)
 
+    def test_embedding_config_reads_api_key_file(self) -> None:
+        """Embedding provider config can read mounted secret files."""
+        with unittest.mock.patch.dict(
+            "os.environ",
+            {
+                "UAM_EMBEDDING_PROVIDER": "openai",
+                "UAM_EMBEDDING_MODEL": "text-embedding-3-large",
+                "UAM_EMBEDDING_DIM": "3072",
+                "UAM_EMBEDDING_API_KEY_FILE": "/tmp/does-not-exist",
+            },
+            clear=True,
+        ):
+            with patch("pathlib.Path.read_text", return_value="embedding-key\n"):
+                config = EmbeddingProviderConfig.from_env()
+
+        self.assertEqual("embedding-key", config.api_key)
+
     def test_openai_embedding_client_posts_expected_payload(self) -> None:
         """OpenAI provider calls `/embeddings` and extracts `data[0].embedding`."""
         captured: dict[str, Any] = {}

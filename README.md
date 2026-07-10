@@ -208,8 +208,9 @@ OpenAPI docs are available at `http://localhost:6798/docs` when authorized.
 
 Obelisk Memory separates memory reasoning from embeddings. The memory LLM handles
 curation, proposals, compacting, and future graph extraction. Production uses an
-OpenAI-compatible `/v1/chat/completions` contract so the same configuration can
-point at OpenAI, OpenRouter, LiteLLM, vLLM, llama.cpp, or another compatible
+OpenAI-compatible means the API shape, not provider lock-in. Obelisk uses the
+`/v1/chat/completions` contract so the same configuration can point at official
+OpenAI, OpenRouter, LiteLLM, vLLM, llama.cpp, Spark/DGX, or another compatible
 gateway:
 
 ```dotenv
@@ -222,10 +223,11 @@ UAM_MEMORY_LLM_MAX_TOKENS=1600
 UAM_MEMORY_LLM_ENABLE_THINKING=false
 ```
 
-The default model choice follows the current OpenAI model guidance: GPT-5.6 Sol
-is the flagship for complex reasoning/coding, while GPT-5.6 Terra balances
-intelligence and cost. Obelisk defaults to Terra for memory maintenance and lets
-operators override the model for another compatible provider.
+The values above are the official OpenAI production profile. For another
+provider, keep the contract and replace `UAM_MEMORY_LLM_BASE_URL`,
+`UAM_MEMORY_LLM_MODEL`, and the key with that provider's values. Examples:
+OpenRouter model IDs, a LiteLLM gateway route, vLLM served model names,
+llama.cpp server model aliases, or the optional Spark/DGX Qwen endpoint.
 
 Embedding model configuration is separate:
 
@@ -239,6 +241,22 @@ UAM_QDRANT_PAYLOAD_TEXT=false
 UAM_MEMORY_TEXT_ENCRYPTION=pgcrypto
 UAM_MEMORY_TEXT_ENCRYPTION_KEY=...
 ```
+
+Production secrets can be supplied as mounted files instead of raw environment
+variables. For example:
+
+```dotenv
+UAM_API_KEY_FILE=/run/secrets/uam_api_key
+UAM_API_KEYS_FILE=/run/secrets/uam_scoped_api_keys
+UAM_MEMORY_LLM_API_KEY_FILE=/run/secrets/model_gateway_key
+UAM_EMBEDDING_API_KEY_FILE=/run/secrets/embedding_gateway_key
+UAM_MEMORY_TEXT_ENCRYPTION_KEY_FILE=/run/secrets/memory_text_key
+UAM_AUDIT_SIGNING_KEY_FILE=/run/secrets/audit_signing_key
+UAM_VAULT_SIGNING_KEY_FILE=/run/secrets/vault_signing_key
+```
+
+Direct variables still work for development; `*_FILE` is preferred for
+production secret managers.
 
 For local self-hosted alternatives, see
 [docs/DGX_SPARK_MEMORY_LLM.md](docs/DGX_SPARK_MEMORY_LLM.md) and

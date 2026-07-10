@@ -173,6 +173,29 @@ def test_scoped_api_keys_limit_agent_and_operator_access(monkeypatch) -> None:
     assert operator_metrics.status_code == 200
 
 
+def test_api_auth_reads_master_and_scoped_keys_from_files(monkeypatch, tmp_path) -> None:
+    master_file = tmp_path / "master"
+    scoped_file = tmp_path / "scoped"
+    master_file.write_text("master-secret\n", encoding="utf-8")
+    scoped_file.write_text(
+        "agent:agent-secret:agent,operator:operator-secret:operator\n",
+        encoding="utf-8",
+    )
+    monkeypatch.delenv("UAM_API_KEY", raising=False)
+    monkeypatch.delenv("UAM_API_KEYS", raising=False)
+    monkeypatch.setenv("UAM_API_KEY_FILE", str(master_file))
+    monkeypatch.setenv("UAM_API_KEYS_FILE", str(scoped_file))
+    client = TestClient(create_app(build_in_memory_container()))
+
+    denied = client.get("/metrics", headers={"Authorization": "Bearer agent-secret"})
+    scoped_allowed = client.get("/metrics", headers={"Authorization": "Bearer operator-secret"})
+    master_allowed = client.get("/metrics", headers={"Authorization": "Bearer master-secret"})
+
+    assert denied.status_code == 403
+    assert scoped_allowed.status_code == 200
+    assert master_allowed.status_code == 200
+
+
 def test_audit_events_require_operator_scope(monkeypatch) -> None:
     monkeypatch.setenv(
         "UAM_API_KEYS",

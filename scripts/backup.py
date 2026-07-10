@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import argparse
-import os
 import subprocess
 from pathlib import Path
+
+from memory_plane.config.secrets import read_secret_env
 
 
 def main() -> int:
@@ -14,9 +15,11 @@ def main() -> int:
     parser.add_argument("output", help="Path to write the .dump file")
     parser.add_argument(
         "--database-url",
-        default=os.getenv("UAM_BACKUP_DATABASE_URL")
-        or os.getenv("UAM_ADMIN_DATABASE_URL")
-        or os.getenv("UAM_DATABASE_URL"),
+        default=read_secret_env(
+            "UAM_BACKUP_DATABASE_URL",
+            "UAM_ADMIN_DATABASE_URL",
+            "UAM_DATABASE_URL",
+        ),
         help="PostgreSQL connection URL; defaults to UAM_BACKUP_DATABASE_URL",
     )
     args = parser.parse_args()

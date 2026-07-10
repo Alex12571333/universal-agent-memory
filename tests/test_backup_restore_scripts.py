@@ -103,6 +103,63 @@ def test_validate_production_env_accepts_strict_real_config(tmp_path: Path) -> N
     assert all(check.ok for check in checks)
 
 
+def test_validate_production_env_accepts_secret_files(tmp_path: Path) -> None:
+    secret_values = {
+        "UAM_API_KEY": "ak_" + "a" * 40,
+        "UAM_API_KEYS": "openclaw:oc_" + "b" * 32 + ":agent,"
+        "hermes:hm_" + "c" * 32 + ":agent,"
+        "operator:op_" + "d" * 32 + ":operator",
+        "POSTGRES_PASSWORD": "pg_" + "e" * 40,
+        "UAM_APP_DB_PASSWORD": "app_" + "f" * 40,
+        "MINIO_ROOT_PASSWORD": "minio_" + "a" * 40,
+        "UAM_MEMORY_TEXT_ENCRYPTION_KEY": "memtext_" + "f" * 40,
+        "UAM_AUDIT_SIGNING_KEY": "audit_" + "b" * 40,
+        "UAM_VAULT_SIGNING_KEY": "vault_" + "c" * 40,
+    }
+    secret_lines: list[str] = []
+    for key, value in secret_values.items():
+        path = tmp_path / key.lower()
+        path.write_text(value + "\n", encoding="utf-8")
+        secret_lines.append(f"{key}_FILE={path}")
+
+    env_file = tmp_path / ".env.production"
+    env_file.write_text(
+        "\n".join(
+            [
+                *secret_lines,
+                "UAM_SERVER_ID=00000000-0000-0000-0000-000000000001",
+                "UAM_PROJECT_ID=00000000-0000-0000-0000-000000000002",
+                "UAM_PUBLIC_HOST=memory.example.com",
+                "UAM_PUBLIC_EMAIL=ops@example.com",
+                "UAM_CONTEXT_BUDGET_TOKENS=131072",
+                "UAM_PRIVACY_ENABLED=true",
+                "UAM_PRIVACY_ACTION=redact",
+                "UAM_MEMORY_TEXT_ENCRYPTION=pgcrypto",
+                "UAM_EMBEDDING_PROVIDER=openai",
+                "UAM_EMBEDDING_MODEL=text-embedding-3-large",
+                "UAM_EMBEDDING_BASE_URL=https://api.openai.com/v1",
+                "UAM_EMBEDDING_DIM=3072",
+                "UAM_QDRANT_PAYLOAD_TEXT=false",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    values = validate_production_env.parse_env_file(env_file)
+    checks = validate_production_env.validate_env(
+        values,
+        require_public_tls=True,
+        require_signed_artifacts=True,
+        require_real_embeddings=True,
+    )
+
+    assert all(check.ok for check in checks)
+    assert any(
+        check.name == "UAM_API_KEY" and "UAM_API_KEY_FILE" in check.detail
+        for check in checks
+    )
+
+
 def test_validate_production_env_rejects_placeholders_and_missing_public_tls() -> None:
     values = validate_production_env.parse_env_file(ROOT / ".env.production.example")
 
@@ -162,12 +219,11 @@ def test_production_compose_wires_memory_text_encryption() -> None:
         >= 2
     )
     assert (
-        compose.count(
-            "UAM_MEMORY_TEXT_ENCRYPTION_KEY: "
-            "${UAM_MEMORY_TEXT_ENCRYPTION_KEY:?set UAM_MEMORY_TEXT_ENCRYPTION_KEY"
-        )
+        compose.count("UAM_MEMORY_TEXT_ENCRYPTION_KEY_FILE: ")
         >= 2
     )
+    assert "UAM_API_KEY_FILE: ${UAM_API_KEY_FILE:-}" in compose
+    assert "UAM_API_KEYS_FILE: ${UAM_API_KEYS_FILE:-}" in compose
     assert (
         compose.count("UAM_QDRANT_PAYLOAD_TEXT: ${UAM_QDRANT_PAYLOAD_TEXT:-false}")
         >= 2

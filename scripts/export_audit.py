@@ -15,6 +15,7 @@ from uuid import UUID
 
 from memory_plane.adapters.postgres import PostgresMemoryLedger
 from memory_plane.api.app import DEFAULT_PROJECT_ID, DEFAULT_SERVER_ID
+from memory_plane.config.secrets import read_secret_env
 from memory_plane.domain.audit import AuditEvent
 from memory_plane.services.audit import AuditLogService
 
@@ -32,7 +33,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--database-url",
-        default=os.getenv("UAM_DATABASE_URL"),
+        default=read_secret_env("UAM_DATABASE_URL"),
         help="PostgreSQL app-role URL; defaults to UAM_DATABASE_URL",
     )
     parser.add_argument(
@@ -71,7 +72,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--signing-key",
-        default=os.getenv("UAM_AUDIT_SIGNING_KEY"),
+        default=read_secret_env("UAM_AUDIT_SIGNING_KEY"),
         help="Optional HMAC signing key; defaults to UAM_AUDIT_SIGNING_KEY",
     )
     args = parser.parse_args()

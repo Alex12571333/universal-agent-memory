@@ -8,6 +8,7 @@ import socket
 from uuid import UUID
 
 from memory_plane.bootstrap import build_postgres_container
+from memory_plane.config.secrets import read_secret_env
 from memory_plane.contracts.events import IntegrationEvent
 from memory_plane.services.consumer import IdempotentEventConsumer
 from memory_plane.workers.nats_consumer import NatsPullWorker
@@ -15,7 +16,9 @@ from memory_plane.workers.nats_consumer import NatsPullWorker
 
 async def run() -> None:
     """Run the embedding worker until stopped."""
-    dsn = os.environ["UAM_DATABASE_URL"]
+    dsn = read_secret_env("UAM_DATABASE_URL")
+    if not dsn:
+        raise RuntimeError("UAM_DATABASE_URL or UAM_DATABASE_URL_FILE is required")
     server_id = UUID(os.environ["UAM_SERVER_ID"])
     project_id = UUID(os.environ.get("UAM_PROJECT_ID", "00000000-0000-0000-0000-000000000002"))
     nats_url = os.getenv("UAM_NATS_URL", "nats://nats:4222")

@@ -27,6 +27,8 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 from uuid import UUID, uuid4
 
+from memory_plane.config.secrets import read_secret_env
+
 DEFAULT_TENANT = UUID("00000000-0000-0000-0000-000000000001")
 OPENCLAW_WORKSPACE = UUID("00000000-0000-0000-0000-000000000014")
 HERMES_WORKSPACE = UUID("00000000-0000-0000-0000-000000000015")
@@ -384,7 +386,7 @@ def _parse_uuid(value: str) -> UUID:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base-url", default=os.getenv("UAM_BASE_URL", "http://127.0.0.1:6798"))
-    parser.add_argument("--api-key", default=os.getenv("UAM_API_KEY"))
+    parser.add_argument("--api-key", default=read_secret_env("UAM_API_KEY"))
     parser.add_argument("--tenant-id", type=_parse_uuid, default=DEFAULT_TENANT)
     parser.add_argument("--rounds", type=int, default=3)
     parser.add_argument("--parallel", type=int, default=2)

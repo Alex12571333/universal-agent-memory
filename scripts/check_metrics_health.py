@@ -13,6 +13,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from memory_plane.config.secrets import read_secret_env
+
 DEFAULT_URL = "http://localhost:6798/metrics"
 
 
@@ -23,11 +25,11 @@ def main() -> int:
     parser.add_argument("--metrics-file", help="Read Prometheus text from a local file")
     parser.add_argument(
         "--api-key",
-        default=os.getenv("UAM_API_KEY"),
+        default=read_secret_env("UAM_API_KEY"),
         help="Bearer key for /metrics",
     )
     parser.add_argument("--report", default=os.getenv("UAM_METRICS_REPORT"))
-    parser.add_argument("--alert-webhook", default=os.getenv("UAM_METRICS_ALERT_WEBHOOK"))
+    parser.add_argument("--alert-webhook", default=read_secret_env("UAM_METRICS_ALERT_WEBHOOK"))
     parser.add_argument("--max-outbox-pending", type=float, default=100)
     parser.add_argument("--max-outbox-dead-letter", type=float, default=0)
     parser.add_argument("--max-outbox-lag-seconds", type=float, default=300)

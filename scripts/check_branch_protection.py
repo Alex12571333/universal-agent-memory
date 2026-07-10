@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
 import subprocess
 import urllib.error
 import urllib.request
 from typing import Any
+
+from memory_plane.config.secrets import read_secret_env
 
 API_VERSION = "2022-11-28"
 DEFAULT_REQUIRED_CHECKS = ("python", "web")
@@ -22,7 +23,7 @@ def main() -> int:
     parser.add_argument("--branch", default="main", help="Branch to verify")
     parser.add_argument(
         "--token",
-        default=os.getenv("GITHUB_TOKEN") or os.getenv("GH_TOKEN"),
+        default=read_secret_env("GITHUB_TOKEN", "GH_TOKEN"),
         help="GitHub token; defaults to GITHUB_TOKEN/GH_TOKEN",
     )
     parser.add_argument(
