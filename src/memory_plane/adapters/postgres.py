@@ -7,7 +7,7 @@ import re
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import replace
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -1181,6 +1181,79 @@ class PostgresMemoryLedger:
         if row is None:
             raise KeyError("memory proposal not found")
         return proposal
+
+    def accept_proposal_with_memory(
+        self,
+        proposal: MemoryProposal,
+        item: MemoryItem,
+        event: IntegrationEvent,
+        *,
+        reviewer: str,
+        reason: str,
+        idempotency_key: str,
+    ) -> tuple[MemoryProposal, MemoryItem, bool]:
+        """Atomically accept an open proposal with its memory and outbox event."""
+        from psycopg.types.json import Jsonb
+
+        self._validate_event(item, event)
+        with self._connection() as connection:
+            self._set_tenant(connection, proposal.tenant_id)
+            self._lock_idempotency_key(connection, item.tenant_id, idempotency_key)
+            row = connection.execute(
+                """
+                select id, tenant_id, workspace_id, agent_id, thread_id, namespace,
+                  requester, target, proposal, evidence, confidence, importance,
+                  status, metadata, created_at, reviewed_at, reviewer, review_reason
+                from memory_proposals where id = %s for update
+                """,
+                (proposal.id,),
+            ).fetchone()
+            if row is None:
+                raise KeyError("memory proposal not found")
+            current = self._to_proposal(row)
+            if current.status == MemoryProposalStatus.REJECTED:
+                raise ValueError("rejected proposal cannot be accepted")
+            existing = self._get_by_idempotency_key(connection, item.tenant_id, idempotency_key)
+            if existing is not None:
+                return current, existing, False
+            if current.status == MemoryProposalStatus.ACCEPTED:
+                raise RuntimeError("accepted proposal is missing its idempotent memory record")
+            try:
+                self._insert_item(connection, item)
+            except Exception as exc:
+                if _is_foreign_key_violation(exc):
+                    raise ValueError("tenant or workspace is not provisioned") from exc
+                raise
+            connection.execute(
+                """
+                insert into idempotency_keys (tenant_id, key, memory_item_id)
+                values (%s, %s, %s)
+                """,
+                (item.tenant_id, idempotency_key, item.id),
+            )
+            self._insert_event(connection, event)
+            metadata = {**current.metadata, "accepted_memory_id": str(item.id)}
+            updated = connection.execute(
+                """
+                update memory_proposals
+                set status = 'accepted', metadata = %s, reviewed_at = %s,
+                    reviewer = %s, review_reason = %s
+                where id = %s
+                returning id, tenant_id, workspace_id, agent_id, thread_id, namespace,
+                  requester, target, proposal, evidence, confidence, importance,
+                  status, metadata, created_at, reviewed_at, reviewer, review_reason
+                """,
+                (
+                    Jsonb(metadata),
+                    datetime.now(UTC),
+                    reviewer.strip()[:120] or "operator",
+                    reason.strip()[:1000],
+                    proposal.id,
+                ),
+            ).fetchone()
+            if updated is None:
+                raise KeyError("memory proposal not found")
+            return self._to_proposal(updated), item, True
 
     def list_proposals(
         self,

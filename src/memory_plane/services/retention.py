@@ -29,6 +29,15 @@ class RetentionService:
         Extraction, embedding, graph updates and consolidation deliberately stay
         off this hot path. Idempotency is delegated to the ledger transaction.
         """
+        item, event = self.prepare(command)
+        stored, created = self._store.retain(item, event, command.idempotency_key)
+        if not created:
+            return RetainResult(item=stored, created=False, queued_event_ids=())
+
+        return RetainResult(item=stored, created=True, queued_event_ids=(event.id,))
+
+    def prepare(self, command: RetainCommand) -> tuple[MemoryItem, IntegrationEvent]:
+        """Build one sanitized canonical item and matching outbox event without storing them."""
         decision = self._privacy.apply(command.text)
         item = MemoryItem(
             tenant_id=command.tenant_id,
@@ -57,11 +66,7 @@ class RetentionService:
                 "jobs": ["embed", "dedupe", "graph", "reflect"],
             },
         )
-        stored, created = self._store.retain(item, event, command.idempotency_key)
-        if not created:
-            return RetainResult(item=stored, created=False, queued_event_ids=())
-
-        return RetainResult(item=stored, created=True, queued_event_ids=(event.id,))
+        return item, event
 
     def supersede(self, command: SupersedeMemoryCommand) -> RetainResult:
         """Append a replacement item only if the caller observed the current head."""

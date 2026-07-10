@@ -8,7 +8,8 @@ from typing import Any, Protocol
 from uuid import UUID
 
 from memory_plane.contracts.dto import RetainCommand, RetainResult
-from memory_plane.domain.models import MemoryLayer, MemoryScope, Provenance
+from memory_plane.contracts.events import IntegrationEvent
+from memory_plane.domain.models import MemoryItem, MemoryLayer, MemoryScope, Provenance
 from memory_plane.domain.proposal import (
     MemoryProposal,
     MemoryProposalStatus,
@@ -45,6 +46,19 @@ class MemoryProposalRepository(Protocol):
 
     def save_proposal_review(self, proposal: MemoryProposal) -> MemoryProposal:
         """Persist a proposal review/status update."""
+        ...
+
+    def accept_proposal_with_memory(
+        self,
+        proposal: MemoryProposal,
+        item: MemoryItem,
+        event: IntegrationEvent,
+        *,
+        reviewer: str,
+        reason: str,
+        idempotency_key: str,
+    ) -> tuple[MemoryProposal, MemoryItem, bool]:
+        """Atomically accept one proposal and append its canonical memory/event."""
         ...
 
 
@@ -272,8 +286,7 @@ class MemoryProposalService:
                 )
             )
         )
-        retained = self._retention.retain(
-            RetainCommand(
+        retain_command = RetainCommand(
                 tenant_id=proposal.tenant_id,
                 workspace_id=proposal.workspace_id,
                 agent_id=proposal.agent_id,
@@ -300,8 +313,27 @@ class MemoryProposalService:
                     "proposal_namespace": proposal.namespace,
                 },
                 idempotency_key=command.idempotency_key or f"accept-proposal:{proposal.id}",
-            )
         )
+        item, event = self._retention.prepare(retain_command)
+        atomic_accept = getattr(self._repository, "accept_proposal_with_memory", None)
+        if callable(atomic_accept):
+            stored, memory, created = atomic_accept(
+                proposal,
+                item,
+                event,
+                reviewer=command.reviewer,
+                reason=command.reason,
+                idempotency_key=retain_command.idempotency_key or f"accept-proposal:{proposal.id}",
+            )
+            return ReviewMemoryProposalResult(
+                proposal=stored,
+                retained=RetainResult(
+                    item=memory,
+                    created=created,
+                    queued_event_ids=(event.id,) if created else (),
+                ),
+            )
+        retained = self._retention.retain(retain_command)
         reviewed = _reviewed_proposal(
             proposal,
             status=MemoryProposalStatus.ACCEPTED,
