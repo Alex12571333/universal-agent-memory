@@ -15,6 +15,7 @@ REQUIRED_ARTIFACTS = {
     "memory_llm",
     "metrics_health",
     "scheduled_backup",
+    "audit_retention",
     "branch_protection",
     "ui_walkthrough",
 }
@@ -105,6 +106,7 @@ def verify_manifest(path: Path) -> list[EvidenceCheck]:
         "memory_llm": _verify_memory_llm,
         "metrics_health": _verify_metrics_health,
         "scheduled_backup": _verify_scheduled_backup,
+        "audit_retention": _verify_audit_retention,
         "branch_protection": _verify_branch_protection,
         "ui_walkthrough": _verify_ui_walkthrough,
     }
@@ -256,6 +258,23 @@ def _verify_branch_protection(payload: dict[str, Any]) -> list[EvidenceCheck]:
             "branch_protection:required-checks",
             not missing,
             "required checks present" if not missing else "missing: " + ", ".join(missing),
+        ),
+    ]
+
+
+def _verify_audit_retention(payload: dict[str, Any]) -> list[EvidenceCheck]:
+    return [
+        _format_check("audit_retention", payload, "obelisk-audit-retention-v1"),
+        _ok_check("audit_retention", payload),
+        EvidenceCheck(
+            "audit_retention:verified-export",
+            payload.get("verified_export") is True,
+            "pre-prune audit export verified",
+        ),
+        EvidenceCheck(
+            "audit_retention:signed-export",
+            payload.get("signed_export") is True,
+            "pre-prune audit export was signed",
         ),
     ]
 

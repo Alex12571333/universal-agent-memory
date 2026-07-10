@@ -592,6 +592,43 @@ class PostgresMemoryLedger:
             ).fetchall()
         return tuple(self._to_audit_event(row) for row in rows)
 
+    def prune_audit_events(
+        self,
+        tenant_id: UUID,
+        *,
+        created_before: datetime,
+        workspace_id: UUID | None = None,
+        limit: int = 500,
+    ) -> int:
+        """Delete old audit events under RLS after external retention export."""
+        safe_limit = max(1, min(int(limit), 500))
+        with self._connection() as connection:
+            self._set_tenant(connection, tenant_id)
+            result = connection.execute(
+                """
+                with doomed as (
+                  select id
+                  from audit_events
+                  where created_at < %s::timestamptz
+                    and (%s::uuid is null or workspace_id = %s::uuid)
+                  order by created_at asc, id asc
+                  limit %s
+                )
+                delete from audit_events a
+                using doomed
+                where a.id = doomed.id
+                  and a.tenant_id = %s
+                """,
+                (
+                    created_before,
+                    workspace_id,
+                    workspace_id,
+                    safe_limit,
+                    tenant_id,
+                ),
+            )
+            return int(result.rowcount or 0)
+
     def save_api_key_record(self, record: ApiKeyRecord) -> ApiKeyRecord:
         """Create/update one API-key metadata row under RLS."""
         with self._connection() as connection:

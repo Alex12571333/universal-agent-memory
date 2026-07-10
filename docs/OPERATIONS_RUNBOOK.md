@@ -183,6 +183,42 @@ unless `--all-pages` is supplied. For regulated retention, protect
 `UAM_AUDIT_SIGNING_KEY` in an external secret manager, run scheduled range
 exports, and store bundles in immutable storage.
 
+## Audit retention
+
+Audit pruning is intentionally a two-step controlled workflow: export and verify
+first, prune only when explicitly applying the retention policy.
+
+Dry-run the retention job:
+
+```bash
+UAM_AUDIT_SIGNING_KEY=... PYTHONPATH=src python scripts/audit_retention.py \
+  --database-url "$UAM_DATABASE_URL" \
+  --tenant-id "$UAM_SERVER_ID" \
+  --workspace-id "$UAM_PROJECT_ID" \
+  --retain-days 365 \
+  --export-root ./audit-retention \
+  --json-report ./ops/audit-retention.json
+```
+
+Apply only after the exported bundle has been shipped to durable/immutable
+storage:
+
+```bash
+UAM_AUDIT_SIGNING_KEY=... PYTHONPATH=src python scripts/audit_retention.py \
+  --database-url "$UAM_DATABASE_URL" \
+  --tenant-id "$UAM_SERVER_ID" \
+  --workspace-id "$UAM_PROJECT_ID" \
+  --retain-days 365 \
+  --export-root ./audit-retention \
+  --json-report ./ops/audit-retention.json \
+  --apply
+```
+
+`--apply` requires a signing key unless `--allow-unsigned-export` is explicitly
+passed. Production deployments should not use unsigned retention exports. The
+JSON report uses format `obelisk-audit-retention-v1` and records cutoff,
+exported event count, signature/verification status and pruned row count.
+
 ## Signed vault bundles
 
 Vault export/import is human-editable, so production operators should protect

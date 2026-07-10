@@ -30,6 +30,8 @@ remaining hard requirements.
 - [x] Audit export bundle can be HMAC-signed and verified with an operator-held
       signing key.
 - [x] Audit export supports time-window pagination for long incident windows.
+- [x] Audit retention runner exports and verifies old audit windows before
+      pruning, writes JSON evidence, and requires signed exports for `--apply`.
 - [x] Health checks exist for API, PostgreSQL, and NATS.
 - [x] Metrics endpoint exists.
 - [x] Metrics health evaluator can fail on outbox lag/dead letters and emit JSON
@@ -68,7 +70,8 @@ remaining hard requirements.
       verify direct backend `6798` is not externally reachable.
 - [ ] Install the external secret manager in the target environment and mount
       production secrets through `*_FILE` paths instead of raw env values.
-- [ ] Add audit retention schedule, immutable storage, and external signing-key
+- [ ] Install the audit retention schedule in the target environment and store
+      signed export bundles in immutable storage with external signing-key
       custody for regulated environments.
 - [ ] Install environment-level backup schedule and immutable artifact storage.
 - [ ] Wire metrics and scheduled-backup reports into deployment dashboards/alerts.
