@@ -42,6 +42,8 @@ remaining hard requirements.
       reports/webhook alerts.
 - [x] Prometheus alert rules and Grafana dashboard templates exist for outbox,
       worker leases, embeddings, reindex and ledger growth.
+- [x] Observability preflight runner writes JSON evidence that dashboard panels
+      and alert rules cover required production metrics.
 - [x] Embedding service exposes operation, failure, latency and reindex metrics.
 - [x] Privacy guard redacts common secrets and high-risk PII.
 - [x] Backup script exists.
@@ -88,8 +90,8 @@ remaining hard requirements.
 - [ ] Run ops schedule preflight against the target environment, verify backup,
       audit-retention and metrics schedules, alert routing and durable artifact
       roots, and preserve the generated report.
-- [ ] Install the provided metrics dashboard/alert rules in the target
-      monitoring stack.
+- [ ] Run observability preflight against the target monitoring artifacts,
+      verify dashboard/alert coverage, and preserve the generated report.
 - [x] Require signed vault import manifests in production operating procedure
       and release evidence.
 - [x] Enforce GitHub branch protection and PR-only merges to `main`.

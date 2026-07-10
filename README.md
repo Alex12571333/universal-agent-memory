@@ -154,6 +154,10 @@ PostgreSQL, Qdrant, NATS, and MinIO internal.
      --backup-artifact-root s3://obelisk-memory/backups \
      --audit-artifact-root s3://obelisk-memory/audit \
      --report ./ops/ops-schedule.json
+   python scripts/observability_preflight.py \
+     --grafana-dashboard ./deploy/observability/grafana-dashboard.json \
+     --prometheus-alerts ./deploy/observability/prometheus-alerts.yml \
+     --report ./ops/observability-preflight.json
    UAM_VAULT_SIGNING_KEY=... python scripts/export_vault.py ./vault-review
    UAM_VAULT_SIGNING_KEY=... python scripts/import_vault.py ./vault-review \
      --require-signature \
@@ -375,6 +379,10 @@ python scripts/ops_schedule_preflight.py .env.production \
   --backup-artifact-root s3://obelisk-memory/backups \
   --audit-artifact-root s3://obelisk-memory/audit \
   --report ./ops/ops-schedule.json
+python scripts/observability_preflight.py \
+  --grafana-dashboard ./deploy/observability/grafana-dashboard.json \
+  --prometheus-alerts ./deploy/observability/prometheus-alerts.yml \
+  --report ./ops/observability-preflight.json
 UAM_VAULT_SIGNING_KEY=... python scripts/export_vault.py ./vault-review
 UAM_VAULT_SIGNING_KEY=... python scripts/import_vault.py ./vault-review \
   --require-signature \

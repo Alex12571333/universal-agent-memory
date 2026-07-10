@@ -23,7 +23,7 @@ it is not enough.
 | UI | React dashboard and fallback `/ui` support real memory/vault editing, actionable conflict decisions and a JSON UI walkthrough runner | Operator-grade baseline; still needs preserved live walkthrough evidence per release |
 | Testing | Unit, integration-style, benchmark scripts, web build, concurrent load smoke runner | Needs preserved live load/chaos/security evidence from the target deployment |
 | Release process | `main` branch protection requires PR flow, strict `python`/`web` checks, conversation resolution, and admin enforcement | Release gate baseline is now proven by `scripts/check_branch_protection.py`; keep verifying before releases |
-| Operations | Runbook, backup/restore scripts, isolated restore-drill script, scheduler-ready backup runner, ops schedule preflight, signed vault manifests with import evidence, metrics health evaluator with JSON report/webhook, Grafana/Prometheus templates, release checklist and release evidence verifier | Needs target-environment schedule evidence and installed dashboard/alert routing |
+| Operations | Runbook, backup/restore scripts, isolated restore-drill script, scheduler-ready backup runner, ops schedule preflight, observability preflight, signed vault manifests with import evidence, metrics health evaluator with JSON report/webhook, Grafana/Prometheus templates, release checklist and release evidence verifier | Needs target-environment evidence for schedules, monitoring import and alert routing |
 
 ## What “full production level” means for this project
 
@@ -71,8 +71,9 @@ Required gates:
      alert routes and durable artifact roots for the target deployment.
    - Migration rehearsal against a copy of a real volume.
    - Outbox dead-letter/lag and embedding failure/latency monitoring with
-     alerts. Metrics health evaluator and embedding counters exist; deployment
-     still needs dashboard/alert routing.
+     alerts. Metrics health evaluator, embedding counters and
+     `scripts/observability_preflight.py` verify dashboard/alert coverage for
+     the target monitoring artifacts.
    - Worker restart and poison-event behavior tested.
    - Graceful degradation when embeddings, Qdrant, or the configured memory LLM are down.
 
@@ -112,9 +113,9 @@ Required gates:
      in-process production readiness.
    - Release checklist includes manual UI walk-through and live embedding probe.
    - Release evidence manifest verifies saved deployment preflight,
-     secret-files preflight, ops schedule preflight, agent, LLM, UI walkthrough,
-     metrics, backup, signed vault import and branch-protection JSON reports
-     before a full-production claim.
+     secret-files preflight, ops schedule preflight, observability preflight,
+     agent, LLM, UI walkthrough, metrics, backup, signed vault import and
+     branch-protection JSON reports before a full-production claim.
    - Versioned changelog and rollback instructions exist.
 
 ## Things that must not be claimed yet

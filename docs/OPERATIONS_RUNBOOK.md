@@ -76,6 +76,18 @@ Import `deploy/observability/grafana-dashboard.json` and
 See [OBSERVABILITY.md](OBSERVABILITY.md) for scrape config, dashboard coverage
 and alert rule details.
 
+Preserve observability installation evidence before a full-production release:
+
+```bash
+PYTHONPATH=src python scripts/observability_preflight.py \
+  --grafana-dashboard ./deploy/observability/grafana-dashboard.json \
+  --prometheus-alerts ./deploy/observability/prometheus-alerts.yml \
+  --report ./ops/observability-preflight.json
+```
+
+The report uses format `obelisk-observability-preflight-v1` and verifies that
+dashboard panels and alert rules cover required production metrics.
+
 ## Deployment boundary preflight
 
 For any non-local deployment, preserve a preflight report that proves the public

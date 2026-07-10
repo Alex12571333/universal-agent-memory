@@ -17,6 +17,10 @@ PYTHONPATH=src python scripts/ops_schedule_preflight.py .env.production \
   --backup-artifact-root s3://obelisk-memory/backups \
   --audit-artifact-root s3://obelisk-memory/audit \
   --report ./ops/ops-schedule.json
+PYTHONPATH=src python scripts/observability_preflight.py \
+  --grafana-dashboard ./deploy/observability/grafana-dashboard.json \
+  --prometheus-alerts ./deploy/observability/prometheus-alerts.yml \
+  --report ./ops/observability-preflight.json
 PYTHONPATH=src python scripts/scheduled_backup.py \
   --backup-dir ./backups \
   --audit-dir ./audit-export \
@@ -112,6 +116,9 @@ Manual checks:
 - Confirm `ops/ops-schedule.json` reports `"ok": true`, with installed
   backup/audit-retention/metrics schedules, alert routes and durable artifact
   roots.
+- Confirm `ops/observability-preflight.json` reports `"ok": true`, with
+  Grafana dashboard and Prometheus alert coverage for required production
+  metrics.
 - Confirm `deploy/observability/grafana-dashboard.json` is imported into the
   target dashboard stack and `deploy/observability/prometheus-alerts.yml` is
   loaded into the target alerting stack.

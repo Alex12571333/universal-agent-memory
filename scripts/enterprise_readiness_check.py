@@ -53,6 +53,7 @@ def run_checks(*, static_only: bool) -> list[Check]:
         "scripts/check_branch_protection.py",
         "scripts/check_metrics_health.py",
         "scripts/deployment_preflight.py",
+        "scripts/observability_preflight.py",
         "scripts/ops_schedule_preflight.py",
         "scripts/secret_files_preflight.py",
         "scripts/validate_production_env.py",
@@ -528,6 +529,9 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 and "ops_schedule" in read("scripts/verify_release_evidence.py")
                 and "obelisk-ops-schedule-preflight-v1"
                 in read("scripts/verify_release_evidence.py")
+                and "observability" in read("scripts/verify_release_evidence.py")
+                and "obelisk-observability-preflight-v1"
+                in read("scripts/verify_release_evidence.py")
                 and "audit_retention" in read("scripts/verify_release_evidence.py")
                 and "deployment_preflight" in read("scripts/verify_release_evidence.py")
                 and "obelisk-deployment-preflight-v1"
@@ -541,6 +545,9 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 and "branch_protection" in read("scripts/verify_release_evidence.py")
                 and "ui_walkthrough" in read("scripts/verify_release_evidence.py")
                 and "ops/ops-schedule.json" in read("docs/RELEASE_EVIDENCE.md")
+                and "ops/observability-preflight.json" in read(
+                    "docs/RELEASE_EVIDENCE.md"
+                )
                 and "ops/deployment-preflight.json" in read("docs/RELEASE_EVIDENCE.md")
                 and "ops/secret-files.json" in read("docs/RELEASE_EVIDENCE.md")
                 and "ops/vault-import.json" in read("docs/RELEASE_EVIDENCE.md")
@@ -560,8 +567,29 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 and "test_verify_release_evidence_rejects_raw_secret_env"
                 in read("tests/test_backup_restore_scripts.py")
                 and "test_verify_release_evidence_rejects_missing_ops_alert_route"
+                in read("tests/test_backup_restore_scripts.py")
+                and "test_verify_release_evidence_rejects_missing_observability_alert"
                 in read("tests/test_backup_restore_scripts.py"),
                 "release evidence verifier behavior is covered",
+            ),
+            Check(
+                "ops:observability-preflight-runner",
+                "obelisk-observability-preflight-v1"
+                in read("scripts/observability_preflight.py")
+                and "grafana-dashboard:required-metrics"
+                in read("scripts/observability_preflight.py")
+                and "prometheus-alerts:required-alerts"
+                in read("scripts/observability_preflight.py")
+                and "ObeliskReindexFailures" in read("scripts/observability_preflight.py"),
+                "observability preflight validates dashboard and alert coverage",
+            ),
+            Check(
+                "tests:observability-preflight-runner",
+                "test_observability_preflight_accepts_repository_artifacts"
+                in read("tests/test_backup_restore_scripts.py")
+                and "test_observability_preflight_rejects_missing_alert"
+                in read("tests/test_backup_restore_scripts.py"),
+                "observability preflight behavior is covered",
             ),
             Check(
                 "ops:schedule-preflight-runner",

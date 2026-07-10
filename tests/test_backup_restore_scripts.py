@@ -36,6 +36,7 @@ export_audit = _load_script("export_audit")
 audit_retention = _load_script("audit_retention")
 scheduled_backup = _load_script("scheduled_backup")
 deployment_preflight = _load_script("deployment_preflight")
+observability_preflight = _load_script("observability_preflight")
 export_vault = _load_script("export_vault")
 import_vault = _load_script("import_vault")
 migrate = _load_script("migrate")
@@ -935,6 +936,7 @@ def test_verify_release_evidence_accepts_complete_manifest(tmp_path: Path) -> No
         "agent_soak:openclaw",
         "agent_soak:hermes",
         "load_smoke:parallelism",
+        "observability:required-checks",
         "scheduled_backup:restore-drill",
         "audit_retention:verified-export",
         "deployment_preflight:backend-not-public",
@@ -1042,6 +1044,24 @@ def test_verify_release_evidence_rejects_missing_ops_alert_route(tmp_path: Path)
     assert not all(check.passed for check in checks)
 
 
+def test_verify_release_evidence_rejects_missing_observability_alert(tmp_path: Path) -> None:
+    manifest = _write_release_evidence_bundle(tmp_path)
+    observability_path = tmp_path / "observability.json"
+    payload = json.loads(observability_path.read_text(encoding="utf-8"))
+    payload["ok"] = False
+    for check in payload["checks"]:
+        if check["name"] == "prometheus-alerts:required-alerts":
+            check["ok"] = False
+            check["detail"] = "missing: ObeliskReindexFailures"
+    observability_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    checks = verify_release_evidence.verify_manifest(manifest)
+
+    ok_check = next(check for check in checks if check.name == "observability:ok")
+    assert ok_check.passed is False
+    assert not all(check.passed for check in checks)
+
+
 def test_verify_release_evidence_json_cli_output(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -1116,6 +1136,20 @@ def _write_release_evidence_bundle(tmp_path: Path) -> Path:
                 {"name": "UAM_METRICS_ALERT_WEBHOOK:configured", "ok": True},
                 {"name": "backup-artifact-root:durable-prefix", "ok": True},
                 {"name": "audit-artifact-root:durable-prefix", "ok": True},
+            ],
+        },
+    )
+    _write_json(
+        tmp_path / "observability.json",
+        {
+            "format": "obelisk-observability-preflight-v1",
+            "ok": True,
+            "checks": [
+                {"name": "grafana-dashboard:json-valid", "ok": True},
+                {"name": "grafana-dashboard:required-metrics", "ok": True},
+                {"name": "prometheus-alerts:required-alerts", "ok": True},
+                {"name": "prometheus-alerts:required-metrics", "ok": True},
+                {"name": "prometheus-alerts:production-group", "ok": True},
             ],
         },
     )
@@ -1256,6 +1290,7 @@ def _write_release_evidence_bundle(tmp_path: Path) -> Path:
                 "load_smoke": "load-smoke.json",
                 "metrics_health": "metrics-health.json",
                 "ops_schedule": "ops-schedule.json",
+                "observability": "observability.json",
                 "scheduled_backup": "scheduled-backup.json",
                 "audit_retention": "audit-retention.json",
                 "deployment_preflight": "deployment-preflight.json",
@@ -1267,6 +1302,35 @@ def _write_release_evidence_bundle(tmp_path: Path) -> Path:
         },
     )
     return manifest
+
+
+def test_observability_preflight_accepts_repository_artifacts() -> None:
+    report = observability_preflight.run_preflight(
+        grafana_dashboard=ROOT / "deploy" / "observability" / "grafana-dashboard.json",
+        prometheus_alerts=ROOT / "deploy" / "observability" / "prometheus-alerts.yml",
+    )
+
+    assert report["ok"] is True
+
+
+def test_observability_preflight_rejects_missing_alert(tmp_path: Path) -> None:
+    dashboard = ROOT / "deploy" / "observability" / "grafana-dashboard.json"
+    alerts = tmp_path / "prometheus-alerts.yml"
+    source = (ROOT / "deploy" / "observability" / "prometheus-alerts.yml").read_text(
+        encoding="utf-8"
+    )
+    alerts.write_text(source.replace("ObeliskReindexFailures", ""), encoding="utf-8")
+
+    report = observability_preflight.run_preflight(
+        grafana_dashboard=dashboard,
+        prometheus_alerts=alerts,
+    )
+
+    assert report["ok"] is False
+    assert any(
+        check["name"] == "prometheus-alerts:required-alerts" and check["ok"] is False
+        for check in report["checks"]
+    )
 
 
 def test_ops_schedule_preflight_accepts_installed_schedules(tmp_path: Path) -> None:
