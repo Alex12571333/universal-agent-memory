@@ -1,6 +1,6 @@
 # Production envelope report — 2026-07-10
 
-Passed: 141
+Passed: 143
 Failed: 0
 
 | Check | Status | Detail |
@@ -36,6 +36,7 @@ Failed: 0
 | `file:scripts/scheduled_backup.py` | PASS | required production artifact |
 | `file:scripts/audit_retention.py` | PASS | required production artifact |
 | `file:scripts/verify_release_evidence.py` | PASS | required production artifact |
+| `file:scripts/migrate_vector_collection.py` | PASS | required production artifact |
 | `file:docs/assets/obelisk-memory-hero.png` | PASS | required production artifact |
 | `file:docs/GITHUB_BRANCH_PROTECTION.md` | PASS | required production artifact |
 | `file:docs/OPERATIONS_RUNBOOK.md` | PASS | required production artifact |
@@ -45,12 +46,12 @@ Failed: 0
 | `file:docs/PRODUCTION_GAP_AUDIT_2026_07_10.md` | PASS | required production artifact |
 | `file:docs/RELEASE_CHECKLIST.md` | PASS | required production artifact |
 | `file:docs/RELEASE_EVIDENCE.md` | PASS | required production artifact |
-| `file:docs/DGX_SPARK_MEMORY_LLM.md` | PASS | required production artifact |
+| `file:docs/VECTOR_COLLECTION_MIGRATION.md` | PASS | required production artifact |
 | `file:deploy/observability/grafana-dashboard.json` | PASS | required production artifact |
 | `file:deploy/observability/prometheus-alerts.yml` | PASS | required production artifact |
 | `readme:brand` | PASS | README uses product name |
-| `readme:hero` | PASS | README references generated hero asset |
-| `readme:production-reference` | PASS | README documents the reference topology without approving production |
+| `readme:hero` | PASS | README references product hero asset |
+| `readme:production-reference` | PASS | README ties deployment approval to signed target evidence |
 | `readme:honest-status` | PASS | README does not over-claim full production readiness |
 | `readme:gap-audit` | PASS | README links the honest production gap audit |
 | `readme:agents` | PASS | agent adapters documented |
@@ -80,6 +81,7 @@ Failed: 0
 | `tests:branch-protection-verifier` | PASS | branch-protection verifier behavior is covered by tests |
 | `env:memory-llm` | PASS | OpenAI-compatible memory LLM endpoint |
 | `env:embeddings` | PASS | OpenAI-compatible embedding endpoint |
+| `env:qdrant-collection` | PASS | stable Qdrant collection identity is documented |
 | `env:privacy` | PASS | privacy defaults |
 | `env:scoped-keys` | PASS | scoped API keys documented |
 | `env:secret-files` | PASS | mounted secret-file env alternatives are documented |

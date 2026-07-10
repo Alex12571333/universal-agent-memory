@@ -368,9 +368,14 @@ manifest-free trusted-environment edit path and the remaining production gap.
 Changing embedding model or dimension is a schema-level operational event:
 
 - update `UAM_EMBEDDING_MODEL`, `UAM_EMBEDDING_DIM`, and endpoint together;
-- reindex affected memories;
-- confirm Qdrant collection dimension matches the new vectors;
-- keep the old backup until semantic recall quality is verified.
+- choose a new immutable `UAM_QDRANT_COLLECTION` name;
+- run `scripts/migrate_vector_collection.py` and preserve its verified report;
+- switch API and embedding worker to the new collection in one deployment;
+- keep the old collection unchanged until semantic recall and rollback gates pass.
+
+Follow [VECTOR_COLLECTION_MIGRATION.md](VECTOR_COLLECTION_MIGRATION.md). Startup
+rejects a collection whose stored model or dimension differs from runtime
+configuration.
 
 Changing the OpenAI-compatible memory LLM endpoint/model is less risky than
 changing embedding dimensions because the API fails soft, but curation/proposal

@@ -195,6 +195,9 @@ Manual checks:
   `scripts/generate_release_evidence_manifest.py` so it includes every required
   artifact.
 - Confirm worker logs do not show repeated NATS/Qdrant connection failures.
+- When the embedding model or dimension changes, confirm
+  `ops/vector-collection-migration.json` verifies the new collection count and
+  the previous collection remains available for rollback.
 - Confirm restore drill passes against the backup intended for rollback.
 - Confirm `.env.production` is not staged.
 - Confirm the release was merged through PR with green CI, not pushed directly

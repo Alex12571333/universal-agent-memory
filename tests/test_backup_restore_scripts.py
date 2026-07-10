@@ -184,6 +184,7 @@ def test_validate_production_env_accepts_strict_real_config(tmp_path: Path) -> N
                 "UAM_EMBEDDING_DIM=3072",
                 "UAM_EMBEDDING_SEND_DIMENSIONS=false",
                 "UAM_QDRANT_PAYLOAD_TEXT=false",
+                "UAM_QDRANT_COLLECTION=memory_items_v1",
                 "UAM_MEMORY_LLM_PROVIDER=openai-compatible",
                 "UAM_MEMORY_LLM_MODEL=gateway-memory-model",
                 "UAM_MEMORY_LLM_BASE_URL=https://llm-gateway.internal/v1",
@@ -258,6 +259,7 @@ def test_validate_production_env_accepts_secret_files(tmp_path: Path) -> None:
                 "UAM_EMBEDDING_DIM=3072",
                 "UAM_EMBEDDING_SEND_DIMENSIONS=false",
                 "UAM_QDRANT_PAYLOAD_TEXT=false",
+                "UAM_QDRANT_COLLECTION=memory_items_v1",
                 "UAM_MEMORY_LLM_PROVIDER=openai-compatible",
                 "UAM_MEMORY_LLM_MODEL=gateway-memory-model",
                 "UAM_MEMORY_LLM_BASE_URL=https://llm-gateway.internal/v1",
@@ -436,6 +438,18 @@ def test_validate_production_env_rejects_qdrant_text_payloads(tmp_path: Path) ->
 
     failed = {check.name for check in checks if not check.ok}
     assert "UAM_QDRANT_PAYLOAD_TEXT" in failed
+
+
+def test_validate_production_env_rejects_unsafe_qdrant_collection_name() -> None:
+    checks = validate_production_env.validate_env(
+        {"UAM_QDRANT_COLLECTION": "memory/items;drop"}
+    )
+
+    collection = next(
+        check for check in checks if check.name == "UAM_QDRANT_COLLECTION"
+    )
+    assert collection.ok is False
+    assert "stable" in collection.detail
 
 
 def test_backup_invokes_pg_dump(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

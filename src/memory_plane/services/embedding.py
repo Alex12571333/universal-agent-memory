@@ -108,6 +108,15 @@ class EmbeddingService:
             ),
         }
 
+    def indexed_workspace_count(self, tenant_id: UUID, workspace_id: UUID) -> int:
+        """Verify the active workspace point count in the configured collection."""
+        return self._qdrant.count_workspace_points(tenant_id, workspace_id)
+
+    @property
+    def model_name(self) -> str:
+        """Return the exact embedding model identity used for index writes."""
+        return self._client.model_name
+
     def _record_embed_duration(self, started: float) -> None:
         """Update embedding operation counters after one processing attempt."""
         duration = time.perf_counter() - started

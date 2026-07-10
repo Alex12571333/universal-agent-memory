@@ -77,8 +77,9 @@ remaining hard requirements.
       embedding workers fail fast for durable retry.
 - [x] Workspace reindex preserves other workspaces and deletes stale scoped IDs
       only after replacement upserts succeed.
-- [ ] Add target multi-replica/crash evidence and safe collection migration for
-      embedding model or dimension changes.
+- [x] Collection startup enforces exact embedding model/dimension identity and a
+      migration runner builds/verifies a separate rollback-safe collection.
+- [ ] Add target multi-replica/crash and collection-migration release evidence.
 - [x] PostgreSQL `memory_items.text` encryption can cover all memory rows or
       selected visibility scopes via `UAM_MEMORY_TEXT_ENCRYPTION_SCOPES`.
 - [ ] Encrypt or otherwise protect provenance, conversations, proposals,

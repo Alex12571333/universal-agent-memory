@@ -72,6 +72,7 @@ def run_checks(*, static_only: bool) -> list[Check]:
         "scripts/scheduled_backup.py",
         "scripts/audit_retention.py",
         "scripts/verify_release_evidence.py",
+        "scripts/migrate_vector_collection.py",
         "docs/assets/obelisk-memory-hero.png",
         "docs/GITHUB_BRANCH_PROTECTION.md",
         "docs/OPERATIONS_RUNBOOK.md",
@@ -81,7 +82,7 @@ def run_checks(*, static_only: bool) -> list[Check]:
         "docs/PRODUCTION_GAP_AUDIT_2026_07_10.md",
         "docs/RELEASE_CHECKLIST.md",
         "docs/RELEASE_EVIDENCE.md",
-        "docs/DGX_SPARK_MEMORY_LLM.md",
+        "docs/VECTOR_COLLECTION_MIGRATION.md",
         "deploy/observability/grafana-dashboard.json",
         "deploy/observability/prometheus-alerts.yml",
     ]
@@ -96,18 +97,19 @@ def run_checks(*, static_only: bool) -> list[Check]:
             Check(
                 "readme:hero",
                 "docs/assets/obelisk-memory-hero.png" in readme,
-                "README references generated hero asset",
+                "README references product hero asset",
             ),
             Check(
                 "readme:production-reference",
                 "Production reference deployment" in readme
-                and "not an approved production deployment" in readme,
-                "README documents the reference topology without approving production",
+                and "signed target evidence" in readme,
+                "README ties deployment approval to signed target evidence",
             ),
             Check(
                 "readme:honest-status",
-                "engineering preview" in readme
-                and "must not be used for a trusted production pilot" in readme,
+                "Repository checks alone" in readme
+                and "deployment certification" in readme
+                and "release checklist" in readme,
                 "README does not over-claim full production readiness",
             ),
             Check(
@@ -301,7 +303,7 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 and "UAM_MEMORY_LLM_BASE_URL=https://model-gateway.example.com/v1" in env
                 and "OpenRouter" in env
                 and "LiteLLM" in env
-                and "Spark/DGX" in env,
+                and "another compatible gateway" in env,
                 "OpenAI-compatible memory LLM endpoint",
             ),
             Check(
@@ -313,6 +315,11 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 and "UAM_EMBEDDING_SEND_DIMENSIONS=false" in env
                 and "not a provider lock-in" in env,
                 "OpenAI-compatible embedding endpoint",
+            ),
+            Check(
+                "env:qdrant-collection",
+                "UAM_QDRANT_COLLECTION=memory_items" in env,
+                "stable Qdrant collection identity is documented",
             ),
             Check("env:privacy", "UAM_PRIVACY_ACTION=redact" in env, "privacy defaults"),
             Check("env:scoped-keys", "UAM_API_KEYS=" in env, "scoped API keys documented"),

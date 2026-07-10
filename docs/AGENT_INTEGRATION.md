@@ -130,10 +130,13 @@ Safe switch procedure:
 2. Click **Test endpoint**. Expected vector dimension must match the configured model.
 3. Save model config.
 4. Restart `memory-server` and `embedding-worker` with matching env.
-5. Run **Reindex** so Qdrant is rebuilt using the configured dimension.
+5. Run the controlled collection migration for a model or dimension change;
+   ordinary workspace reindex never recreates the shared collection.
 
 Do not mix vectors from different models or dimensions in one Qdrant
-collection. Reindex is the boundary that makes the switch clean.
+collection. The server rejects incompatible collection dimensions; a model
+change requires an explicitly verified collection migration rather than an
+in-place workspace reindex.
 
 ## Memory LLM runtime
 

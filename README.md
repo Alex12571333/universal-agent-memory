@@ -2,7 +2,7 @@
 
 ![Obelisk Memory hero](docs/assets/obelisk-memory-hero.png)
 
-**Obelisk Memory** is a self-hosted, production-shaped memory plane for AI
+**Obelisk Memory** is a self-hosted memory plane for AI
 agents. It gives OpenClaw, Hermes, custom workers, and future agent runtimes a
 shared long-lived memory layer without turning the system into a SaaS dependency.
 
@@ -23,7 +23,7 @@ It is designed for a local-first or team-owned environment:
 
 This is intentionally not a hosted SaaS architecture.
 
-## Production status
+## Release status
 
 Repository capability baseline:
 
@@ -40,21 +40,13 @@ Repository capability baseline:
 | Agent integration | Native OpenClaw plugin and Hermes memory provider adapters |
 | Tests | Unit/API contracts, optional service integrations, Docker config and live evidence runners |
 
-The repository is an engineering preview with production-shaped components. It
-must not be used for a trusted production pilot until the remaining P0 runtime
-blockers in the production audit are fixed—especially broader encryption,
-authenticated UI delivery and vector collection model migration. Supersede/archive and
-operator conflict-winner precedence are enforced through atomic PostgreSQL
-revisions and Qdrant head validation.
-Database-role and operator-controlled agent/thread provisioning are implemented
-but still require target-deployment evidence and native installer wiring. Full
-production additionally requires target-environment operations and signed
-release evidence.
-
-Production gap audit:
-[docs/PRODUCTION_GAP_AUDIT_2026_07_10.md](docs/PRODUCTION_GAP_AUDIT_2026_07_10.md).
-Benchmark reports are generated into `ops/` and sealed into release evidence;
-environment-specific results are not committed as product documentation.
+The source tree provides the production architecture and release tooling, but a
+deployment is certified only after its required target-environment checks pass
+and the signed target evidence bundle is verified. Repository checks alone are not a
+deployment certification. See the
+[production gap audit](docs/PRODUCTION_GAP_AUDIT_2026_07_10.md),
+[release checklist](docs/RELEASE_CHECKLIST.md), and
+[release-evidence contract](docs/RELEASE_EVIDENCE.md).
 
 ## Architecture
 
@@ -99,11 +91,10 @@ Local host ports are intentionally non-standard:
 | MinIO API/console | `6900` / `6901` | `9000` / `9001` |
 | NATS client/monitoring | `6422` / `6822` | `4222` / `8222` |
 
-The local compose file is convenient for debugging. The production compose is a
+The local compose file is intended for development. The production compose is a
 reference topology that exposes only API/UI and keeps PostgreSQL, Qdrant, NATS,
-and MinIO internal. It is not an approved production deployment until the
-remaining P0 dependency-isolation, reindex and encryption blockers are fixed
-and the target credential/identity evidence passes.
+and MinIO internal. Approval of a concrete deployment is governed by the
+release checklist and its signed target evidence.
 
 ## Production reference deployment
 
@@ -271,6 +262,7 @@ UAM_EMBEDDING_DIM=<actual-output-dimension>
 UAM_EMBEDDING_BASE_URL=https://embedding-gateway.example.com/v1
 UAM_EMBEDDING_SEND_DIMENSIONS=false
 UAM_EMBEDDING_API_KEY=gateway-specific-key
+UAM_QDRANT_COLLECTION=memory_items
 UAM_QDRANT_PAYLOAD_TEXT=false
 UAM_MEMORY_TEXT_ENCRYPTION=pgcrypto
 UAM_MEMORY_TEXT_ENCRYPTION_KEY=...
@@ -280,6 +272,9 @@ Use `UAM_EMBEDDING_PROVIDER=openai` only for the OpenAI-hosted embeddings
 profile that requires a key and sends OpenAI's optional `dimensions` request
 field. The provider-neutral `openai-compatible` profile is better for gateways
 that implement `/v1/embeddings` but reject unknown OpenAI-specific fields.
+Every collection is bound to one model and dimension. Use the
+[vector collection migration procedure](docs/VECTOR_COLLECTION_MIGRATION.md)
+instead of mixing a new model into an existing collection.
 
 Application/runtime secrets can be read from mounted files instead of raw
 environment variables. For example:

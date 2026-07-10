@@ -68,6 +68,7 @@ def validate_env(
         _check_context_budget(values),
         _check_privacy(values),
         _check_embedding_dim(values),
+        _check_qdrant_collection(values),
         _check_qdrant_payload_text(values),
         _check_memory_text_encryption(values),
         _check_memory_llm_endpoint(values),
@@ -241,6 +242,17 @@ def _check_qdrant_payload_text(values: dict[str, str]) -> EnvCheck:
             "must be false so Qdrant stores vectors and filters, not raw memory text",
         )
     return EnvCheck("UAM_QDRANT_PAYLOAD_TEXT", True, "raw text redacted from vector payloads")
+
+
+def _check_qdrant_collection(values: dict[str, str]) -> EnvCheck:
+    name = values.get("UAM_QDRANT_COLLECTION", "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,127}", name):
+        return EnvCheck(
+            "UAM_QDRANT_COLLECTION",
+            False,
+            "must be a stable 1..128 character alphanumeric/underscore/hyphen name",
+        )
+    return EnvCheck("UAM_QDRANT_COLLECTION", True, name)
 
 
 def _check_memory_text_encryption(values: dict[str, str]) -> EnvCheck:
