@@ -2315,10 +2315,6 @@ textarea:focus-visible {
   }
 }
 
-/* Raster art + alignment hardening.
-   Generated PNG assets are the visible icon language; SVG remains only for
-   data surfaces like graph links, minimap and KPI sparklines. */
-
 .art-icon {
   display: block;
   width: 100%;

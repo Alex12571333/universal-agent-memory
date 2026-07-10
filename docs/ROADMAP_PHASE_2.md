@@ -91,9 +91,10 @@ Acceptance:
 
 ## WP-12 Real embedding providers — complete
 
-Current pipeline supports embeddings structurally, but uses deterministic fake
-embeddings by default. Add production providers behind the existing
-`EmbeddingClient` port.
+The embedding pipeline supports deterministic test embeddings for CI and real
+providers for deployment. Production deployments must use a real provider and
+must keep the vector dimension consistent across Qdrant, the worker, and the
+configured embedding endpoint.
 
 Providers:
 
@@ -103,11 +104,12 @@ Providers:
 
 Required config:
 
-```text
+```dotenv
 UAM_EMBEDDING_PROVIDER=openai|ollama|tei|fake
 UAM_EMBEDDING_MODEL=...
 UAM_EMBEDDING_DIM=...
 UAM_EMBEDDING_BASE_URL=...
+UAM_QDRANT_PAYLOAD_TEXT=false
 ```
 
 Acceptance:
@@ -116,7 +118,9 @@ Acceptance:
 - model/dimension validation before indexing; ✅
 - embedding metadata stored with indexed payload; ✅
 - full reindex job after model change; ✅ existing `/reindex`
-- tests for provider selection and dimension mismatch. ✅
+- tests for provider selection and dimension mismatch; ✅
+- Qdrant can store only vectors/filter metadata while hydrating text from the
+  PostgreSQL ledger. ✅
 
 ## WP-13 Conflict resolver and review inbox — complete
 
