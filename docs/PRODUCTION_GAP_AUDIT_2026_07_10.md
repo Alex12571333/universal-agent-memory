@@ -15,10 +15,10 @@ under failure.
 | API auth | Bearer keys, route capabilities, strict principal bindings, env validation and non-secret key registry exist; `/health` is public | Identity isolation is implemented and locally proven; target-deployment evidence remains required |
 | Audit trail | `audit_events`, export/signing and retention tools exist | Coverage is incomplete and most audit writes are not atomic with the operation they describe |
 | Browser/API hardening | Security headers are enforced by middleware and tests | Baseline present |
-| Data model | Append-only memory, CAS supersede, atomic conflict-winner revisions, canonical active-head recall, provenance, statuses and optional ciphertext for `memory_items.text` exist | Sensitive-table encryption remains incomplete |
-| Conversation capture | Raw ledger, explicit curation endpoint, stable identities and live pipeline runner exist | Retention policy semantics and installed agent hooks are incomplete |
+| Data model | Append-only memory, CAS supersede, atomic conflict-winner revisions, canonical active-head recall, provenance, statuses and pgcrypto for canonical text, raw conversations and proposals exist | Sensitive-table, legacy-data and backup encryption remain incomplete |
+| Conversation capture | Raw ledger, proposal-first curation, `curated_only` purge, bounded staging TTL, stable identities and live pipeline runner exist | The purge schedule and installed agent hooks still require target evidence |
 | Embeddings | Provider-neutral endpoints, async worker, fail-soft recall, scoped sync and immutable collection identity exist | Target outage/migration evidence remains required |
-| Memory LLM | Provider-neutral OpenAI-compatible contract, deterministic fallback and live runner exist | LLM output currently bypasses proposal/review and cannot be autonomous in production |
+| Memory LLM | Provider-neutral OpenAI-compatible contract, deterministic fallback, proposal-first curation and live runner exist | Target failure/concurrency evidence and quality evaluation remain required; generated content never becomes recallable until an operator accepts its proposal |
 | OpenClaw/Hermes | Native adapter scaffolds, tests and live soak runner exist | Needs saved soak evidence from the deployed runtime versions |
 | UI | React dashboard supports signed HttpOnly operator sessions, CSRF, memory/vault editing, conflict decisions, exact-origin model probe policy and a JSON walkthrough runner | Target HTTPS session/egress evidence and secret-manager integration evidence remain required |
 | Testing | Unit/API tests, live PostgreSQL/Qdrant isolation/failure tests, benchmark scripts, web build and load runner exist | Target chaos/security evidence is still missing |
@@ -80,11 +80,12 @@ static readiness script are green.
    deployment before closing the release gate.
 
 5. **Encryption-at-rest coverage is incomplete.**
-   pgcrypto protects `memory_items.text`, but provenance quotes, raw
-   conversations, proposals/evidence, observations, checkpoints, audit metadata
-   and PostgreSQL dumps can still contain plaintext. Production documentation
-   must not describe `UAM_MEMORY_TEXT_ENCRYPTION_SCOPES=all` as full-database or
-   backup encryption.
+   pgcrypto now protects new `memory_items.text` rows, raw conversation content,
+   proposals and proposal evidence. Provenance quotes, observations,
+   checkpoints, audit metadata, legacy plaintext rows and PostgreSQL dumps can
+   still contain plaintext. Production documentation must not describe
+   `UAM_MEMORY_TEXT_ENCRYPTION_SCOPES=all` as full-database or backup
+   encryption.
 
 6. **Fail-soft recall is implemented; target outage evidence remains required.**
    PostgreSQL is the required canonical candidate source. Qdrant connection and
@@ -201,7 +202,8 @@ static readiness script are green.
     extraction with provenance and operator-decision precedence.
 13. Runtime model settings are persisted only when an optional host path is
     configured; otherwise the UI reports a desired config that disappears on
-    restart. Persisted settings contain provider keys in plaintext.
+    restart. Provider keys are intentionally not persisted, so an operator
+    must supply them via environment or a secret manager after restart.
 14. `index_stale` is not computed from outbox/index state or exposed as an API
     invariant, so agents cannot distinguish complete recall from a lagging
     vector index.
@@ -364,8 +366,8 @@ Required gates:
    coverage are complete.
 5. Preserve target evidence for Qdrant outage/recovery, workspace reindex and
    the verified model/dimension collection migration.
-6. Complete encryption/backup coverage and close the authenticated UI/SSRF
-   boundaries.
+6. Complete encryption/backup coverage, then preserve target evidence for the
+   authenticated UI session and model-egress boundaries.
 7. Install schedules, immutable storage, monitoring and alert routing; then run
    native-agent, conversation, load, UI, embedding and LLM target gates.
 8. Seal every release with the signed content-addressed v2 evidence manifest,
