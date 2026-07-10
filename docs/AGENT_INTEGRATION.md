@@ -245,6 +245,17 @@ not appear in `/v1/memory/recall` by itself. A maintenance worker can later
 distill it into durable facts, preferences, decisions or graph evidence through
 the normal `/v1/memory/retain`/supersede pipeline.
 
+Choose the retention policy deliberately:
+
+- `raw_only` keeps the transcript and rejects curation;
+- `raw_and_curated` keeps the transcript after explicit curation;
+- `curated_only` keeps raw text only as staging and replaces it with
+  `[PURGED_AFTER_CURATION]` immediately after successful curation.
+
+`curated_only` is not a promise that plaintext never reaches the ledger: the
+turn exists until the curation call completes. Deployments requiring that
+stronger boundary must curate before sending data or disable raw capture.
+
 The first deterministic curation bridge is:
 
 ```http

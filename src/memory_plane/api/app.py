@@ -1785,6 +1785,8 @@ def create_app(
             raise HTTPException(status_code=404, detail="conversation turn not found") from exc
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
         record_audit(
             request,
             tenant_id=body.tenant_id,

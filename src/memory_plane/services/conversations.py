@@ -42,6 +42,10 @@ class ConversationLedger(Protocol):
         """List recent transcript turns under tenant/workspace boundaries."""
         ...
 
+    def purge_turn_content(self, tenant_id: UUID, turn_id: UUID) -> bool:
+        """Irreversibly replace raw message content while retaining audit identity."""
+        ...
+
 
 class MemoryReasoner(Protocol):
     """Minimal LLM boundary used by the curator without provider coupling."""
@@ -188,7 +192,7 @@ class ConversationCurator:
                 )
             )
         )
-        return self._retention.retain(
+        result = self._retention.retain(
             RetainCommand(
                 tenant_id=turn.tenant_id,
                 workspace_id=turn.workspace_id,
@@ -211,6 +215,10 @@ class ConversationCurator:
                 idempotency_key=(command.idempotency_key or f"curate-conversation-turn:{turn.id}"),
             )
         )
+        if turn.retention_policy == ConversationRetentionPolicy.CURATED_ONLY:
+            if not self._ledger.purge_turn_content(turn.tenant_id, turn.id):
+                raise RuntimeError("curated memory was saved but raw content purge failed")
+        return result
 
     def _summary_text(self, turn: ConversationTurn) -> tuple[str, dict[str, Any]]:
         memory_llm = self._memory_llm

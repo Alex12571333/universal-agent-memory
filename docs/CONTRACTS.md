@@ -83,6 +83,14 @@ curated memory. Запись в `/v1/conversations/turns` не создаёт `M
 позже превратить transcript в curated facts через обычный append-only memory
 pipeline.
 
+Политика `curated_only` использует raw turn только как staging-запись. После
+успешного `ConversationCurator.curate_turn` ledger обязан необратимо заменить
+тексты сообщений на `[PURGED_AFTER_CURATION]`, сохранив идентификаторы, роли и
+retention metadata для audit/idempotency. Если purge не подтверждён, операция
+курации возвращает ошибку; повтор с тем же idempotency key завершает cleanup без
+создания второго `MemoryItem`. `raw_only` запрещает курацию, а
+`raw_and_curated` сохраняет исходный transcript после неё.
+
 `ConversationCurator.curate_turn` является первым deterministic мостом из raw
 ledger в recallable memory. Он создаёт `MemoryItem` с provenance
 `conversation://{turn_id}` через обычный `RetentionService`, поэтому embedding,

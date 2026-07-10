@@ -19,6 +19,7 @@ from memory_plane.domain.audit import AuditEvent
 from memory_plane.domain.checkpoint import Checkpoint, StaleRevisionError
 from memory_plane.domain.conflict import ConflictReviewDecision, ConflictReviewStatus
 from memory_plane.domain.conversation import (
+    PURGED_CONVERSATION_CONTENT,
     ConversationMessage,
     ConversationRetentionPolicy,
     ConversationTurn,
@@ -1028,6 +1029,34 @@ class PostgresMemoryLedger:
                 (workspace_id, thread_id, thread_id, namespace, namespace, safe_limit),
             ).fetchall()
         return tuple(self._to_turn(row) for row in rows)
+
+    def purge_turn_content(self, tenant_id: UUID, turn_id: UUID) -> bool:
+        """Irreversibly redact transcript messages while preserving turn identity."""
+        with self._connection() as connection:
+            self._set_tenant(connection, tenant_id)
+            purged = connection.execute(
+                """
+                update conversation_turns
+                set metadata = metadata ||
+                  '{"retention":{"raw_content":"purged_after_curation"}}'::jsonb
+                where id = %s
+                returning id
+                """,
+                (turn_id,),
+            ).fetchone()
+            if purged is None:
+                return False
+            connection.execute(
+                """
+                update conversation_messages
+                set content = %s,
+                    metadata = metadata ||
+                      '{"retention":{"raw_content":"purged_after_curation"}}'::jsonb
+                where turn_id = %s
+                """,
+                (PURGED_CONVERSATION_CONTENT, turn_id),
+            )
+            return True
 
     def append_proposal(
         self, proposal: MemoryProposal, idempotency_key: str | None = None
