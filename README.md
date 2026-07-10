@@ -224,6 +224,8 @@ UAM_EMBEDDING_MODEL=jina-embeddings-v4
 UAM_EMBEDDING_DIM=2048
 UAM_EMBEDDING_BASE_URL=http://192.168.0.10:8002
 UAM_QDRANT_PAYLOAD_TEXT=false
+UAM_MEMORY_TEXT_ENCRYPTION=pgcrypto
+UAM_MEMORY_TEXT_ENCRYPTION_KEY=...
 ```
 
 See [docs/DGX_SPARK_MEMORY_LLM.md](docs/DGX_SPARK_MEMORY_LLM.md) and
@@ -232,6 +234,11 @@ See [docs/DGX_SPARK_MEMORY_LLM.md](docs/DGX_SPARK_MEMORY_LLM.md) and
 In production, keep `UAM_QDRANT_PAYLOAD_TEXT=false`. Qdrant then stores vectors
 and filter metadata only; recalled text is hydrated from the canonical
 PostgreSQL ledger.
+
+For production PostgreSQL storage, keep `UAM_MEMORY_TEXT_ENCRYPTION=pgcrypto`
+and provide `UAM_MEMORY_TEXT_ENCRYPTION_KEY` from an external secret manager.
+The application sees normal text after loading from the ledger, while
+`memory_items.text` is stored as `enc:pgcrypto:v1:*` ciphertext.
 
 ## Agent integration
 

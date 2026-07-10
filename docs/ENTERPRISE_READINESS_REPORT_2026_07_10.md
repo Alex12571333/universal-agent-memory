@@ -1,6 +1,6 @@
 # Production envelope report — 2026-07-10
 
-Passed: 90
+Passed: 92
 Failed: 0
 
 | Check | Status | Detail |
@@ -89,6 +89,8 @@ Failed: 0
 | `tests:env-validator` | PASS | production env validator behavior is covered |
 | `qdrant:redacted-payload` | PASS | Qdrant can store vectors/filter metadata without raw memory text |
 | `tests:qdrant-redacted-payload` | PASS | Qdrant payload redaction and ledger hydration are covered |
+| `postgres:pgcrypto-text` | PASS | PostgreSQL canonical memory text can be encrypted with pgcrypto |
+| `tests:postgres-pgcrypto-text` | PASS | PostgreSQL memory text encryption behavior is covered |
 | `llm:live-regression-runner` | PASS | live Qwen/Spark memory LLM runner validates chat and curation |
 | `tests:llm-live-regression-runner` | PASS | memory LLM live regression runner behavior is covered |
 | `gap-audit:no-overclaim` | PASS | gap audit explicitly forbids readiness over-claims |

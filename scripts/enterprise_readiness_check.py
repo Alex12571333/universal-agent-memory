@@ -428,7 +428,10 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 "PLACEHOLDER_PATTERNS" in read("scripts/validate_production_env.py")
                 and "--require-public-tls" in read("scripts/validate_production_env.py")
                 and "--require-real-embeddings" in read("scripts/validate_production_env.py")
-                and "UAM_QDRANT_PAYLOAD_TEXT" in read("scripts/validate_production_env.py"),
+                and "UAM_QDRANT_PAYLOAD_TEXT" in read("scripts/validate_production_env.py")
+                and "UAM_MEMORY_TEXT_ENCRYPTION" in read(
+                    "scripts/validate_production_env.py"
+                ),
                 "production env validator rejects placeholder/local-only config",
             ),
             Check(
@@ -456,6 +459,23 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 and "test_live_qdrant_search_hydrates_redacted_payload_from_ledger"
                 in read("tests/test_qdrant.py"),
                 "Qdrant payload redaction and ledger hydration are covered",
+            ),
+            Check(
+                "postgres:pgcrypto-text",
+                "enc:pgcrypto:v1:" in read("src/memory_plane/adapters/postgres.py")
+                and "pgp_sym_encrypt" in read("src/memory_plane/adapters/postgres.py")
+                and "pgp_sym_decrypt" in read("src/memory_plane/adapters/postgres.py"),
+                "PostgreSQL canonical memory text can be encrypted with pgcrypto",
+            ),
+            Check(
+                "tests:postgres-pgcrypto-text",
+                "test_postgres_pgcrypto_mode_requires_key" in read(
+                    "tests/test_postgres_encryption.py"
+                )
+                and "test_postgres_encrypts_memory_text_before_insert" in read(
+                    "tests/test_postgres_encryption.py"
+                ),
+                "PostgreSQL memory text encryption behavior is covered",
             ),
             Check(
                 "llm:live-regression-runner",

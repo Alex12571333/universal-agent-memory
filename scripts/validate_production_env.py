@@ -66,6 +66,7 @@ def validate_env(
         _check_privacy(values),
         _check_embedding_dim(values),
         _check_qdrant_payload_text(values),
+        _check_memory_text_encryption(values),
     ]
     if require_public_tls:
         checks.append(_check_public_tls(values))
@@ -166,6 +167,25 @@ def _check_qdrant_payload_text(values: dict[str, str]) -> EnvCheck:
             "must be false so Qdrant stores vectors and filters, not raw memory text",
         )
     return EnvCheck("UAM_QDRANT_PAYLOAD_TEXT", True, "raw text redacted from vector payloads")
+
+
+def _check_memory_text_encryption(values: dict[str, str]) -> EnvCheck:
+    mode = values.get("UAM_MEMORY_TEXT_ENCRYPTION", "").strip().lower()
+    key = values.get("UAM_MEMORY_TEXT_ENCRYPTION_KEY", "")
+    if mode != "pgcrypto":
+        return EnvCheck(
+            "UAM_MEMORY_TEXT_ENCRYPTION",
+            False,
+            "must be pgcrypto for production canonical memory text encryption",
+        )
+    secret_check = _check_secret(
+        {"UAM_MEMORY_TEXT_ENCRYPTION_KEY": key},
+        "UAM_MEMORY_TEXT_ENCRYPTION_KEY",
+        min_length=32,
+    )
+    if not secret_check.ok:
+        return secret_check
+    return EnvCheck("UAM_MEMORY_TEXT_ENCRYPTION", True, "pgcrypto enabled")
 
 
 def _check_public_tls(values: dict[str, str]) -> EnvCheck:

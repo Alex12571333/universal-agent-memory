@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -36,9 +37,20 @@ from memory_plane.domain.proposal import (
     MemoryProposalTarget,
 )
 
-_ITEM_COLUMNS = """
+_PGCRYPTO_TEXT_PREFIX = "enc:pgcrypto:v1:"
+
+_ITEM_COLUMNS = f"""
     m.id, m.tenant_id, m.workspace_id, m.agent_id, m.thread_id,
-    m.layer, m.scope, m.kind, m.text, m.labels, m.metadata, m.status,
+    m.layer, m.scope, m.kind,
+    case
+      when m.text like '{_PGCRYPTO_TEXT_PREFIX}%'
+      then pgp_sym_decrypt(
+        decode(substr(m.text, {len(_PGCRYPTO_TEXT_PREFIX) + 1}), 'base64'),
+        nullif(current_setting('app.memory_text_encryption_key', true), '')
+      )
+      else m.text
+    end as text,
+    m.labels, m.metadata, m.status,
     m.importance, m.salience, m.confidence, m.observed_at,
     m.valid_from, m.valid_to, m.created_at, m.revision, m.supersedes_id,
     p.source_kind, p.origin_uri, p.object_key, p.checksum_sha256,
@@ -64,6 +76,15 @@ class PostgresMemoryLedger:
         if not dsn.strip():
             raise ValueError("PostgreSQL DSN must not be empty")
         self.dsn = dsn
+        self._text_encryption_mode = os.getenv("UAM_MEMORY_TEXT_ENCRYPTION", "off").lower()
+        self._text_encryption_key = os.getenv("UAM_MEMORY_TEXT_ENCRYPTION_KEY", "")
+        if self._text_encryption_mode not in {"off", "pgcrypto"}:
+            raise ValueError("UAM_MEMORY_TEXT_ENCRYPTION must be off or pgcrypto")
+        if self._text_encryption_enabled and not self._text_encryption_key:
+            raise ValueError(
+                "UAM_MEMORY_TEXT_ENCRYPTION_KEY is required when "
+                "UAM_MEMORY_TEXT_ENCRYPTION=pgcrypto"
+            )
 
     def connect(self) -> None:
         """Check that PostgreSQL is reachable and the schema is installed."""
@@ -1208,7 +1229,16 @@ class PostgresMemoryLedger:
             ) from error
 
         with psycopg.connect(self.dsn, row_factory=dict_row) as connection:
+            if self._text_encryption_key:
+                connection.execute(
+                    "select set_config('app.memory_text_encryption_key', %s, false)",
+                    (self._text_encryption_key,),
+                )
             yield connection
+
+    @property
+    def _text_encryption_enabled(self) -> bool:
+        return self._text_encryption_mode == "pgcrypto"
 
     @staticmethod
     def _set_tenant(connection: Any, tenant_id: UUID) -> None:
@@ -1289,10 +1319,10 @@ class PostgresMemoryLedger:
         ).fetchone()
         return None if row is None else self._to_proposal(row)
 
-    @staticmethod
-    def _insert_item(connection: Any, item: MemoryItem) -> None:
+    def _insert_item(self, connection: Any, item: MemoryItem) -> None:
         from psycopg.types.json import Jsonb
 
+        stored_text = self._stored_memory_text(connection, item.text)
         connection.execute(
             """
             insert into memory_items (
@@ -1313,7 +1343,7 @@ class PostgresMemoryLedger:
                 item.layer.value,
                 item.scope.value,
                 item.kind,
-                item.text,
+                stored_text,
                 list(item.labels),
                 Jsonb(item.metadata),
                 item.status.value,
@@ -1348,6 +1378,23 @@ class PostgresMemoryLedger:
                 provenance.extraction_version,
             ),
         )
+
+    def _stored_memory_text(self, connection: Any, text: str) -> str:
+        """Return plaintext or pgcrypto ciphertext for memory_items.text."""
+        if not self._text_encryption_enabled:
+            return text
+        row = connection.execute(
+            """
+            select %s || encode(
+              pgp_sym_encrypt(%s, %s, 'cipher-algo=aes256,compress-algo=0'),
+              'base64'
+            ) as encrypted_text
+            """,
+            (_PGCRYPTO_TEXT_PREFIX, text, self._text_encryption_key),
+        ).fetchone()
+        if row is None:
+            raise RuntimeError("pgcrypto did not return encrypted memory text")
+        return str(row["encrypted_text"])
 
     @staticmethod
     def _insert_event(connection: Any, event: IntegrationEvent) -> None:

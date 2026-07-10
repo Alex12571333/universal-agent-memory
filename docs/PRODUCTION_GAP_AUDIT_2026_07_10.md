@@ -15,7 +15,7 @@ it is not enough.
 | API auth | Bearer key, scoped keys, env validator and non-secret key registry with last-used/revoked state exist; `/health` public | Strong local/team baseline; still not enterprise IAM |
 | Audit trail | Append-only `audit_events` table, RLS, operator export API, signed paginated JSONL bundle, metrics, tests | Strong baseline; retention schedule, key custody and immutable storage still needed |
 | Browser/API hardening | Security headers are enforced by middleware and tests | Baseline present |
-| Data model | Append-only memory, CAS supersede, provenance, statuses | Strong foundation |
+| Data model | Append-only memory, CAS supersede, provenance, statuses, optional pgcrypto ciphertext for canonical memory text | Strong foundation |
 | Conversation capture | Raw conversation ledger exists, but curation remains explicit/manual or hook-driven | Not “automatically remembers everything” yet |
 | Embeddings | Real provider support exists; Qdrant can redact raw text payloads and hydrate recall from PostgreSQL; fake remains available for CI/emergency | Production depends on real endpoint, `UAM_QDRANT_PAYLOAD_TEXT=false`, and reindex discipline |
 | Memory LLM | Qwen/Spark `.10` config, fail-soft adapter and live regression runner exist | Needs saved live `.10` regression evidence before autonomy |
@@ -51,8 +51,9 @@ Required gates:
      manifests for production operator workflows. CLI support exists; the
      deployment must keep signing keys outside the repository.
    - Qdrant payload text redaction must stay enabled for production vector
-     stores. Optional row-level encryption for high-risk PostgreSQL scopes is
-     still a separate hardening item.
+     stores.
+   - `UAM_MEMORY_TEXT_ENCRYPTION=pgcrypto` must be enabled for production
+     PostgreSQL storage, with the key held outside the repository.
    - Security headers and CSP stay covered by tests.
 
 2. **Reliability gate**

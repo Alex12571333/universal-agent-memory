@@ -58,6 +58,9 @@ Manual checks:
 - Confirm embedding endpoint returns the configured dimension.
 - Confirm `UAM_QDRANT_PAYLOAD_TEXT=false` so Qdrant stores vectors/filter
   metadata only and memory text is hydrated from PostgreSQL.
+- Confirm `UAM_MEMORY_TEXT_ENCRYPTION=pgcrypto` and
+  `UAM_MEMORY_TEXT_ENCRYPTION_KEY` are supplied from a secret manager, not from
+  the repository.
 - Confirm non-local deployments use HTTPS through the reverse proxy and direct
   backend port `6798` is localhost-only or blocked by firewall/security group.
 - Confirm `audit-export/manifest.sha256` verifies before preserving release

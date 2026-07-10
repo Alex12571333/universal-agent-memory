@@ -229,6 +229,7 @@
 | `retain(item, event, key)` | Записывает item, provenance, key и outbox | Одна транзакция; concurrent idempotency через advisory lock |
 | `supersede_if_current(item, event, expected_revision, key)` | CAS-запись новой ревизии | `FOR UPDATE` parent + recursive head check; одна outbox-транзакция |
 | `append(item, key)` | Импортирует memory без события | Append-only и tenant-bound |
+| `_stored_memory_text(connection, text)` | Готовит plaintext или pgcrypto ciphertext для `memory_items.text` | Production mode stores `enc:pgcrypto:v1:*` |
 | `get(tenant, item)` | Загружает memory с provenance | Устанавливает RLS tenant context |
 | `list_for_workspace(...)` | Детализация workspace с layer filter | Детерминированный порядок |
 | `search(query)` | PostgreSQL lexical fallback | Project/thread/label/time filters |

@@ -76,6 +76,8 @@ def test_validate_production_env_accepts_strict_real_config(tmp_path: Path) -> N
                 "UAM_CONTEXT_BUDGET_TOKENS=131072",
                 "UAM_PRIVACY_ENABLED=true",
                 "UAM_PRIVACY_ACTION=redact",
+                "UAM_MEMORY_TEXT_ENCRYPTION=pgcrypto",
+                "UAM_MEMORY_TEXT_ENCRYPTION_KEY=memtext_" + "f" * 40,
                 "UAM_AUDIT_SIGNING_KEY=audit_" + "b" * 40,
                 "UAM_VAULT_SIGNING_KEY=vault_" + "c" * 40,
                 "UAM_EMBEDDING_PROVIDER=tei",
@@ -118,7 +120,33 @@ def test_validate_production_env_rejects_placeholders_and_missing_public_tls() -
         "public-tls",
         "UAM_AUDIT_SIGNING_KEY",
         "UAM_VAULT_SIGNING_KEY",
+        "UAM_MEMORY_TEXT_ENCRYPTION_KEY",
     } <= failed
+
+
+def test_validate_production_env_rejects_plaintext_memory_storage() -> None:
+    values = {
+        "UAM_API_KEY": "ak_" + "a" * 40,
+        "UAM_API_KEYS": "openclaw:oc_" + "b" * 32 + ":agent,"
+        "hermes:hm_" + "c" * 32 + ":agent,"
+        "operator:op_" + "d" * 32 + ":operator",
+        "UAM_SERVER_ID": "00000000-0000-0000-0000-000000000001",
+        "UAM_PROJECT_ID": "00000000-0000-0000-0000-000000000002",
+        "POSTGRES_PASSWORD": "pg_" + "e" * 40,
+        "UAM_APP_DB_PASSWORD": "app_" + "f" * 40,
+        "MINIO_ROOT_PASSWORD": "minio_" + "a" * 40,
+        "UAM_CONTEXT_BUDGET_TOKENS": "131072",
+        "UAM_PRIVACY_ENABLED": "true",
+        "UAM_PRIVACY_ACTION": "redact",
+        "UAM_EMBEDDING_DIM": "2048",
+        "UAM_QDRANT_PAYLOAD_TEXT": "false",
+        "UAM_MEMORY_TEXT_ENCRYPTION": "off",
+    }
+
+    checks = validate_production_env.validate_env(values)
+
+    failed = {check.name for check in checks if not check.ok}
+    assert "UAM_MEMORY_TEXT_ENCRYPTION" in failed
 
 
 def test_validate_production_env_rejects_qdrant_text_payloads(tmp_path: Path) -> None:
