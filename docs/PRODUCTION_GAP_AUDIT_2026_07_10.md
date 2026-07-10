@@ -23,7 +23,7 @@ it is not enough.
 | UI | React dashboard and fallback `/ui` support real memory/vault editing, actionable conflict decisions and a JSON UI walkthrough runner | Operator-grade baseline; still needs preserved live walkthrough evidence per release |
 | Testing | Unit, integration-style, benchmark scripts, web build | Needs load/chaos/restore/security tests |
 | Release process | `main` branch protection requires PR flow, strict `python`/`web` checks, conversation resolution, and admin enforcement | Release gate baseline is now proven by `scripts/check_branch_protection.py`; keep verifying before releases |
-| Operations | Runbook, backup/restore scripts, isolated restore-drill script, scheduler-ready backup runner, signed vault manifests, metrics health evaluator with JSON report/webhook, release checklist and release evidence verifier | Needs environment scheduler, durable/immutable storage and dashboard wiring |
+| Operations | Runbook, backup/restore scripts, isolated restore-drill script, scheduler-ready backup runner, signed vault manifests, metrics health evaluator with JSON report/webhook, Grafana/Prometheus templates, release checklist and release evidence verifier | Needs environment scheduler, durable/immutable storage and installed dashboard/alert routing |
 
 ## What “full production level” means for this project
 
@@ -131,8 +131,8 @@ Required gates:
    alert routing for `scheduled_backup.py` reports.
 3. Run `scripts/agent_soak_eval.py` from the `.14` OpenClaw/Hermes deployment
    path and preserve the JSON report as release evidence.
-4. Wire metrics and scheduled-backup health reports into the deployment
-   dashboard/alerting stack.
+4. Install the provided metrics dashboard/alert rules and scheduled-backup
+   health reports into the deployment alerting stack.
 5. Run `scripts/ui_walkthrough_eval.py` against the release server and preserve
    the report showing conflict decision, vault editable text/archive, model
    settings probe, reindex and metrics.

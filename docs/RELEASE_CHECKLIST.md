@@ -81,6 +81,9 @@ Manual checks:
   `"verified_export": true` and `"signed_export": true` before any audit prune.
 - Confirm `backups/latest-backup-report.json` reports `"ok": true`.
 - Confirm `ops/metrics-health.json` reports `"ok": true`.
+- Confirm `deploy/observability/grafana-dashboard.json` is imported into the
+  target dashboard stack and `deploy/observability/prometheus-alerts.yml` is
+  loaded into the target alerting stack.
 - Confirm `ops/agent-soak.json` reports `"ok": true` after running against the
   same server and `.14` OpenClaw/Hermes hosts used for production.
 - Confirm `ops/ui-walkthrough.json` reports `"ok": true` and includes
@@ -113,3 +116,5 @@ Do not release if:
   embedding data in the vault editor.
 - audit retention evidence is missing, unsigned, unverified, or produced after
   pruning rather than before pruning.
+- observability dashboard/alert rules are not installed for the target
+  production environment.

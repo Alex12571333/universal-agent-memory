@@ -65,6 +65,7 @@ def run_checks(*, static_only: bool) -> list[Check]:
         "docs/assets/obelisk-memory-hero.png",
         "docs/GITHUB_BRANCH_PROTECTION.md",
         "docs/OPERATIONS_RUNBOOK.md",
+        "docs/OBSERVABILITY.md",
         "docs/TLS_REVERSE_PROXY.md",
         "docs/ENTERPRISE_READINESS.md",
         "docs/PRODUCTION_GAP_AUDIT_2026_07_10.md",
@@ -72,6 +73,8 @@ def run_checks(*, static_only: bool) -> list[Check]:
         "docs/RELEASE_EVIDENCE.md",
         "docs/DGX_SPARK_MEMORY_LLM.md",
         "docs/BENCHMARK_RESULTS_2026_07_09.md",
+        "deploy/observability/grafana-dashboard.json",
+        "deploy/observability/prometheus-alerts.yml",
     ]
     checks.extend(check_file(path) for path in required_files)
 
@@ -345,6 +348,36 @@ def run_checks(*, static_only: bool) -> list[Check]:
                     "metrics health script evaluates outbox lag/dead letters; "
                     "embedding exposes failure/latency metrics"
                 ),
+            ),
+            Check(
+                "ops:observability-artifacts",
+                "uam_outbox_dead_letter_total" in read(
+                    "deploy/observability/prometheus-alerts.yml"
+                )
+                and "uam_outbox_lag_seconds" in read(
+                    "deploy/observability/prometheus-alerts.yml"
+                )
+                and "uam_embedding_failures_total" in read(
+                    "deploy/observability/prometheus-alerts.yml"
+                )
+                and "uam_embedding_reindex_failures_total" in read(
+                    "deploy/observability/prometheus-alerts.yml"
+                )
+                and "uam_memory_items_total" in read(
+                    "deploy/observability/grafana-dashboard.json"
+                )
+                and "docs/OBSERVABILITY.md" in read("README.md"),
+                "Prometheus alerts and Grafana dashboard cover production metrics",
+            ),
+            Check(
+                "tests:observability-artifacts",
+                "test_grafana_dashboard_uses_real_exposed_metrics" in read(
+                    "tests/test_observability_artifacts.py"
+                )
+                and "test_prometheus_alerts_cover_production_failure_modes" in read(
+                    "tests/test_observability_artifacts.py"
+                ),
+                "observability artifacts are covered by tests",
             ),
             Check(
                 "tests:metrics-health-evaluator",

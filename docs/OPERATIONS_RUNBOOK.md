@@ -69,6 +69,11 @@ thresholds, writes a JSON report, and can post failed reports through
 operation count, failure count, last duration, cumulative duration and reindex
 health so a deployment can alert when vector indexing degrades.
 
+Import `deploy/observability/grafana-dashboard.json` and
+`deploy/observability/prometheus-alerts.yml` into the target monitoring stack.
+See [OBSERVABILITY.md](OBSERVABILITY.md) for scrape config, dashboard coverage
+and alert rule details.
+
 ## Access keys
 
 Use one master `UAM_API_KEY` for break-glass operations and scoped keys for
