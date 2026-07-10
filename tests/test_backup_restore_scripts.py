@@ -32,6 +32,7 @@ restore = _load_script("restore")
 restore_drill = _load_script("restore_drill")
 check_branch_protection = _load_script("check_branch_protection")
 export_audit = _load_script("export_audit")
+audit_retention = _load_script("audit_retention")
 scheduled_backup = _load_script("scheduled_backup")
 export_vault = _load_script("export_vault")
 import_vault = _load_script("import_vault")
@@ -558,6 +559,185 @@ def test_export_audit_signs_and_verifies_bundle(
     assert any(check["name"] == "manifest.sig" for check in rejected["checks"])
 
 
+def test_audit_retention_dry_run_exports_and_verifies_without_pruning(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    tenant = uuid4()
+    workspace = uuid4()
+    commands: list[list[str]] = []
+    audit = Mock()
+
+    def fake_run(command: list[str], *, check: bool = False) -> subprocess.CompletedProcess[str]:
+        commands.append(command)
+        bundle = Path(command[2])
+        if "--verify" not in command:
+            bundle.mkdir(parents=True, exist_ok=True)
+            (bundle / "manifest.json").write_text(
+                json.dumps({"event_count": 3}),
+                encoding="utf-8",
+            )
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(audit_retention.subprocess, "run", fake_run)
+    monkeypatch.setattr(audit_retention, "PostgresMemoryLedger", Mock())
+    monkeypatch.setattr(audit_retention, "AuditLogService", Mock(return_value=audit))
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "audit_retention.py",
+            "--database-url",
+            "postgresql://example/db",
+            "--tenant-id",
+            str(tenant),
+            "--workspace-id",
+            str(workspace),
+            "--cutoff",
+            "2026-07-01T00:00:00Z",
+            "--export-root",
+            str(tmp_path),
+            "--signing-key",
+            "audit-signing-key",
+        ],
+    )
+
+    assert audit_retention.main() == 0
+
+    assert len(commands) == 2
+    assert "--all-pages" in commands[0]
+    assert "--until" in commands[0]
+    assert "--verify" in commands[1]
+    audit.prune_events.assert_not_called()
+
+
+def test_audit_retention_apply_requires_signed_export(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "audit_retention.py",
+            "--database-url",
+            "postgresql://example/db",
+            "--cutoff",
+            "2026-07-01T00:00:00Z",
+            "--export-root",
+            str(tmp_path),
+            "--apply",
+        ],
+    )
+
+    with pytest.raises(SystemExit):
+        audit_retention.main()
+
+
+def test_audit_retention_apply_prunes_only_after_verify(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    tenant = uuid4()
+    commands: list[list[str]] = []
+    ledger = Mock()
+    audit = Mock()
+    audit.prune_events.side_effect = [2, 0]
+
+    def fake_run(command: list[str], *, check: bool = False) -> subprocess.CompletedProcess[str]:
+        commands.append(command)
+        bundle = Path(command[2])
+        if "--verify" not in command:
+            bundle.mkdir(parents=True, exist_ok=True)
+            (bundle / "manifest.json").write_text(
+                json.dumps({"event_count": 2}),
+                encoding="utf-8",
+            )
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(audit_retention.subprocess, "run", fake_run)
+    monkeypatch.setattr(audit_retention, "PostgresMemoryLedger", Mock(return_value=ledger))
+    monkeypatch.setattr(audit_retention, "AuditLogService", Mock(return_value=audit))
+    report = tmp_path / "report.json"
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "audit_retention.py",
+            "--database-url",
+            "postgresql://example/db",
+            "--tenant-id",
+            str(tenant),
+            "--all-workspaces",
+            "--cutoff",
+            "2026-07-01T00:00:00Z",
+            "--export-root",
+            str(tmp_path / "exports"),
+            "--signing-key",
+            "audit-signing-key",
+            "--apply",
+            "--batch-size",
+            "2",
+            "--json-report",
+            str(report),
+        ],
+    )
+
+    assert audit_retention.main() == 0
+
+    payload = json.loads(report.read_text(encoding="utf-8"))
+    assert payload["ok"] is True
+    assert payload["dry_run"] is False
+    assert payload["verified_export"] is True
+    assert payload["signed_export"] is True
+    assert payload["pruned_count"] == 2
+    assert "--verify" in commands[1]
+    ledger.connect.assert_called_once()
+    audit.prune_events.assert_any_call(
+        tenant,
+        workspace_id=None,
+        created_before=datetime(2026, 7, 1, 0, 0, tzinfo=UTC),
+        limit=2,
+    )
+
+
+def test_audit_retention_does_not_prune_when_verify_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    audit = Mock()
+
+    def fake_run(command: list[str], *, check: bool = False) -> subprocess.CompletedProcess[str]:
+        bundle = Path(command[2])
+        if "--verify" not in command:
+            bundle.mkdir(parents=True, exist_ok=True)
+            (bundle / "manifest.json").write_text(
+                json.dumps({"event_count": 2}),
+                encoding="utf-8",
+            )
+            return subprocess.CompletedProcess(command, 0)
+        return subprocess.CompletedProcess(command, 1)
+
+    monkeypatch.setattr(audit_retention.subprocess, "run", fake_run)
+    monkeypatch.setattr(audit_retention, "PostgresMemoryLedger", Mock())
+    monkeypatch.setattr(audit_retention, "AuditLogService", Mock(return_value=audit))
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "audit_retention.py",
+            "--database-url",
+            "postgresql://example/db",
+            "--cutoff",
+            "2026-07-01T00:00:00Z",
+            "--export-root",
+            str(tmp_path),
+            "--signing-key",
+            "audit-signing-key",
+            "--apply",
+        ],
+    )
+
+    assert audit_retention.main() == 1
+    audit.prune_events.assert_not_called()
+
+
 def test_check_branch_protection_accepts_pr_checks_and_admin_enforcement(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -721,6 +901,7 @@ def test_verify_release_evidence_accepts_complete_manifest(tmp_path: Path) -> No
         "agent_soak:openclaw",
         "agent_soak:hermes",
         "scheduled_backup:restore-drill",
+        "audit_retention:verified-export",
         "branch_protection:passed",
         "ui_walkthrough:model-probe-not-skipped",
     }
@@ -813,6 +994,17 @@ def _write_release_evidence_bundle(tmp_path: Path) -> Path:
         },
     )
     _write_json(
+        tmp_path / "audit-retention.json",
+        {
+            "format": "obelisk-audit-retention-v1",
+            "ok": True,
+            "dry_run": False,
+            "verified_export": True,
+            "signed_export": True,
+            "pruned_count": 12,
+        },
+    )
+    _write_json(
         tmp_path / "branch-protection.json",
         {
             "passed": True,
@@ -856,6 +1048,7 @@ def _write_release_evidence_bundle(tmp_path: Path) -> Path:
                 "memory_llm": "memory-llm.json",
                 "metrics_health": "metrics-health.json",
                 "scheduled_backup": "scheduled-backup.json",
+                "audit_retention": "audit-retention.json",
                 "branch_protection": "branch-protection.json",
                 "ui_walkthrough": "ui-walkthrough.json",
             },

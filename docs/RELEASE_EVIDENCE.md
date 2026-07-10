@@ -17,6 +17,7 @@ Create `release-evidence.json` next to the referenced reports:
     "memory_llm": "ops/memory-llm.json",
     "metrics_health": "ops/metrics-health.json",
     "scheduled_backup": "backups/latest-backup-report.json",
+    "audit_retention": "ops/audit-retention.json",
     "branch_protection": "ops/branch-protection.json",
     "ui_walkthrough": "ops/ui-walkthrough.json"
   }
@@ -36,6 +37,12 @@ PYTHONPATH=src python scripts/scheduled_backup.py \
   --backup-dir ./backups \
   --audit-dir ./audit-export \
   --report ./backups/latest-backup-report.json
+
+UAM_AUDIT_SIGNING_KEY=... PYTHONPATH=src python scripts/audit_retention.py \
+  --database-url "$UAM_DATABASE_URL" \
+  --retain-days 365 \
+  --export-root ./audit-retention \
+  --json-report ./ops/audit-retention.json
 
 UAM_API_KEY=... python scripts/agent_soak_eval.py \
   --base-url http://localhost:6798 \
@@ -81,6 +88,8 @@ The verifier requires:
   pending/dead-letter/lag and inflight checks;
 - scheduled backup report format `obelisk-scheduled-backup-report-v1`,
   `ok: true`, restore drill not skipped and audit export not skipped;
+- audit retention report format `obelisk-audit-retention-v1`, `ok: true`,
+  signed pre-prune export and verified export;
 - branch protection JSON with `passed: true`, PR requirement, required status
   checks, strict mode and admin enforcement;
 - UI walkthrough report format `obelisk-ui-walkthrough-v1`, `ok: true`,

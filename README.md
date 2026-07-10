@@ -340,6 +340,11 @@ python scripts/validate_production_env.py .env.production \
 UAM_API_KEY=... python scripts/agent_soak_eval.py --json-report ./ops/agent-soak.json
 UAM_API_KEY=... python scripts/ui_walkthrough_eval.py --json-report ./ops/ui-walkthrough.json
 python scripts/real_memory_llm_eval.py --json-report ./ops/memory-llm.json
+UAM_AUDIT_SIGNING_KEY=... PYTHONPATH=src python scripts/audit_retention.py \
+  --database-url "$UAM_DATABASE_URL" \
+  --retain-days 365 \
+  --export-root ./audit-retention \
+  --json-report ./ops/audit-retention.json
 python scripts/verify_release_evidence.py ./release-evidence.json
 python scripts/benchmark_suite.py
 python scripts/enterprise_readiness_check.py

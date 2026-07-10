@@ -230,6 +230,17 @@ class AuditRepository(Protocol):
         """List recent audit events under tenant/workspace filters."""
         ...
 
+    def prune_audit_events(
+        self,
+        tenant_id: UUID,
+        *,
+        created_before: datetime,
+        workspace_id: UUID | None = None,
+        limit: int = 500,
+    ) -> int:
+        """Delete old audit events after external export has been verified."""
+        ...
+
 
 class ApiKeyRegistryRepository(Protocol):
     """Durable API-key metadata without bearer-secret storage."""

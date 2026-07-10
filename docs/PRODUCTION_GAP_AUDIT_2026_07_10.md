@@ -13,7 +13,7 @@ it is not enough.
 | Architecture | PostgreSQL source of truth, Qdrant index, outbox, NATS workers, vault, API, UI | Good foundation |
 | Docker | Dev/prod compose plus Caddy TLS proxy example exist; prod hides internal infra ports | Good for trusted local/team deployment; real TLS boundary must be installed |
 | API auth | Bearer key, scoped keys, env validator and non-secret key registry with last-used/revoked state exist; `/health` public | Strong local/team baseline; still not enterprise IAM |
-| Audit trail | Append-only `audit_events` table, RLS, operator export API, signed paginated JSONL bundle, metrics, tests | Strong baseline; retention schedule, key custody and immutable storage still needed |
+| Audit trail | Append-only `audit_events` table, RLS, operator export API, signed paginated JSONL bundle, safe retention runner, metrics, tests | Strong baseline; environment schedule, key custody and immutable storage still needed |
 | Browser/API hardening | Security headers are enforced by middleware and tests | Baseline present |
 | Data model | Append-only memory, CAS supersede, provenance, statuses, optional pgcrypto ciphertext for canonical memory text | Strong foundation |
 | Conversation capture | Raw conversation ledger exists, but curation remains explicit/manual or hook-driven | Not “automatically remembers everything” yet |
@@ -46,8 +46,9 @@ Required gates:
      strict production flags before deployment.
    - Audit log export for write, supersede, conflict-decision, vault-import,
      settings-change and model-change events. Durable storage plus optional
-     HMAC-signed paginated export bundles exist; regulated environments still
-     need signing-key custody, retention schedule and immutable storage.
+     HMAC-signed paginated export bundles exist. The retention runner exports
+     and verifies old windows before pruning; regulated environments still need
+     signing-key custody, an installed schedule and immutable storage.
    - Vault import bundles must use manifest checksum verification and signed
      manifests for production operator workflows. CLI support exists; the
      deployment must keep signing keys outside the repository.
@@ -123,8 +124,9 @@ Required gates:
 
 ## Highest-priority next work
 
-1. Add audit retention policy, external signing-key custody, scheduled immutable
-   storage, and deployment verification that range exports are preserved.
+1. Install audit retention schedule, external signing-key custody, scheduled
+   immutable storage, and deployment verification that signed range exports are
+   preserved before pruning.
 2. Install environment-level backup schedule, immutable artifact storage, and
    alert routing for `scheduled_backup.py` reports.
 3. Run `scripts/agent_soak_eval.py` from the `.14` OpenClaw/Hermes deployment

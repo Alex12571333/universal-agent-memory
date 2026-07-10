@@ -14,6 +14,11 @@ PYTHONPATH=src python scripts/scheduled_backup.py \
   --backup-dir ./backups \
   --audit-dir ./audit-export \
   --report ./backups/latest-backup-report.json
+UAM_AUDIT_SIGNING_KEY=... PYTHONPATH=src python scripts/audit_retention.py \
+  --database-url "$UAM_DATABASE_URL" \
+  --retain-days 365 \
+  --export-root ./audit-retention \
+  --json-report ./ops/audit-retention.json
 UAM_VAULT_SIGNING_KEY=... python scripts/export_vault.py ./vault-release
 UAM_VAULT_SIGNING_KEY=... python scripts/import_vault.py ./vault-release \
   --require-signature
@@ -72,6 +77,8 @@ Manual checks:
   evidence.
 - Confirm signed audit bundles verify with `scripts/export_audit.py --verify`.
 - Confirm incident/audit exports use `--all-pages` for multi-day windows.
+- Confirm `ops/audit-retention.json` reports `"ok": true`,
+  `"verified_export": true` and `"signed_export": true` before any audit prune.
 - Confirm `backups/latest-backup-report.json` reports `"ok": true`.
 - Confirm `ops/metrics-health.json` reports `"ok": true`.
 - Confirm `ops/agent-soak.json` reports `"ok": true` after running against the
@@ -104,3 +111,5 @@ Do not release if:
   memory as current truth.
 - UI walkthrough evidence is missing, skipped model probing, or shows vector /
   embedding data in the vault editor.
+- audit retention evidence is missing, unsigned, unverified, or produced after
+  pruning rather than before pruning.

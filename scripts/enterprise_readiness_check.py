@@ -60,6 +60,7 @@ def run_checks(*, static_only: bool) -> list[Check]:
         "scripts/vault_manifest.py",
         "scripts/restore_drill.py",
         "scripts/scheduled_backup.py",
+        "scripts/audit_retention.py",
         "scripts/verify_release_evidence.py",
         "docs/assets/obelisk-memory-hero.png",
         "docs/GITHUB_BRANCH_PROTECTION.md",
@@ -401,6 +402,28 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 "audit bundle checksum/signature/range behavior is covered by tests",
             ),
             Check(
+                "audit:retention-runner",
+                "obelisk-audit-retention-v1" in read("scripts/audit_retention.py")
+                and '"export_audit.py"' in read("scripts/audit_retention.py")
+                and "--verify" in read("scripts/audit_retention.py")
+                and "prune_events" in read("scripts/audit_retention.py")
+                and "--apply requires --signing-key" in read("scripts/audit_retention.py"),
+                "audit retention exports and verifies old windows before pruning",
+            ),
+            Check(
+                "tests:audit-retention-runner",
+                "test_audit_retention_apply_prunes_only_after_verify" in read(
+                    "tests/test_backup_restore_scripts.py"
+                )
+                and "test_audit_retention_does_not_prune_when_verify_fails" in read(
+                    "tests/test_backup_restore_scripts.py"
+                )
+                and "test_audit_retention_apply_requires_signed_export" in read(
+                    "tests/test_backup_restore_scripts.py"
+                ),
+                "audit retention safety behavior is covered",
+            ),
+            Check(
                 "keys:registry-rls",
                 "create table api_key_registry" in key_migration
                 and "secret_fingerprint" in key_migration
@@ -454,6 +477,7 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 "obelisk-release-evidence-manifest-v1"
                 in read("scripts/verify_release_evidence.py")
                 and "agent_soak" in read("scripts/verify_release_evidence.py")
+                and "audit_retention" in read("scripts/verify_release_evidence.py")
                 and "branch_protection" in read("scripts/verify_release_evidence.py")
                 and "ui_walkthrough" in read("scripts/verify_release_evidence.py")
                 and "release_evidence=PASS" in read("docs/RELEASE_EVIDENCE.md"),

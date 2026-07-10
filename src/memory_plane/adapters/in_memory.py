@@ -383,6 +383,31 @@ class InMemoryMemoryStore:
         rows.sort(key=lambda event: (event.created_at, event.id), reverse=True)
         return tuple(rows[:limit])
 
+    def prune_audit_events(
+        self,
+        tenant_id: UUID,
+        *,
+        created_before: datetime,
+        workspace_id: UUID | None = None,
+        limit: int = 500,
+    ) -> int:
+        """Delete old audit events after a verified export."""
+        safe_limit = max(1, min(int(limit), 500))
+        with self._lock:
+            doomed = [
+                event
+                for event in self._audit_events.values()
+                if event.tenant_id == tenant_id
+                and event.created_at < created_before
+                and (workspace_id is None or event.workspace_id == workspace_id)
+            ]
+            doomed.sort(key=lambda event: (event.created_at, event.id))
+            deleted = 0
+            for event in doomed[:safe_limit]:
+                if self._audit_events.pop(event.id, None) is not None:
+                    deleted += 1
+            return deleted
+
     def save_api_key_record(self, record: ApiKeyRecord) -> ApiKeyRecord:
         """Create/update one API key metadata row."""
         with self._lock:

@@ -67,3 +67,19 @@ class AuditLogService:
             before_event_id=before_event_id,
             limit=max(1, min(int(limit), 500)),
         )
+
+    def prune_events(
+        self,
+        tenant_id: UUID,
+        *,
+        created_before: datetime,
+        workspace_id: UUID | None = None,
+        limit: int = 500,
+    ) -> int:
+        """Prune old events after a signed external export has been verified."""
+        return self._repository.prune_audit_events(
+            tenant_id,
+            workspace_id=workspace_id,
+            created_before=created_before,
+            limit=max(1, min(int(limit), 500)),
+        )
