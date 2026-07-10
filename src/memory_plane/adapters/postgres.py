@@ -71,6 +71,18 @@ case
   else m.content
 end
 """
+_PROPOSAL_TEXT_SQL = f"""
+case when left(p.proposal, {len(_PGCRYPTO_TEXT_PREFIX)}) = '{_PGCRYPTO_TEXT_PREFIX}'
+then pgp_sym_decrypt(decode(substr(p.proposal, {len(_PGCRYPTO_TEXT_PREFIX) + 1}), 'base64'),
+  nullif(current_setting('app.memory_text_encryption_key', true), ''))
+else p.proposal end
+"""
+_PROPOSAL_EVIDENCE_SQL = f"""
+case when left(p.evidence, {len(_PGCRYPTO_TEXT_PREFIX)}) = '{_PGCRYPTO_TEXT_PREFIX}'
+then pgp_sym_decrypt(decode(substr(p.evidence, {len(_PGCRYPTO_TEXT_PREFIX) + 1}), 'base64'),
+  nullif(current_setting('app.memory_text_encryption_key', true), ''))
+else p.evidence end
+"""
 
 
 def _is_foreign_key_violation(exc: Exception) -> bool:
@@ -1151,9 +1163,10 @@ class PostgresMemoryLedger:
         with self._connection() as connection:
             self._set_tenant(connection, tenant_id)
             row = connection.execute(
-                """
+                f"""
                 select id, tenant_id, workspace_id, agent_id, thread_id, namespace,
-                  requester, target, proposal, evidence, confidence, importance,
+                  requester, target, {_PROPOSAL_TEXT_SQL} as proposal,
+                  {_PROPOSAL_EVIDENCE_SQL} as evidence, confidence, importance,
                   status, metadata, created_at, reviewed_at, reviewer, review_reason
                 from memory_proposals
                 where id = %s
@@ -1210,9 +1223,10 @@ class PostgresMemoryLedger:
             self._set_tenant(connection, proposal.tenant_id)
             self._lock_idempotency_key(connection, item.tenant_id, idempotency_key)
             row = connection.execute(
-                """
+                f"""
                 select id, tenant_id, workspace_id, agent_id, thread_id, namespace,
-                  requester, target, proposal, evidence, confidence, importance,
+                  requester, target, {_PROPOSAL_TEXT_SQL} as proposal,
+                  {_PROPOSAL_EVIDENCE_SQL} as evidence, confidence, importance,
                   status, metadata, created_at, reviewed_at, reviewer, review_reason
                 from memory_proposals where id = %s for update
                 """,
@@ -1249,9 +1263,7 @@ class PostgresMemoryLedger:
                 set status = 'accepted', metadata = %s, reviewed_at = %s,
                     reviewer = %s, review_reason = %s
                 where id = %s
-                returning id, tenant_id, workspace_id, agent_id, thread_id, namespace,
-                  requester, target, proposal, evidence, confidence, importance,
-                  status, metadata, created_at, reviewed_at, reviewer, review_reason
+                returning id
                 """,
                 (
                     Jsonb(metadata),
@@ -1263,7 +1275,20 @@ class PostgresMemoryLedger:
             ).fetchone()
             if updated is None:
                 raise KeyError("memory proposal not found")
-            return self._to_proposal(updated), item, True
+            decoded = connection.execute(
+                f"""
+                select p.id, p.tenant_id, p.workspace_id, p.agent_id, p.thread_id,
+                  p.namespace, p.requester, p.target,
+                  {_PROPOSAL_TEXT_SQL} as proposal, {_PROPOSAL_EVIDENCE_SQL} as evidence,
+                  p.confidence, p.importance, p.status, p.metadata, p.created_at,
+                  p.reviewed_at, p.reviewer, p.review_reason
+                from memory_proposals p where p.id = %s
+                """,
+                (proposal.id,),
+            ).fetchone()
+            if decoded is None:
+                raise KeyError("memory proposal not found")
+            return self._to_proposal(decoded), item, True
 
     def list_proposals(
         self,
@@ -1279,9 +1304,10 @@ class PostgresMemoryLedger:
         with self._connection() as connection:
             self._set_tenant(connection, tenant_id)
             rows = connection.execute(
-                """
+                f"""
                 select id, tenant_id, workspace_id, agent_id, thread_id, namespace,
-                  requester, target, proposal, evidence, confidence, importance,
+                  requester, target, {_PROPOSAL_TEXT_SQL} as proposal,
+                  {_PROPOSAL_EVIDENCE_SQL} as evidence, confidence, importance,
                   status, metadata, created_at, reviewed_at, reviewer, review_reason
                 from memory_proposals
                 where workspace_id = %s
@@ -1729,9 +1755,10 @@ class PostgresMemoryLedger:
         self, connection: Any, tenant_id: UUID, key: str
     ) -> MemoryProposal | None:
         row = connection.execute(
-            """
+            f"""
             select p.id, p.tenant_id, p.workspace_id, p.agent_id, p.thread_id,
-              p.namespace, p.requester, p.target, p.proposal, p.evidence,
+              p.namespace, p.requester, p.target,
+              {_PROPOSAL_TEXT_SQL} as proposal, {_PROPOSAL_EVIDENCE_SQL} as evidence,
               p.confidence, p.importance, p.status, p.metadata, p.created_at,
               p.reviewed_at, p.reviewer, p.review_reason
             from memory_proposal_idempotency_keys i
@@ -1978,8 +2005,7 @@ class PostgresMemoryLedger:
                 ),
             )
 
-    @staticmethod
-    def _insert_proposal(connection: Any, proposal: MemoryProposal) -> None:
+    def _insert_proposal(self, connection: Any, proposal: MemoryProposal) -> None:
         from psycopg.types.json import Jsonb
 
         connection.execute(
@@ -1999,8 +2025,8 @@ class PostgresMemoryLedger:
                 proposal.namespace,
                 proposal.requester,
                 proposal.target.value,
-                proposal.proposal,
-                proposal.evidence,
+                self._stored_sensitive_text(connection, proposal.proposal),
+                self._stored_sensitive_text(connection, proposal.evidence),
                 proposal.confidence,
                 proposal.importance,
                 proposal.status.value,
