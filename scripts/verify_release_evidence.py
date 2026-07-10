@@ -18,6 +18,7 @@ REQUIRED_ARTIFACTS = {
     "scheduled_backup",
     "audit_retention",
     "deployment_preflight",
+    "secret_files",
     "vault_import",
     "branch_protection",
     "ui_walkthrough",
@@ -112,6 +113,7 @@ def verify_manifest(path: Path) -> list[EvidenceCheck]:
         "scheduled_backup": _verify_scheduled_backup,
         "audit_retention": _verify_audit_retention,
         "deployment_preflight": _verify_deployment_preflight,
+        "secret_files": _verify_secret_files,
         "vault_import": _verify_vault_import,
         "branch_protection": _verify_branch_protection,
         "ui_walkthrough": _verify_ui_walkthrough,
@@ -335,6 +337,41 @@ def _verify_deployment_preflight(payload: dict[str, Any]) -> list[EvidenceCheck]
             payload.get("backend_probe_performed") is True
             and payload.get("backend_publicly_reachable") is False,
             "direct backend exposure probe passed",
+        ),
+    ]
+
+
+def _verify_secret_files(payload: dict[str, Any]) -> list[EvidenceCheck]:
+    names = _check_names(payload)
+    required_suffixes = {
+        "raw-empty",
+        "file-configured",
+        "file-readable",
+        "file-prefix",
+    }
+    missing_by_secret: list[str] = []
+    for secret_name in payload.get("required_secrets", []):
+        if not isinstance(secret_name, str):
+            continue
+        suffixes = {
+            name.split(":", 1)[1]
+            for name in names
+            if name.startswith(f"{secret_name}:") and ":" in name
+        }
+        missing = sorted(required_suffixes - suffixes)
+        if missing:
+            missing_by_secret.append(f"{secret_name} missing {','.join(missing)}")
+    return [
+        _format_check("secret_files", payload, "obelisk-secret-files-preflight-v1"),
+        _ok_check("secret_files", payload),
+        EvidenceCheck(
+            "secret_files:all-required-secrets-checked",
+            not missing_by_secret and bool(payload.get("required_secrets")),
+            (
+                "all required secrets have raw/file/read/prefix checks"
+                if not missing_by_secret and bool(payload.get("required_secrets"))
+                else "; ".join(missing_by_secret) or "required_secrets missing"
+            ),
         ),
     ]
 

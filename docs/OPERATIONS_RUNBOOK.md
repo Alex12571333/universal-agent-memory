@@ -101,6 +101,17 @@ normal integrations:
 UAM_API_KEYS=openclaw:...:agent,hermes:...:agent,operator:...:operator
 ```
 
+For production, verify that required secrets are mounted from the secret manager
+through `*_FILE` paths and that raw secret env values are empty:
+
+```bash
+PYTHONPATH=src python scripts/secret_files_preflight.py .env.production \
+  --report ./ops/secret-files.json
+```
+
+The report uses format `obelisk-secret-files-preflight-v1` and is required by
+`scripts/verify_release_evidence.py` before a full-production release claim.
+
 Rotate an agent key by replacing its secret in `.env.production` and restarting
 `memory-server`. If a key leaked, rotate first, then inspect memories retained by
 that agent for accidental secret capture.

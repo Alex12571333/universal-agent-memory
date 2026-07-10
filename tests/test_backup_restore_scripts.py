@@ -40,6 +40,7 @@ export_vault = _load_script("export_vault")
 import_vault = _load_script("import_vault")
 migrate = _load_script("migrate")
 validate_production_env = _load_script("validate_production_env")
+secret_files_preflight = _load_script("secret_files_preflight")
 verify_release_evidence = _load_script("verify_release_evidence")
 
 
@@ -936,6 +937,7 @@ def test_verify_release_evidence_accepts_complete_manifest(tmp_path: Path) -> No
         "scheduled_backup:restore-drill",
         "audit_retention:verified-export",
         "deployment_preflight:backend-not-public",
+        "secret_files:all-required-secrets-checked",
         "vault_import:verified-signed-manifest",
         "branch_protection:passed",
         "ui_walkthrough:model-probe-not-skipped",
@@ -999,6 +1001,24 @@ def test_verify_release_evidence_rejects_reachable_backend(tmp_path: Path) -> No
         check for check in checks if check.name == "deployment_preflight:backend-not-public"
     )
     assert backend_check.passed is False
+    assert not all(check.passed for check in checks)
+
+
+def test_verify_release_evidence_rejects_raw_secret_env(tmp_path: Path) -> None:
+    manifest = _write_release_evidence_bundle(tmp_path)
+    secret_files_path = tmp_path / "secret-files.json"
+    payload = json.loads(secret_files_path.read_text(encoding="utf-8"))
+    payload["ok"] = False
+    for check in payload["checks"]:
+        if check["name"] == "UAM_API_KEY:raw-empty":
+            check["ok"] = False
+            check["detail"] = "raw secret env is set"
+    secret_files_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    checks = verify_release_evidence.verify_manifest(manifest)
+
+    ok_check = next(check for check in checks if check.name == "secret_files:ok")
+    assert ok_check.passed is False
     assert not all(check.passed for check in checks)
 
 
@@ -1116,6 +1136,25 @@ def _write_release_evidence_bundle(tmp_path: Path) -> Path:
         },
     )
     _write_json(
+        tmp_path / "secret-files.json",
+        {
+            "format": "obelisk-secret-files-preflight-v1",
+            "ok": True,
+            "required_secrets": ["UAM_API_KEY", "UAM_API_KEYS"],
+            "allowed_prefixes": [str(tmp_path / "secrets")],
+            "checks": [
+                {"name": "UAM_API_KEY:raw-empty", "ok": True},
+                {"name": "UAM_API_KEY:file-configured", "ok": True},
+                {"name": "UAM_API_KEY:file-readable", "ok": True},
+                {"name": "UAM_API_KEY:file-prefix", "ok": True},
+                {"name": "UAM_API_KEYS:raw-empty", "ok": True},
+                {"name": "UAM_API_KEYS:file-configured", "ok": True},
+                {"name": "UAM_API_KEYS:file-readable", "ok": True},
+                {"name": "UAM_API_KEYS:file-prefix", "ok": True},
+            ],
+        },
+    )
+    _write_json(
         tmp_path / "vault-import.json",
         {
             "format": "obelisk-vault-import-report-v1",
@@ -1178,6 +1217,7 @@ def _write_release_evidence_bundle(tmp_path: Path) -> Path:
                 "scheduled_backup": "scheduled-backup.json",
                 "audit_retention": "audit-retention.json",
                 "deployment_preflight": "deployment-preflight.json",
+                "secret_files": "secret-files.json",
                 "vault_import": "vault-import.json",
                 "branch_protection": "branch-protection.json",
                 "ui_walkthrough": "ui-walkthrough.json",
@@ -1185,6 +1225,52 @@ def _write_release_evidence_bundle(tmp_path: Path) -> Path:
         },
     )
     return manifest
+
+
+def test_secret_files_preflight_accepts_file_backed_secrets(tmp_path: Path) -> None:
+    secrets_dir = tmp_path / "run" / "secrets"
+    secrets_dir.mkdir(parents=True)
+    env_lines = []
+    required = ("UAM_API_KEY", "UAM_API_KEYS")
+    for name in required:
+        secret_path = secrets_dir / name.lower()
+        secret_path.write_text(f"{name.lower()}_value\n", encoding="utf-8")
+        env_lines.append(f"{name}=")
+        env_lines.append(f"{name}_FILE={secret_path}")
+    env_file = tmp_path / ".env.production"
+    env_file.write_text("\n".join(env_lines), encoding="utf-8")
+
+    report = secret_files_preflight.run_preflight(
+        env_file=env_file,
+        required_secrets=required,
+        allowed_prefixes=(str(secrets_dir),),
+    )
+
+    assert report["ok"] is True
+
+
+def test_secret_files_preflight_rejects_raw_secret_values(tmp_path: Path) -> None:
+    secrets_dir = tmp_path / "run" / "secrets"
+    secrets_dir.mkdir(parents=True)
+    secret_path = secrets_dir / "uam_api_key"
+    secret_path.write_text("file-value\n", encoding="utf-8")
+    env_file = tmp_path / ".env.production"
+    env_file.write_text(
+        f"UAM_API_KEY=raw-value\nUAM_API_KEY_FILE={secret_path}\n",
+        encoding="utf-8",
+    )
+
+    report = secret_files_preflight.run_preflight(
+        env_file=env_file,
+        required_secrets=("UAM_API_KEY",),
+        allowed_prefixes=(str(secrets_dir),),
+    )
+
+    assert report["ok"] is False
+    assert any(
+        check["name"] == "UAM_API_KEY:raw-empty" and check["ok"] is False
+        for check in report["checks"]
+    )
 
 
 def test_deployment_preflight_passes_when_public_https_and_backend_blocked(

@@ -12,7 +12,7 @@ it is not enough.
 |---|---|---|
 | Architecture | PostgreSQL source of truth, Qdrant index, outbox, NATS workers, vault, API, UI | Good foundation |
 | Docker | Dev/prod compose plus Caddy TLS proxy example exist; prod hides internal infra ports; deployment preflight writes boundary evidence | Good for trusted local/team deployment; real TLS boundary must be installed and verified per release |
-| API auth | Bearer key, scoped keys, env validator and non-secret key registry with last-used/revoked state exist; `/health` public | Strong local/team baseline; still not enterprise IAM |
+| API auth | Bearer key, scoped keys, env validator, secret-files preflight and non-secret key registry with last-used/revoked state exist; `/health` public | Strong local/team baseline; still not enterprise IAM |
 | Audit trail | Append-only `audit_events` table, RLS, operator export API, signed paginated JSONL bundle, safe retention runner, metrics, tests | Strong baseline; environment schedule, key custody and immutable storage still needed |
 | Browser/API hardening | Security headers are enforced by middleware and tests | Baseline present |
 | Data model | Append-only memory, CAS supersede, provenance, statuses, optional pgcrypto ciphertext for all or selected memory scopes | Strong foundation |
@@ -41,8 +41,10 @@ Required gates:
    - Long random master key plus scoped per-agent/operator keys.
    - Key rotation record: owner, scope, created time, last used, revoked time.
      Baseline registry exists. Runtime supports mounted `*_FILE` secrets for
-     API/model/signing/encryption/database secrets; the target deployment still
-     needs an actual external secret manager and rotation procedure.
+     API/model/signing/encryption/database secrets, and
+     `scripts/secret_files_preflight.py` writes release evidence that raw secret
+     env values are empty. The target deployment still needs an actual external
+     secret manager and rotation procedure.
    - `.env.production` must pass `scripts/validate_production_env.py` with
      strict production flags before deployment.
    - Audit log export for write, supersede, conflict-decision, vault-import,
@@ -109,9 +111,10 @@ Required gates:
    - CI runs lint, tests, web build, compose config, static readiness, and
      in-process production readiness.
    - Release checklist includes manual UI walk-through and live embedding probe.
-   - Release evidence manifest verifies saved deployment preflight, agent, LLM,
-     UI walkthrough, metrics, backup, signed vault import and branch-protection
-     JSON reports before a full-production claim.
+   - Release evidence manifest verifies saved deployment preflight,
+     secret-files preflight, agent, LLM, UI walkthrough, metrics, backup, signed
+     vault import and branch-protection JSON reports before a full-production
+     claim.
    - Versioned changelog and rollback instructions exist.
 
 ## Things that must not be claimed yet

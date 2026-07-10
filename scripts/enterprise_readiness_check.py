@@ -53,6 +53,7 @@ def run_checks(*, static_only: bool) -> list[Check]:
         "scripts/check_branch_protection.py",
         "scripts/check_metrics_health.py",
         "scripts/deployment_preflight.py",
+        "scripts/secret_files_preflight.py",
         "scripts/validate_production_env.py",
         "scripts/export_audit.py",
         "scripts/agent_soak_eval.py",
@@ -527,12 +528,16 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 and "deployment_preflight" in read("scripts/verify_release_evidence.py")
                 and "obelisk-deployment-preflight-v1"
                 in read("scripts/verify_release_evidence.py")
+                and "secret_files" in read("scripts/verify_release_evidence.py")
+                and "obelisk-secret-files-preflight-v1"
+                in read("scripts/verify_release_evidence.py")
                 and "vault_import" in read("scripts/verify_release_evidence.py")
                 and "obelisk-vault-import-report-v1"
                 in read("scripts/verify_release_evidence.py")
                 and "branch_protection" in read("scripts/verify_release_evidence.py")
                 and "ui_walkthrough" in read("scripts/verify_release_evidence.py")
                 and "ops/deployment-preflight.json" in read("docs/RELEASE_EVIDENCE.md")
+                and "ops/secret-files.json" in read("docs/RELEASE_EVIDENCE.md")
                 and "ops/vault-import.json" in read("docs/RELEASE_EVIDENCE.md")
                 and "release_evidence=PASS" in read("docs/RELEASE_EVIDENCE.md"),
                 "release evidence verifier checks saved production reports",
@@ -546,6 +551,8 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 and "test_verify_release_evidence_rejects_unsigned_vault_import"
                 in read("tests/test_backup_restore_scripts.py")
                 and "test_verify_release_evidence_rejects_reachable_backend"
+                in read("tests/test_backup_restore_scripts.py")
+                and "test_verify_release_evidence_rejects_raw_secret_env"
                 in read("tests/test_backup_restore_scripts.py"),
                 "release evidence verifier behavior is covered",
             ),
@@ -564,6 +571,24 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 and "test_deployment_preflight_fails_when_backend_is_public"
                 in read("tests/test_backup_restore_scripts.py"),
                 "deployment preflight behavior is covered",
+            ),
+            Check(
+                "secrets:preflight-runner",
+                "obelisk-secret-files-preflight-v1"
+                in read("scripts/secret_files_preflight.py")
+                and "raw-empty" in read("scripts/secret_files_preflight.py")
+                and "file-configured" in read("scripts/secret_files_preflight.py")
+                and "file-readable" in read("scripts/secret_files_preflight.py")
+                and "file-prefix" in read("scripts/secret_files_preflight.py"),
+                "secret-files preflight runner validates mounted secret posture",
+            ),
+            Check(
+                "tests:secret-files-preflight-runner",
+                "test_secret_files_preflight_accepts_file_backed_secrets"
+                in read("tests/test_backup_restore_scripts.py")
+                and "test_secret_files_preflight_rejects_raw_secret_values"
+                in read("tests/test_backup_restore_scripts.py"),
+                "secret-files preflight behavior is covered",
             ),
             Check(
                 "ui:walkthrough-runner",

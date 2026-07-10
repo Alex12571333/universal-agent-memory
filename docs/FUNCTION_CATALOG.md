@@ -160,6 +160,7 @@
 | `check_branch_protection.py` | Проверяет GitHub release gate для `main` | Требует PR, status checks, strict mode и admin enforcement |
 | `check_metrics_health.py` | `/metrics`/file/stdin → JSON health gate | Fail по outbox lag/dead-letter; webhook alert |
 | `deployment_preflight.py` | Public/backend URLs → JSON deployment-boundary gate | Requires HTTPS public health/security headers and blocked direct backend |
+| `secret_files_preflight.py` | `.env.production` → JSON secret-manager gate | Requires raw secret env values empty and `*_FILE` paths readable under allowed prefix |
 | `validate_production_env.py` | `.env.production` → deployment gate | Rejects placeholders, weak secrets, local TLS defaults, fake embeddings |
 | `scheduled_backup.py` | Backup → restore drill → audit export → JSON report | Webhook alert при fail; подходит для cron/systemd |
 | `audit_retention.py` | Audit export → verify → optional prune → JSON report | Dry-run by default; `--apply` requires signed export |

@@ -20,6 +20,8 @@ remaining hard requirements.
 - [x] Runtime secrets can be supplied through mounted `*_FILE` secrets for
       API keys, scoped agent keys, model gateway keys, signing keys, database
       URLs and memory text encryption keys.
+- [x] Secret-files preflight runner writes JSON evidence that production
+      secrets are file-backed and raw secret env values are empty.
 - [x] API-key registry tracks non-secret fingerprints, scopes, last-used time
       and revocation state.
 - [x] Production env validator catches placeholders, weak secrets and local-only
@@ -77,8 +79,9 @@ remaining hard requirements.
 - [ ] Run deployment preflight against the target TLS/VPN boundary, verify
       direct backend `6798` is not externally reachable, and preserve the
       generated report.
-- [ ] Install the external secret manager in the target environment and mount
-      production secrets through `*_FILE` paths instead of raw env values.
+- [ ] Run secret-files preflight against the target environment, verify
+      production secrets are mounted through `*_FILE` paths instead of raw env
+      values, and preserve the generated report.
 - [ ] Install the audit retention schedule in the target environment and store
       signed export bundles in immutable storage with external signing-key
       custody for regulated environments.
