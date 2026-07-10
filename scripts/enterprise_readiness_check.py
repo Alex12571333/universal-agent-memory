@@ -52,6 +52,7 @@ def run_checks(*, static_only: bool) -> list[Check]:
         "migrations/009_api_key_registry.sql",
         "scripts/check_branch_protection.py",
         "scripts/check_metrics_health.py",
+        "scripts/deployment_preflight.py",
         "scripts/validate_production_env.py",
         "scripts/export_audit.py",
         "scripts/agent_soak_eval.py",
@@ -523,11 +524,15 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 and "agent_soak" in read("scripts/verify_release_evidence.py")
                 and "load_smoke" in read("scripts/verify_release_evidence.py")
                 and "audit_retention" in read("scripts/verify_release_evidence.py")
+                and "deployment_preflight" in read("scripts/verify_release_evidence.py")
+                and "obelisk-deployment-preflight-v1"
+                in read("scripts/verify_release_evidence.py")
                 and "vault_import" in read("scripts/verify_release_evidence.py")
                 and "obelisk-vault-import-report-v1"
                 in read("scripts/verify_release_evidence.py")
                 and "branch_protection" in read("scripts/verify_release_evidence.py")
                 and "ui_walkthrough" in read("scripts/verify_release_evidence.py")
+                and "ops/deployment-preflight.json" in read("docs/RELEASE_EVIDENCE.md")
                 and "ops/vault-import.json" in read("docs/RELEASE_EVIDENCE.md")
                 and "release_evidence=PASS" in read("docs/RELEASE_EVIDENCE.md"),
                 "release evidence verifier checks saved production reports",
@@ -539,8 +544,26 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 and "test_verify_release_evidence_rejects_skipped_restore_drill"
                 in read("tests/test_backup_restore_scripts.py")
                 and "test_verify_release_evidence_rejects_unsigned_vault_import"
+                in read("tests/test_backup_restore_scripts.py")
+                and "test_verify_release_evidence_rejects_reachable_backend"
                 in read("tests/test_backup_restore_scripts.py"),
                 "release evidence verifier behavior is covered",
+            ),
+            Check(
+                "deploy:preflight-runner",
+                "obelisk-deployment-preflight-v1" in read("scripts/deployment_preflight.py")
+                and "public-url-https" in read("scripts/deployment_preflight.py")
+                and "backend-not-public" in read("scripts/deployment_preflight.py")
+                and "public-security-headers" in read("scripts/deployment_preflight.py"),
+                "deployment preflight runner validates public TLS and backend exposure",
+            ),
+            Check(
+                "tests:deployment-preflight-runner",
+                "test_deployment_preflight_passes_when_public_https_and_backend_blocked"
+                in read("tests/test_backup_restore_scripts.py")
+                and "test_deployment_preflight_fails_when_backend_is_public"
+                in read("tests/test_backup_restore_scripts.py"),
+                "deployment preflight behavior is covered",
             ),
             Check(
                 "ui:walkthrough-runner",

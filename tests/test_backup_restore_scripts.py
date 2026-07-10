@@ -5,6 +5,7 @@ import importlib.util
 import json
 import subprocess
 import sys
+import urllib.error
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -34,6 +35,7 @@ check_branch_protection = _load_script("check_branch_protection")
 export_audit = _load_script("export_audit")
 audit_retention = _load_script("audit_retention")
 scheduled_backup = _load_script("scheduled_backup")
+deployment_preflight = _load_script("deployment_preflight")
 export_vault = _load_script("export_vault")
 import_vault = _load_script("import_vault")
 migrate = _load_script("migrate")
@@ -933,6 +935,7 @@ def test_verify_release_evidence_accepts_complete_manifest(tmp_path: Path) -> No
         "load_smoke:parallelism",
         "scheduled_backup:restore-drill",
         "audit_retention:verified-export",
+        "deployment_preflight:backend-not-public",
         "vault_import:verified-signed-manifest",
         "branch_protection:passed",
         "ui_walkthrough:model-probe-not-skipped",
@@ -975,6 +978,27 @@ def test_verify_release_evidence_rejects_unsigned_vault_import(tmp_path: Path) -
     )
     assert signature_check.passed is False
     assert signed_check.passed is False
+    assert not all(check.passed for check in checks)
+
+
+def test_verify_release_evidence_rejects_reachable_backend(tmp_path: Path) -> None:
+    manifest = _write_release_evidence_bundle(tmp_path)
+    preflight_path = tmp_path / "deployment-preflight.json"
+    payload = json.loads(preflight_path.read_text(encoding="utf-8"))
+    payload["ok"] = False
+    payload["backend_publicly_reachable"] = True
+    for check in payload["checks"]:
+        if check["name"] == "backend-not-public":
+            check["ok"] = False
+            check["detail"] = "direct backend reachable with status=200"
+    preflight_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    checks = verify_release_evidence.verify_manifest(manifest)
+
+    backend_check = next(
+        check for check in checks if check.name == "deployment_preflight:backend-not-public"
+    )
+    assert backend_check.passed is False
     assert not all(check.passed for check in checks)
 
 
@@ -1075,6 +1099,23 @@ def _write_release_evidence_bundle(tmp_path: Path) -> Path:
         },
     )
     _write_json(
+        tmp_path / "deployment-preflight.json",
+        {
+            "format": "obelisk-deployment-preflight-v1",
+            "ok": True,
+            "public_url": "https://memory.example.com/",
+            "backend_url": "http://memory.example.com:6798/",
+            "backend_probe_performed": True,
+            "backend_publicly_reachable": False,
+            "checks": [
+                {"name": "public-url-https", "ok": True},
+                {"name": "public-health", "ok": True},
+                {"name": "public-security-headers", "ok": True},
+                {"name": "backend-not-public", "ok": True},
+            ],
+        },
+    )
+    _write_json(
         tmp_path / "vault-import.json",
         {
             "format": "obelisk-vault-import-report-v1",
@@ -1136,6 +1177,7 @@ def _write_release_evidence_bundle(tmp_path: Path) -> Path:
                 "metrics_health": "metrics-health.json",
                 "scheduled_backup": "scheduled-backup.json",
                 "audit_retention": "audit-retention.json",
+                "deployment_preflight": "deployment-preflight.json",
                 "vault_import": "vault-import.json",
                 "branch_protection": "branch-protection.json",
                 "ui_walkthrough": "ui-walkthrough.json",
@@ -1143,6 +1185,75 @@ def _write_release_evidence_bundle(tmp_path: Path) -> Path:
         },
     )
     return manifest
+
+
+def test_deployment_preflight_passes_when_public_https_and_backend_blocked(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_urlopen(request: object, timeout: float = 0) -> object:
+        assert isinstance(request, deployment_preflight.urllib.request.Request)
+        url = str(request.full_url)
+        if url == "https://memory.example.com/health":
+            return _FakeHttpResponse(
+                status=200,
+                headers={
+                    "Strict-Transport-Security": "max-age=31536000",
+                    "X-Content-Type-Options": "nosniff",
+                    "X-Frame-Options": "DENY",
+                    "Referrer-Policy": "no-referrer",
+                },
+            )
+        raise urllib.error.URLError("blocked")
+
+    monkeypatch.setattr(deployment_preflight.urllib.request, "urlopen", fake_urlopen)
+
+    report = deployment_preflight.run_preflight(
+        public_url="https://memory.example.com",
+        backend_url="http://memory.example.com:6798",
+        api_key="secret",
+    )
+
+    assert report["ok"] is True
+    assert report["backend_probe_performed"] is True
+    assert report["backend_publicly_reachable"] is False
+
+
+def test_deployment_preflight_fails_when_backend_is_public(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_urlopen(request: object, timeout: float = 0) -> object:
+        return _FakeHttpResponse(
+            status=200,
+            headers={
+                "Strict-Transport-Security": "max-age=31536000",
+                "X-Content-Type-Options": "nosniff",
+                "X-Frame-Options": "DENY",
+                "Referrer-Policy": "no-referrer",
+            },
+        )
+
+    monkeypatch.setattr(deployment_preflight.urllib.request, "urlopen", fake_urlopen)
+
+    report = deployment_preflight.run_preflight(
+        public_url="https://memory.example.com",
+        backend_url="http://memory.example.com:6798",
+        api_key="secret",
+    )
+
+    assert report["ok"] is False
+    assert report["backend_publicly_reachable"] is True
+
+
+class _FakeHttpResponse:
+    def __init__(self, *, status: int, headers: dict[str, str]) -> None:
+        self.status = status
+        self.headers = headers
+
+    def __enter__(self) -> _FakeHttpResponse:
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        return None
 
 
 def _write_json(path: Path, payload: dict[str, object]) -> None:

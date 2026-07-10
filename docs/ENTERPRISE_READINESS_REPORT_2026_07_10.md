@@ -1,6 +1,6 @@
 # Production envelope report — 2026-07-10
 
-Passed: 118
+Passed: 121
 Failed: 0
 
 | Check | Status | Detail |
@@ -17,6 +17,7 @@ Failed: 0
 | `file:migrations/009_api_key_registry.sql` | PASS | required production artifact |
 | `file:scripts/check_branch_protection.py` | PASS | required production artifact |
 | `file:scripts/check_metrics_health.py` | PASS | required production artifact |
+| `file:scripts/deployment_preflight.py` | PASS | required production artifact |
 | `file:scripts/validate_production_env.py` | PASS | required production artifact |
 | `file:scripts/export_audit.py` | PASS | required production artifact |
 | `file:scripts/agent_soak_eval.py` | PASS | required production artifact |
@@ -103,6 +104,8 @@ Failed: 0
 | `tests:scheduled-backup` | PASS | scheduled backup success/failure reporting is covered |
 | `release:evidence-verifier` | PASS | release evidence verifier checks saved production reports |
 | `tests:release-evidence-verifier` | PASS | release evidence verifier behavior is covered |
+| `deploy:preflight-runner` | PASS | deployment preflight runner validates public TLS and backend exposure |
+| `tests:deployment-preflight-runner` | PASS | deployment preflight behavior is covered |
 | `ui:walkthrough-runner` | PASS | live UI walkthrough runner validates editable vault text and operator flows |
 | `tests:ui-walkthrough-runner` | PASS | UI walkthrough runner success and vector-leak failure are covered |
 | `agents:soak-runner` | PASS | live agent soak runner validates retain/recall/leakage |

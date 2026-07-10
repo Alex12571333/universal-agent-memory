@@ -19,6 +19,10 @@ UAM_AUDIT_SIGNING_KEY=... PYTHONPATH=src python scripts/audit_retention.py \
   --retain-days 365 \
   --export-root ./audit-retention \
   --json-report ./ops/audit-retention.json
+UAM_API_KEY=... PYTHONPATH=src python scripts/deployment_preflight.py \
+  --public-url https://$UAM_PUBLIC_HOST \
+  --backend-url http://$UAM_PUBLIC_HOST:6798 \
+  --report ./ops/deployment-preflight.json
 UAM_VAULT_SIGNING_KEY=... python scripts/export_vault.py ./vault-release
 UAM_VAULT_SIGNING_KEY=... python scripts/import_vault.py ./vault-release \
   --require-signature \
@@ -84,6 +88,8 @@ Manual checks:
   scope policy such as `private,thread`.
 - Confirm non-local deployments use HTTPS through the reverse proxy and direct
   backend port `6798` is localhost-only or blocked by firewall/security group.
+- Confirm `ops/deployment-preflight.json` reports `"ok": true` and
+  `"backend_publicly_reachable": false`.
 - Confirm `audit-export/manifest.sha256` verifies before preserving release
   evidence.
 - Confirm signed audit bundles verify with `scripts/export_audit.py --verify`.

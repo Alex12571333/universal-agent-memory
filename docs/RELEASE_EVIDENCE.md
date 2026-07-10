@@ -19,6 +19,7 @@ Create `release-evidence.json` next to the referenced reports:
     "metrics_health": "ops/metrics-health.json",
     "scheduled_backup": "backups/latest-backup-report.json",
     "audit_retention": "ops/audit-retention.json",
+    "deployment_preflight": "ops/deployment-preflight.json",
     "vault_import": "ops/vault-import.json",
     "branch_protection": "ops/branch-protection.json",
     "ui_walkthrough": "ops/ui-walkthrough.json"
@@ -45,6 +46,11 @@ UAM_AUDIT_SIGNING_KEY=... PYTHONPATH=src python scripts/audit_retention.py \
   --retain-days 365 \
   --export-root ./audit-retention \
   --json-report ./ops/audit-retention.json
+
+UAM_API_KEY=... PYTHONPATH=src python scripts/deployment_preflight.py \
+  --public-url https://memory.example.com \
+  --backend-url http://memory.example.com:6798 \
+  --report ./ops/deployment-preflight.json
 
 UAM_VAULT_SIGNING_KEY=... PYTHONPATH=src python scripts/export_vault.py ./vault-review
 UAM_VAULT_SIGNING_KEY=... PYTHONPATH=src python scripts/import_vault.py ./vault-review \
@@ -105,6 +111,9 @@ The verifier requires:
   `ok: true`, restore drill not skipped and audit export not skipped;
 - audit retention report format `obelisk-audit-retention-v1`, `ok: true`,
   signed pre-prune export and verified export;
+- deployment preflight report format `obelisk-deployment-preflight-v1`,
+  `ok: true`, public HTTPS health/security-header checks, and evidence that the
+  direct backend URL probe was performed and was not publicly reachable;
 - vault import report format `obelisk-vault-import-report-v1`, `ok: true`,
   `require_signature: true`, and a verified signed manifest before import
   planning or apply;
