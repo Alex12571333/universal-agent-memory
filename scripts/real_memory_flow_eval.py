@@ -91,7 +91,7 @@ def main() -> int:
         "--api-key",
         default=read_secret_env("UAM_EMBEDDING_API_KEY", "OPENAI_API_KEY"),
     )
-    parser.add_argument("--provider", default="openai")
+    parser.add_argument("--provider", default="openai-compatible")
     args = parser.parse_args()
 
     client = build_embedding_client(

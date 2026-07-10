@@ -180,6 +180,16 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 "production compose supports mounted secret files",
             ),
             Check(
+                "prod-compose:provider-neutral-embeddings",
+                prod_compose.count(
+                    "UAM_EMBEDDING_PROVIDER: "
+                    "${UAM_EMBEDDING_PROVIDER:-openai-compatible}"
+                )
+                >= 2
+                and prod_compose.count("UAM_EMBEDDING_SEND_DIMENSIONS: ") >= 2,
+                "production API and worker use provider-neutral embedding defaults",
+            ),
+            Check(
                 "prod-compose:text-encryption",
                 prod_compose.count(
                     "UAM_MEMORY_TEXT_ENCRYPTION: ${UAM_MEMORY_TEXT_ENCRYPTION:-pgcrypto}"
@@ -280,14 +290,19 @@ def run_checks(*, static_only: bool) -> list[Check]:
             Check(
                 "env:memory-llm",
                 "UAM_MEMORY_LLM_PROVIDER=openai-compatible" in env
-                and "UAM_MEMORY_LLM_BASE_URL=https://api.openai.com/v1" in env,
+                and "UAM_MEMORY_LLM_BASE_URL=https://api.openai.com/v1" in env
+                and "OpenRouter" in env
+                and "LiteLLM" in env
+                and "Spark/DGX" in env,
                 "OpenAI-compatible memory LLM endpoint",
             ),
             Check(
                 "env:embeddings",
-                "UAM_EMBEDDING_PROVIDER=openai" in env
+                "UAM_EMBEDDING_PROVIDER=openai-compatible" in env
                 and "UAM_EMBEDDING_MODEL=text-embedding-3-large" in env
-                and "UAM_EMBEDDING_DIM=3072" in env,
+                and "UAM_EMBEDDING_DIM=3072" in env
+                and "UAM_EMBEDDING_SEND_DIMENSIONS=false" in env
+                and "not a provider lock-in" in env,
                 "OpenAI-compatible embedding endpoint",
             ),
             Check("env:privacy", "UAM_PRIVACY_ACTION=redact" in env, "privacy defaults"),

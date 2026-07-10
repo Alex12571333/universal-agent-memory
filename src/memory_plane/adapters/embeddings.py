@@ -56,6 +56,7 @@ class EmbeddingProviderConfig:
     base_url: str | None = None
     api_key: str | None = None
     timeout_seconds: float = 30.0
+    send_dimensions: bool | None = None
 
     @classmethod
     def from_env(cls) -> EmbeddingProviderConfig:
@@ -64,6 +65,7 @@ class EmbeddingProviderConfig:
         model = os.getenv("UAM_EMBEDDING_MODEL") or _default_model(provider)
         dimension = int(os.getenv("UAM_EMBEDDING_DIM", "1536"))
         timeout = float(os.getenv("UAM_EMBEDDING_TIMEOUT_SECONDS", "30"))
+        send_dimensions_value = os.getenv("UAM_EMBEDDING_SEND_DIMENSIONS", "").strip()
         return cls(
             provider=provider,
             model_name=model,
@@ -71,29 +73,34 @@ class EmbeddingProviderConfig:
             base_url=os.getenv("UAM_EMBEDDING_BASE_URL") or _default_base_url(provider),
             api_key=read_secret_env("UAM_EMBEDDING_API_KEY", "OPENAI_API_KEY"),
             timeout_seconds=timeout,
+            send_dimensions=(
+                None
+                if not send_dimensions_value
+                else send_dimensions_value.lower() in {"1", "true", "yes", "on"}
+            ),
         )
 
 
-class OpenAIEmbeddingClient(EmbeddingClient):
-    """OpenAI `/v1/embeddings` client using only the Python stdlib."""
+class OpenAICompatibleEmbeddingClient(EmbeddingClient):
+    """Generic OpenAI-compatible `/v1/embeddings` client."""
 
     def __init__(
         self,
         *,
         model_name: str,
         dimension: int,
-        api_key: str,
+        api_key: str | None = None,
         base_url: str = "https://api.openai.com/v1",
         timeout_seconds: float = 30.0,
+        send_dimensions: bool = False,
     ) -> None:
-        """Initialize an OpenAI-compatible embedding client."""
-        if not api_key:
-            raise ValueError("OpenAI embedding provider requires UAM_EMBEDDING_API_KEY")
+        """Initialize a provider-neutral embeddings client."""
         self._model_name = model_name
         self._dimension = dimension
         self._base_url = base_url.rstrip("/")
         self._api_key = api_key
         self._timeout_seconds = timeout_seconds
+        self._send_dimensions = send_dimensions
 
     @property
     def model_name(self) -> str:
@@ -106,22 +113,52 @@ class OpenAIEmbeddingClient(EmbeddingClient):
         return self._dimension
 
     def embed(self, text: str) -> list[float]:
-        """Call OpenAI embeddings and return one dense vector."""
+        """Call the compatible embeddings endpoint and return one dense vector."""
         payload: dict[str, Any] = {
             "model": self._model_name,
             "input": text,
-            "dimensions": self._dimension,
         }
+        if self._send_dimensions:
+            payload["dimensions"] = self._dimension
+        headers = (
+            {"Authorization": f"Bearer {self._api_key}"} if self._api_key else {}
+        )
         data = _post_json(
             f"{self._base_url}/embeddings",
             payload,
-            headers={"Authorization": f"Bearer {self._api_key}"},
+            headers=headers,
             timeout_seconds=self._timeout_seconds,
         )
         try:
             return _coerce_vector(data["data"][0]["embedding"])
         except (KeyError, IndexError, TypeError) as exc:
-            raise RuntimeError("invalid OpenAI embeddings response") from exc
+            raise RuntimeError("invalid OpenAI-compatible embeddings response") from exc
+
+
+class OpenAIEmbeddingClient(OpenAICompatibleEmbeddingClient):
+    """OpenAI `/v1/embeddings` client using only the Python stdlib."""
+
+    def __init__(
+        self,
+        *,
+        model_name: str,
+        dimension: int,
+        api_key: str,
+        base_url: str = "https://api.openai.com/v1",
+        timeout_seconds: float = 30.0,
+        send_dimensions: bool = True,
+    ) -> None:
+        """Initialize the OpenAI-hosted embedding profile."""
+        if not api_key:
+            raise ValueError("OpenAI embedding provider requires UAM_EMBEDDING_API_KEY")
+        super().__init__(
+            model_name=model_name,
+            dimension=dimension,
+            api_key=api_key,
+            base_url=base_url,
+            timeout_seconds=timeout_seconds,
+            send_dimensions=send_dimensions,
+        )
 
 
 class OllamaEmbeddingClient(EmbeddingClient):
@@ -238,6 +275,18 @@ def build_embedding_client(config: EmbeddingProviderConfig | None = None) -> Emb
             api_key=cfg.api_key or "",
             base_url=cfg.base_url or "https://api.openai.com/v1",
             timeout_seconds=cfg.timeout_seconds,
+            send_dimensions=True if cfg.send_dimensions is None else cfg.send_dimensions,
+        )
+    if cfg.provider == "openai-compatible":
+        return OpenAICompatibleEmbeddingClient(
+            model_name=cfg.model_name,
+            dimension=cfg.dimension,
+            api_key=cfg.api_key,
+            base_url=cfg.base_url or "https://api.openai.com/v1",
+            timeout_seconds=cfg.timeout_seconds,
+            send_dimensions=(
+                False if cfg.send_dimensions is None else cfg.send_dimensions
+            ),
         )
     if cfg.provider == "ollama":
         return OllamaEmbeddingClient(
@@ -299,7 +348,7 @@ def _coerce_vector(value: Any) -> list[float]:
 
 
 def _default_model(provider: str) -> str:
-    if provider == "openai":
+    if provider in {"openai", "openai-compatible"}:
         return "text-embedding-3-small"
     if provider == "ollama":
         return "nomic-embed-text"
@@ -309,7 +358,7 @@ def _default_model(provider: str) -> str:
 
 
 def _default_base_url(provider: str) -> str | None:
-    if provider == "openai":
+    if provider in {"openai", "openai-compatible"}:
         return "https://api.openai.com/v1"
     if provider == "ollama":
         return "http://localhost:11434"

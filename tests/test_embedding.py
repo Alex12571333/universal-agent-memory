@@ -71,6 +71,27 @@ class EmbeddingServiceTest(unittest.TestCase):
 
         self.assertEqual("embedding-key", config.api_key)
 
+    def test_embedding_config_reads_provider_neutral_dimensions_flag(self) -> None:
+        """Embedding config can opt compatible gateways into dimensions."""
+        with unittest.mock.patch.dict(
+            "os.environ",
+            {
+                "UAM_EMBEDDING_PROVIDER": "openai-compatible",
+                "UAM_EMBEDDING_MODEL": "gateway-model",
+                "UAM_EMBEDDING_DIM": "2048",
+                "UAM_EMBEDDING_BASE_URL": "http://gateway:8000/v1",
+                "UAM_EMBEDDING_SEND_DIMENSIONS": "true",
+            },
+            clear=True,
+        ):
+            config = EmbeddingProviderConfig.from_env()
+
+        self.assertEqual("openai-compatible", config.provider)
+        self.assertEqual("gateway-model", config.model_name)
+        self.assertEqual(2048, config.dimension)
+        self.assertEqual("http://gateway:8000/v1", config.base_url)
+        self.assertTrue(config.send_dimensions)
+
     def test_openai_embedding_client_posts_expected_payload(self) -> None:
         """OpenAI provider calls `/embeddings` and extracts `data[0].embedding`."""
         captured: dict[str, Any] = {}
@@ -130,6 +151,76 @@ class EmbeddingServiceTest(unittest.TestCase):
             {"model": "nomic-embed-text", "prompt": "local text"},
             captured["payload"],
         )
+
+    def test_openai_compatible_embedding_client_uses_provider_neutral_payload(
+        self,
+    ) -> None:
+        """Generic compatible provider does not require a key or dimensions field."""
+        captured: dict[str, Any] = {}
+
+        def fake_urlopen(request: Any, timeout: float) -> _FakeResponse:
+            captured["url"] = request.full_url
+            captured["payload"] = json.loads(request.data.decode("utf-8"))
+            captured["headers"] = dict(request.headers)
+            captured["timeout"] = timeout
+            return _FakeResponse({"data": [{"embedding": [0.3, 0.4]}]})
+
+        with patch("memory_plane.adapters.embeddings.urlopen", fake_urlopen):
+            client = build_embedding_client(
+                EmbeddingProviderConfig(
+                    provider="openai-compatible",
+                    model_name="gateway/embedding-model",
+                    dimension=2,
+                    base_url="http://embedding-gateway:8000/v1",
+                    timeout_seconds=11,
+                )
+            )
+            vector = client.embed("provider-neutral text")
+
+        self.assertEqual([0.3, 0.4], vector)
+        self.assertEqual(
+            "http://embedding-gateway:8000/v1/embeddings",
+            captured["url"],
+        )
+        self.assertEqual(
+            {"model": "gateway/embedding-model", "input": "provider-neutral text"},
+            captured["payload"],
+        )
+        self.assertNotIn("Authorization", captured["headers"])
+        self.assertEqual(11, captured["timeout"])
+
+    def test_openai_compatible_embedding_client_can_send_dimensions(self) -> None:
+        """Compatible gateways can opt into OpenAI's dimensions parameter."""
+        captured: dict[str, Any] = {}
+
+        def fake_urlopen(request: Any, timeout: float) -> _FakeResponse:
+            captured["payload"] = json.loads(request.data.decode("utf-8"))
+            captured["authorization"] = request.headers["Authorization"]
+            return _FakeResponse({"data": [{"embedding": [0.5, 0.6]}]})
+
+        with patch("memory_plane.adapters.embeddings.urlopen", fake_urlopen):
+            client = build_embedding_client(
+                EmbeddingProviderConfig(
+                    provider="openai-compatible",
+                    model_name="gateway/embedding-model",
+                    dimension=2,
+                    base_url="https://gateway.example/v1",
+                    api_key="gateway-secret",
+                    send_dimensions=True,
+                )
+            )
+            vector = client.embed("provider-neutral text")
+
+        self.assertEqual([0.5, 0.6], vector)
+        self.assertEqual(
+            {
+                "model": "gateway/embedding-model",
+                "input": "provider-neutral text",
+                "dimensions": 2,
+            },
+            captured["payload"],
+        )
+        self.assertEqual("Bearer gateway-secret", captured["authorization"])
 
     def test_tei_embedding_client_posts_openai_compatible_payload(self) -> None:
         """TEI provider uses OpenAI-compatible `/v1/embeddings` without requiring a key."""

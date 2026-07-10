@@ -820,7 +820,7 @@ function SettingsPanel({ settings, setStatus, refresh }: {
   refresh: () => Promise<void>;
 }) {
   const openAiCompatiblePreset = {
-    provider: "openai",
+    provider: "openai-compatible",
     model_name: "text-embedding-3-large",
     dimension: 3072,
     base_url: "https://api.openai.com/v1",
@@ -836,7 +836,7 @@ function SettingsPanel({ settings, setStatus, refresh }: {
     timeout_seconds: 30
   };
   const [form, setForm] = useState({
-    provider: settings?.desired.provider ?? "openai",
+    provider: settings?.desired.provider ?? "openai-compatible",
     model_name: settings?.desired.model_name ?? "text-embedding-3-large",
     dimension: settings?.desired.dimension ?? 3072,
     base_url: settings?.desired.base_url ?? "https://api.openai.com/v1",

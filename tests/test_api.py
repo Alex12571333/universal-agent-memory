@@ -787,6 +787,8 @@ def test_memory_list_endpoint_and_operator_ui(tmp_path, monkeypatch) -> None:
     assert "OpenClaw" in ui.text
     assert "Hermes" in ui.text
     assert "Настройки моделей" in ui.text
+    assert 'value="openai-compatible"' in ui.text
+    assert "OpenAI-compatible gateway" in ui.text
     assert "Obsidian‑style карта" in ui.text
     assert "mountForceGraph" in ui.text
     assert "/v1/settings/models" in ui.text
@@ -868,6 +870,7 @@ def test_model_settings_endpoints_save_and_probe_fake_provider() -> None:
     assert saved.json()["desired"]["model_name"] == "fake-ui-test"
     assert saved.json()["desired"]["api_key"] == "loca…cret"
     assert saved.json()["env"]["UAM_EMBEDDING_MODEL"] == "fake-ui-test"
+    assert saved.json()["env"]["UAM_EMBEDDING_SEND_DIMENSIONS"] == "false"
     assert saved.json()["restart_required"] is True
     assert probed.status_code == 200
     assert probed.json()["ok"] is True

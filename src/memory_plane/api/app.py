@@ -470,7 +470,7 @@ class GraphEdgeBody(BaseModel):
 class ModelSettingsBody(BaseModel):
     """Desired embedding/runtime model settings edited from the operator UI."""
 
-    provider: Literal["fake", "openai", "ollama", "tei"] = "fake"
+    provider: Literal["fake", "openai-compatible", "openai", "ollama", "tei"] = "fake"
     model_name: str = Field(min_length=1)
     dimension: int = Field(default=1536, ge=1, le=65536)
     base_url: str | None = None
@@ -608,6 +608,9 @@ def _model_settings_response(
             "UAM_EMBEDDING_MODEL": desired_config["model_name"],
             "UAM_EMBEDDING_DIM": str(desired_config["dimension"]),
             "UAM_EMBEDDING_BASE_URL": desired_config.get("base_url") or "",
+            "UAM_EMBEDDING_SEND_DIMENSIONS": (
+                "true" if desired_config["provider"] == "openai" else "false"
+            ),
             "UAM_EMBEDDING_TIMEOUT_SECONDS": str(desired_config["timeout_seconds"]),
         },
     }
@@ -3154,9 +3157,10 @@ _OPERATOR_UI_HTML = """
                 <span class="muted tiny">Провайдер</span>
                 <select id="modelProvider" aria-label="Embedding provider">
                   <option value="fake">fake / тестовый</option>
-                  <option value="tei">TEI / llama.cpp / compatible</option>
+                  <option value="openai-compatible">OpenAI-compatible gateway</option>
+                  <option value="tei">TEI / Jina / vLLM gateway</option>
                   <option value="ollama">Ollama</option>
-                  <option value="openai">OpenAI-compatible</option>
+                  <option value="openai">OpenAI-hosted profile</option>
                 </select>
               </label>
               <label>

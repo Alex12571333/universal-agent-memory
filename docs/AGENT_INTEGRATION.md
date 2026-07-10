@@ -73,14 +73,17 @@ The production embedding target is OpenAI-compatible. That means the API
 contract, not provider lock-in. One deployable profile is:
 
 ```text
-provider=openai
+provider=openai-compatible
 model=text-embedding-3-large
 dimension=3072
 base_url=https://api.openai.com/v1
+send_dimensions=false
 ```
 
 Self-hosted OpenAI-compatible alternatives, including the DGX Spark Jina wrapper,
-are documented in [DGX_SPARK_EMBEDDINGS.md](DGX_SPARK_EMBEDDINGS.md).
+are documented in [DGX_SPARK_EMBEDDINGS.md](DGX_SPARK_EMBEDDINGS.md). Use
+`provider=openai` only when you specifically want the OpenAI-hosted profile with
+required API key and OpenAI's optional `dimensions` request field.
 
 Safe switch procedure:
 

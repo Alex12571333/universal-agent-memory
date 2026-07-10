@@ -258,15 +258,21 @@ model aliases, or a Spark/DGX Qwen endpoint.
 Embedding model configuration is separate:
 
 ```dotenv
-UAM_EMBEDDING_PROVIDER=openai
+UAM_EMBEDDING_PROVIDER=openai-compatible
 UAM_EMBEDDING_MODEL=text-embedding-3-large
 UAM_EMBEDDING_DIM=3072
 UAM_EMBEDDING_BASE_URL=https://api.openai.com/v1
+UAM_EMBEDDING_SEND_DIMENSIONS=false
 UAM_EMBEDDING_API_KEY=...
 UAM_QDRANT_PAYLOAD_TEXT=false
 UAM_MEMORY_TEXT_ENCRYPTION=pgcrypto
 UAM_MEMORY_TEXT_ENCRYPTION_KEY=...
 ```
+
+Use `UAM_EMBEDDING_PROVIDER=openai` only for the OpenAI-hosted embeddings
+profile that requires a key and sends OpenAI's optional `dimensions` request
+field. The provider-neutral `openai-compatible` profile is better for gateways
+that implement `/v1/embeddings` but reject unknown OpenAI-specific fields.
 
 Production secrets can be supplied as mounted files instead of raw environment
 variables. For example:
