@@ -1,0 +1,75 @@
+groups:
+  - name: obelisk-memory-production
+    rules:
+      - alert: ObeliskOutboxDeadLetters
+        expr: uam_outbox_dead_letter_total > 0
+        for: 1m
+        labels:
+          severity: critical
+          service: obelisk-memory
+        annotations:
+          summary: Obelisk Memory has dead-lettered outbox events
+          description: >
+            At least one memory integration event exceeded retry policy and is
+            dead-lettered. Inspect NATS/outbox logs before trusting fresh recall.
+
+      - alert: ObeliskOutboxBacklogHigh
+        expr: uam_outbox_pending_total > 100
+        for: 5m
+        labels:
+          severity: warning
+          service: obelisk-memory
+        annotations:
+          summary: Obelisk Memory outbox backlog is high
+          description: >
+            More than 100 unpublished integration events have been pending for
+            five minutes. Check outbox-relay and NATS health.
+
+      - alert: ObeliskOutboxLagHigh
+        expr: uam_outbox_lag_seconds > 300
+        for: 5m
+        labels:
+          severity: warning
+          service: obelisk-memory
+        annotations:
+          summary: Obelisk Memory outbox lag exceeded five minutes
+          description: >
+            The oldest pending event is older than 300 seconds. Embeddings,
+            graph updates or downstream agent context may be stale.
+
+      - alert: ObeliskProcessedEventLeasesHigh
+        expr: uam_processed_events_inflight_total > 100
+        for: 5m
+        labels:
+          severity: warning
+          service: obelisk-memory
+        annotations:
+          summary: Too many in-flight processed-event leases
+          description: >
+            Consumer leases are accumulating. Check embedding workers for stuck
+            tasks, crashed processes or slow provider calls.
+
+      - alert: ObeliskEmbeddingFailures
+        expr: increase(uam_embedding_failures_total[10m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+          service: obelisk-memory
+        annotations:
+          summary: Obelisk Memory embedding failures detected
+          description: >
+            Embedding worker failures occurred in the last ten minutes. Recall
+            can fall back, but semantic freshness is degraded.
+
+      - alert: ObeliskReindexFailures
+        expr: increase(uam_embedding_reindex_failures_total[30m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          service: obelisk-memory
+        annotations:
+          summary: Obelisk Memory reindex failed
+          description: >
+            Reindex failures can leave Qdrant dimensions/model metadata
+            inconsistent with configured embeddings. Stop model switches until
+            the failure is investigated.

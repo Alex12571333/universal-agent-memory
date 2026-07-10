@@ -36,6 +36,8 @@ remaining hard requirements.
 - [x] Metrics endpoint exists.
 - [x] Metrics health evaluator can fail on outbox lag/dead letters and emit JSON
       reports/webhook alerts.
+- [x] Prometheus alert rules and Grafana dashboard templates exist for outbox,
+      worker leases, embeddings, reindex and ledger growth.
 - [x] Embedding service exposes operation, failure, latency and reindex metrics.
 - [x] Privacy guard redacts common secrets and high-risk PII.
 - [x] Backup script exists.
@@ -74,7 +76,8 @@ remaining hard requirements.
       signed export bundles in immutable storage with external signing-key
       custody for regulated environments.
 - [ ] Install environment-level backup schedule and immutable artifact storage.
-- [ ] Wire metrics and scheduled-backup reports into deployment dashboards/alerts.
+- [ ] Install the provided metrics dashboard/alert rules and scheduled-backup
+      report routing in the target deployment.
 - [ ] Add optional row-level encryption for selected memory scopes.
 - [ ] Enforce signed vault import manifests in production operating procedure
       and keep signing keys outside the repository.
