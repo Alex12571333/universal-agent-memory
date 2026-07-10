@@ -178,6 +178,23 @@ Production deployments should run this on a fixed schedule and ship
 outside the Docker host. The repository provides the runner and alert hook; the
 actual cron/systemd/orchestrator schedule is an environment-level control.
 
+Preserve machine-readable schedule evidence before a full-production release:
+
+```bash
+PYTHONPATH=src python scripts/ops_schedule_preflight.py .env.production \
+  --backup-schedule-file ./deploy/schedules/backup.timer \
+  --audit-retention-schedule-file ./deploy/schedules/audit-retention.timer \
+  --metrics-schedule-file ./deploy/schedules/metrics-health.timer \
+  --backup-artifact-root s3://obelisk-memory/backups \
+  --audit-artifact-root s3://obelisk-memory/audit \
+  --report ./ops/ops-schedule.json
+```
+
+The report uses format `obelisk-ops-schedule-preflight-v1`. It verifies that
+backup, audit-retention and metrics-health schedules are installed, alert
+routes are configured, and backup/audit artifact roots use an approved durable
+storage prefix.
+
 ## Audit export
 
 Export recent operator/agent audit events before upgrades, incident response, or

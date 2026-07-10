@@ -23,7 +23,7 @@ it is not enough.
 | UI | React dashboard and fallback `/ui` support real memory/vault editing, actionable conflict decisions and a JSON UI walkthrough runner | Operator-grade baseline; still needs preserved live walkthrough evidence per release |
 | Testing | Unit, integration-style, benchmark scripts, web build, concurrent load smoke runner | Needs preserved live load/chaos/security evidence from the target deployment |
 | Release process | `main` branch protection requires PR flow, strict `python`/`web` checks, conversation resolution, and admin enforcement | Release gate baseline is now proven by `scripts/check_branch_protection.py`; keep verifying before releases |
-| Operations | Runbook, backup/restore scripts, isolated restore-drill script, scheduler-ready backup runner, signed vault manifests with import evidence, metrics health evaluator with JSON report/webhook, Grafana/Prometheus templates, release checklist and release evidence verifier | Needs environment scheduler, durable/immutable storage and installed dashboard/alert routing |
+| Operations | Runbook, backup/restore scripts, isolated restore-drill script, scheduler-ready backup runner, ops schedule preflight, signed vault manifests with import evidence, metrics health evaluator with JSON report/webhook, Grafana/Prometheus templates, release checklist and release evidence verifier | Needs target-environment schedule evidence and installed dashboard/alert routing |
 
 ## What “full production level” means for this project
 
@@ -66,9 +66,9 @@ Required gates:
 
 2. **Reliability gate**
    - PostgreSQL backup schedule and tested restore drill. A scheduler-ready
-     runner with restore drill, JSON report and failure webhook exists; the
-     deployment still must install the actual cron/systemd/orchestrator schedule
-     and durable storage policy.
+     runner with restore drill, JSON report and failure webhook exists;
+     `scripts/ops_schedule_preflight.py` verifies installed schedule evidence,
+     alert routes and durable artifact roots for the target deployment.
    - Migration rehearsal against a copy of a real volume.
    - Outbox dead-letter/lag and embedding failure/latency monitoring with
      alerts. Metrics health evaluator and embedding counters exist; deployment
@@ -112,9 +112,9 @@ Required gates:
      in-process production readiness.
    - Release checklist includes manual UI walk-through and live embedding probe.
    - Release evidence manifest verifies saved deployment preflight,
-     secret-files preflight, agent, LLM, UI walkthrough, metrics, backup, signed
-     vault import and branch-protection JSON reports before a full-production
-     claim.
+     secret-files preflight, ops schedule preflight, agent, LLM, UI walkthrough,
+     metrics, backup, signed vault import and branch-protection JSON reports
+     before a full-production claim.
    - Versioned changelog and rollback instructions exist.
 
 ## Things that must not be claimed yet
