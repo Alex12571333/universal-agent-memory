@@ -6,7 +6,16 @@ volumes, then verify the manifest before tagging.
 
 ## Required manifest
 
-Create `release-evidence.json` next to the referenced reports:
+Generate `release-evidence.json` next to the referenced reports:
+
+```bash
+python scripts/generate_release_evidence_manifest.py \
+  --release 2026.07.10 \
+  --output ./release-evidence.json
+```
+
+The generated manifest contains every artifact currently required by
+`scripts/verify_release_evidence.py`:
 
 ```json
 {

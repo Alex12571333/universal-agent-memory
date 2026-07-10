@@ -74,6 +74,8 @@ remaining hard requirements.
 - [x] Release evidence verifier checks saved agent, LLM, UI walkthrough,
       metrics, backup, signed vault import and branch-protection reports before
       a full-production claim.
+- [x] Release evidence manifest generator keeps required artifact keys in sync
+      with the verifier.
 - [x] CI workflow validates lint, tests, web build, and compose configs.
 - [x] Enterprise readiness check script exists.
 - [x] Branch-protection verifier exists for the `main` release gate.
@@ -101,7 +103,8 @@ remaining hard requirements.
       generated report.
 - [ ] Run live embedding and memory LLM regression tests against the configured
       production endpoints and preserve the generated reports.
-- [ ] Verify the preserved release evidence manifest before tagging.
+- [ ] Generate and verify the preserved release evidence manifest before
+      tagging.
 - [ ] Preserve `ops/ui-walkthrough.json` from the target deployment.
 
 ## Production interpretation

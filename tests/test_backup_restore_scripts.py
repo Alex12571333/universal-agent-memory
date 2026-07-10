@@ -44,6 +44,7 @@ validate_production_env = _load_script("validate_production_env")
 ops_schedule_preflight = _load_script("ops_schedule_preflight")
 secret_files_preflight = _load_script("secret_files_preflight")
 verify_release_evidence = _load_script("verify_release_evidence")
+generate_release_evidence_manifest = _load_script("generate_release_evidence_manifest")
 
 
 def test_migration_runner_includes_every_versioned_sql_file() -> None:
@@ -1078,6 +1079,43 @@ def test_verify_release_evidence_json_cli_output(
     payload = json.loads(capsys.readouterr().out)
     assert payload["passed"] is True
     assert any(check["name"] == "branch_protection:passed" for check in payload["checks"])
+
+
+def test_generate_release_evidence_manifest_contains_required_artifacts() -> None:
+    artifacts = generate_release_evidence_manifest.build_artifacts()
+
+    assert set(artifacts) == verify_release_evidence.REQUIRED_ARTIFACTS
+    assert artifacts["observability"] == "ops/observability-preflight.json"
+    assert artifacts["ops_schedule"] == "ops/ops-schedule.json"
+
+
+def test_generate_release_evidence_manifest_cli_writes_manifest(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    manifest = tmp_path / "release-evidence.json"
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "generate_release_evidence_manifest.py",
+            "--release",
+            "test-release",
+            "--output",
+            str(manifest),
+            "--artifact",
+            "memory_llm=ops/custom-memory-llm.json",
+        ],
+    )
+
+    assert generate_release_evidence_manifest.main() == 0
+
+    payload = json.loads(manifest.read_text(encoding="utf-8"))
+    assert payload["format"] == verify_release_evidence.MANIFEST_FORMAT
+    assert payload["release"] == "test-release"
+    assert payload["artifacts"]["memory_llm"] == "ops/custom-memory-llm.json"
+    assert set(payload["artifacts"]) == verify_release_evidence.REQUIRED_ARTIFACTS
+    assert "release_evidence_manifest=" in capsys.readouterr().out
 
 
 def _write_release_evidence_bundle(tmp_path: Path) -> Path:
