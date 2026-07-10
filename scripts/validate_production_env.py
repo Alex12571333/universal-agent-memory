@@ -64,6 +64,7 @@ def validate_env(
         _check_scoped_api_keys(values),
         _check_secret(values, "UAM_UI_SESSION_SIGNING_KEY", min_length=32),
         _check_ui_session_policy(values),
+        _check_conversation_retention_policy(values),
         _check_principal_bindings(values),
         _check_uuid(values, "UAM_SERVER_ID"),
         _check_uuid(values, "UAM_PROJECT_ID"),
@@ -268,6 +269,18 @@ def _check_ui_session_policy(values: dict[str, str]) -> EnvCheck:
     if not 300 <= ttl <= 86400:
         return EnvCheck("ui-session", False, "session TTL must be between 300 and 86400")
     return EnvCheck("ui-session", True, f"secure cookie with {ttl}s TTL")
+
+
+def _check_conversation_retention_policy(values: dict[str, str]) -> EnvCheck:
+    try:
+        ttl = int(values.get("UAM_CONVERSATION_CURATED_ONLY_TTL_SECONDS", "0"))
+    except ValueError:
+        return EnvCheck("conversation-retention", False, "staging TTL must be an integer")
+    if not 300 <= ttl <= 604800:
+        return EnvCheck(
+            "conversation-retention", False, "staging TTL must be between 300 and 604800"
+        )
+    return EnvCheck("conversation-retention", True, f"curated-only staging TTL {ttl}s")
 
 
 def _origin(value: str) -> str | None:

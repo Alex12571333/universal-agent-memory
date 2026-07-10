@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
 from uuid import UUID
 
@@ -44,6 +46,12 @@ class ConversationLedger(Protocol):
 
     def purge_turn_content(self, tenant_id: UUID, turn_id: UUID) -> bool:
         """Irreversibly replace raw message content while retaining audit identity."""
+        ...
+
+    def purge_expired_turns(
+        self, tenant_id: UUID, workspace_id: UUID, *, now: datetime, limit: int
+    ) -> tuple[UUID, ...]:
+        """Purge expired staged raw transcripts and return their stable IDs."""
         ...
 
 
@@ -106,10 +114,19 @@ class ConversationService:
         self,
         ledger: ConversationLedger,
         privacy: PrivacyGuard | None = None,
+        curated_only_ttl_seconds: int | None = None,
     ) -> None:
         """Bind service to a ledger and privacy policy."""
         self._ledger = ledger
         self._privacy = privacy or PrivacyGuard.from_env()
+        configured_ttl = curated_only_ttl_seconds
+        if configured_ttl is None:
+            configured_ttl = int(os.getenv("UAM_CONVERSATION_CURATED_ONLY_TTL_SECONDS", "86400"))
+        if not 300 <= configured_ttl <= 604800:
+            raise ValueError(
+                "UAM_CONVERSATION_CURATED_ONLY_TTL_SECONDS must be between 300 and 604800"
+            )
+        self._curated_only_ttl_seconds = configured_ttl
 
     def append_turn(self, command: AppendConversationTurnCommand) -> AppendConversationTurnResult:
         """Append a redacted raw turn to the immutable conversation ledger."""
@@ -127,6 +144,12 @@ class ConversationService:
                     metadata={**message.metadata, **decision.metadata},
                 )
             )
+        created_at = datetime.now(UTC)
+        expires_at = (
+            created_at + timedelta(seconds=self._curated_only_ttl_seconds)
+            if command.retention_policy == ConversationRetentionPolicy.CURATED_ONLY
+            else None
+        )
         turn = ConversationTurn(
             tenant_id=command.tenant_id,
             workspace_id=command.workspace_id,
@@ -137,6 +160,8 @@ class ConversationService:
             retention_policy=command.retention_policy,
             messages=tuple(messages),
             metadata={**command.metadata, **redaction_metadata},
+            created_at=created_at,
+            expires_at=expires_at,
         )
         stored, created = self._ledger.append_turn(turn, command.idempotency_key)
         return AppendConversationTurnResult(turn=stored, created=created)
@@ -157,6 +182,22 @@ class ConversationService:
             thread_id=thread_id,
             namespace=namespace,
             limit=limit,
+        )
+
+    def purge_expired_turns(
+        self,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        *,
+        limit: int = 500,
+        now: datetime | None = None,
+    ) -> tuple[UUID, ...]:
+        """Purge due staged transcripts through an operator/scheduled maintenance path."""
+        return self._ledger.purge_expired_turns(
+            tenant_id,
+            workspace_id,
+            now=now or datetime.now(UTC),
+            limit=max(1, min(int(limit), 5000)),
         )
 
 

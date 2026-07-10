@@ -252,6 +252,14 @@ Choose the retention policy deliberately:
 - `curated_only` keeps raw text only as staging and replaces it with
   `[PURGED_AFTER_CURATION]` immediately after successful curation.
 
+For abandoned `curated_only` turns, the server assigns a bounded expiry from
+`UAM_CONVERSATION_CURATED_ONLY_TTL_SECONDS` (default: 24 hours). Schedule the
+operator maintenance endpoint at least hourly:
+
+```http
+POST /v1/workspaces/{workspace_id}/conversations/purge-expired?tenant_id={tenant_id}
+```
+
 `curated_only` is not a promise that plaintext never reaches the ledger: the
 turn exists until the curation call completes. Deployments requiring that
 stronger boundary must curate before sending data or disable raw capture.

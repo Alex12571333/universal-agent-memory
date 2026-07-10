@@ -1,6 +1,6 @@
 # Production envelope report — 2026-07-10
 
-Passed: 146
+Passed: 147
 Failed: 0
 
 | Check | Status | Detail |
@@ -144,6 +144,7 @@ Failed: 0
 | `tests:postgres-pgcrypto-text` | PASS | PostgreSQL memory text encryption behavior is covered |
 | `conversation:pipeline-runner` | PASS | conversation pipeline runner validates raw capture, curation and recall |
 | `conversation:curated-only-purge` | PASS | curated-only policy purges raw message content after curation |
+| `conversation:staging-ttl` | PASS | curated-only staging has bounded TTL and operator purge coverage |
 | `tests:conversation-pipeline-runner` | PASS | conversation pipeline runner behavior is covered |
 | `embedding:live-regression-runner` | PASS | live OpenAI-compatible embedding runner validates dimension and semantic recall |
 | `tests:embedding-live-regression-runner` | PASS | embedding live regression runner behavior is covered |

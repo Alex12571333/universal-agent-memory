@@ -53,6 +53,7 @@ class ConversationTurn:
     )
     metadata: dict[str, Any] = field(default_factory=dict)
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    expires_at: datetime | None = None
 
     def __post_init__(self) -> None:
         """Validate transcript boundaries."""
@@ -62,3 +63,5 @@ class ConversationTurn:
             raise ValueError("conversation source_kind must not be empty")
         if not self.messages:
             raise ValueError("conversation turn requires at least one message")
+        if self.expires_at is not None and self.expires_at <= self.created_at:
+            raise ValueError("conversation turn expiry must be after creation")
