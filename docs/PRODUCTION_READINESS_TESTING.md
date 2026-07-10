@@ -32,6 +32,17 @@ Checks:
 - reflection/conflict inbox and vault dry-run import;
 - semantic recall using the configured live OpenAI-compatible embedding endpoint.
 
+For the Qdrant-backed live memory flow, use the provider-neutral profile unless
+you intentionally need the OpenAI-hosted embedding profile:
+
+```bash
+PYTHONPATH=src .venv/bin/python scripts/real_memory_flow_eval.py \
+  --provider openai-compatible \
+  --base-url https://api.openai.com/v1 \
+  --model text-embedding-3-large \
+  --dimension 3072
+```
+
 ## 3. Docker advanced E2E
 
 Start the full local stack with Postgres, Qdrant, NATS, outbox relay and the

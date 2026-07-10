@@ -83,10 +83,14 @@ UAM_EMBEDDING_PROVIDER=tei
 UAM_EMBEDDING_BASE_URL=http://192.168.0.10:8002
 UAM_EMBEDDING_MODEL=jina-embeddings-v4
 UAM_EMBEDDING_DIM=2048
+UAM_EMBEDDING_SEND_DIMENSIONS=false
 ```
 
 The UI's **Use DGX preset** button fills these values and **Test endpoint**
 verifies that the endpoint returns `2048` floats before you restart/reindex.
+For generic `/v1/embeddings` gateways use `openai-compatible`; reserve
+`openai` for the OpenAI-hosted profile that sends the optional `dimensions`
+field.
 
 ## Verification
 

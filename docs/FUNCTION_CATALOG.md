@@ -317,7 +317,8 @@
 | Класс / Функция | Назначение | Гарантия |
 |---|---|---|
 | `FakeEmbeddingClient` | Генерация детерминированных мок-векторов | Векторы воспроизводимы по MD5 от текста |
-| `OpenAIEmbeddingClient` | OpenAI `/v1/embeddings` | Bearer auth; sends `input`, `model`, `dimensions` |
+| `OpenAICompatibleEmbeddingClient` | Generic `/v1/embeddings` gateway | Optional bearer auth; sends provider-neutral `input`/`model` by default |
+| `OpenAIEmbeddingClient` | OpenAI-hosted `/v1/embeddings` profile | Requires bearer auth; sends `input`, `model`, `dimensions` |
 | `OllamaEmbeddingClient` | Local Ollama `/api/embeddings` | Uses `prompt` payload; no API key required |
 | `TEIEmbeddingClient` | TEI/vLLM-style `/v1/embeddings` | OpenAI-compatible payload; optional bearer key |
 | `EmbeddingProviderConfig.from_env()` | Env → provider config | Reads `UAM_EMBEDDING_*` variables |
