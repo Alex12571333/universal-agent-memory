@@ -61,6 +61,8 @@ remaining hard requirements.
 - [x] PostgreSQL memory text encryption can cover all rows or selected
       visibility scopes via `UAM_MEMORY_TEXT_ENCRYPTION_SCOPES`.
 - [x] Memory LLM is separate from embedding endpoint.
+- [x] OpenAI-compatible embedding live regression runner exists and writes JSON
+      release evidence for dimension and semantic recall checks.
 - [x] OpenAI-compatible memory LLM defaults are documented.
 - [x] OpenAI-compatible memory LLM live regression runner exists and writes JSON
       release evidence.
@@ -106,7 +108,8 @@ remaining hard requirements.
 - [ ] Run load smoke tests against the target release server and preserve the
       generated report.
 - [ ] Run live embedding and memory LLM regression tests against the configured
-      production endpoints and preserve the generated reports.
+      production endpoints and preserve `ops/embedding.json` and
+      `ops/memory-llm.json`.
 - [ ] Generate and verify the preserved release evidence manifest before
       tagging.
 - [ ] Preserve `ops/ui-walkthrough.json` from the target deployment.

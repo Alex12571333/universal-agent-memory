@@ -12,6 +12,7 @@ MANIFEST_FORMAT = "obelisk-release-evidence-manifest-v1"
 
 REQUIRED_ARTIFACTS = {
     "agent_soak",
+    "embedding",
     "memory_llm",
     "load_smoke",
     "metrics_health",
@@ -110,6 +111,7 @@ def verify_manifest(path: Path) -> list[EvidenceCheck]:
     base = path.parent
     readers = {
         "agent_soak": _verify_agent_soak,
+        "embedding": _verify_embedding,
         "memory_llm": _verify_memory_llm,
         "load_smoke": _verify_load_smoke,
         "metrics_health": _verify_metrics_health,
@@ -200,6 +202,29 @@ def _verify_memory_llm(payload: dict[str, Any]) -> list[EvidenceCheck]:
         _ok_check("memory_llm", payload),
         EvidenceCheck(
             "memory_llm:required-checks",
+            not missing,
+            "required checks present" if not missing else "missing: " + ", ".join(missing),
+        ),
+    ]
+
+
+def _verify_embedding(payload: dict[str, Any]) -> list[EvidenceCheck]:
+    names = _check_names(payload)
+    required = {
+        "endpoint-reachable",
+        "dimension",
+        "semantic:storage routing",
+        "semantic:production embedding model",
+        "semantic:openclaw integration",
+        "semantic:hermes integration",
+        "semantic:freshness preference",
+    }
+    missing = sorted(required - names)
+    return [
+        _format_check("embedding", payload, "obelisk-embedding-eval-v1"),
+        _ok_check("embedding", payload),
+        EvidenceCheck(
+            "embedding:required-checks",
             not missing,
             "required checks present" if not missing else "missing: " + ", ".join(missing),
         ),

@@ -17,7 +17,7 @@ it is not enough.
 | Browser/API hardening | Security headers are enforced by middleware and tests | Baseline present |
 | Data model | Append-only memory, CAS supersede, provenance, statuses, optional pgcrypto ciphertext for all or selected memory scopes | Strong foundation |
 | Conversation capture | Raw conversation ledger exists, but curation remains explicit/manual or hook-driven | Not “automatically remembers everything” yet |
-| Embeddings | Real provider support exists; Qdrant can redact raw text payloads and hydrate recall from PostgreSQL; fake remains available for CI/emergency | Production depends on real endpoint, `UAM_QDRANT_PAYLOAD_TEXT=false`, and reindex discipline |
+| Embeddings | Real provider support exists; live embedding regression writes JSON evidence, Qdrant can redact raw text payloads and hydrate recall from PostgreSQL; fake remains available for CI/emergency | Production depends on preserved target-endpoint evidence, `UAM_QDRANT_PAYLOAD_TEXT=false`, and reindex discipline |
 | Memory LLM | Provider-neutral OpenAI-compatible contract, fail-soft adapter and live regression runner exist | Needs saved live endpoint regression evidence before autonomy |
 | OpenClaw/Hermes | Native adapter scaffolds, tests and live soak runner exist | Needs saved real runtime soak evidence from `.14` |
 | UI | React dashboard and fallback `/ui` support real memory/vault editing, actionable conflict decisions and a JSON UI walkthrough runner | Operator-grade baseline; still needs preserved live walkthrough evidence per release |
@@ -111,7 +111,8 @@ Required gates:
    - `main` protected: PR required, green CI required, no direct pushes.
    - CI runs lint, tests, web build, compose config, static readiness, and
      in-process production readiness.
-   - Release checklist includes manual UI walk-through and live embedding probe.
+   - Release checklist includes manual UI walk-through and live embedding
+     regression evidence.
    - Release evidence manifest verifies saved deployment preflight,
      secret-files preflight, ops schedule preflight, observability preflight,
      agent, LLM, UI walkthrough, metrics, backup, signed vault import and

@@ -56,6 +56,12 @@ UAM_API_KEY=... python scripts/load_smoke_eval.py \
 UAM_API_KEY=... python scripts/ui_walkthrough_eval.py \
   --base-url http://localhost:6798 \
   --json-report ./ops/ui-walkthrough.json
+python scripts/real_embedding_eval.py \
+  --provider openai-compatible \
+  --base-url https://api.openai.com/v1 \
+  --model text-embedding-3-large \
+  --dimension 3072 \
+  --json-report ./ops/embedding.json
 python scripts/real_memory_llm_eval.py \
   --base-url https://api.openai.com/v1 \
   --model gpt-5.6-terra \
@@ -101,6 +107,8 @@ Manual checks:
 - Confirm the configured OpenAI-compatible memory LLM endpoint is reachable.
 - Confirm `ops/memory-llm.json` reports `"ok": true` for that endpoint/model.
 - Confirm embedding endpoint returns the configured dimension.
+- Confirm `ops/embedding.json` reports `"ok": true` for the configured
+  provider/base URL/model/dimension and semantic recall scenarios.
 - Confirm `UAM_QDRANT_PAYLOAD_TEXT=false` so Qdrant stores vectors/filter
   metadata only and memory text is hydrated from PostgreSQL.
 - Confirm `UAM_MEMORY_TEXT_ENCRYPTION=pgcrypto` and
@@ -165,6 +173,8 @@ Do not release if:
 - branch protection or PR-only merge policy is disabled for a shared production
   repository.
 - OpenClaw/Hermes soak reports show cross-workspace leakage or missing recall.
+- embedding evidence is missing, dimension does not match the configured model,
+  or semantic recall scenarios choose the wrong top memory.
 - load smoke evidence is missing, has non-zero errors, violates p95 thresholds,
   or shows outbox dead letters/backlog after the run.
 - OpenAI-compatible memory LLM regression returns invalid JSON or keeps obsolete
