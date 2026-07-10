@@ -42,8 +42,8 @@ Repository capability baseline:
 
 The repository is an engineering preview with production-shaped components. It
 must not be used for a trusted production pilot until the remaining P0 runtime
-blockers in the production audit are fixed—especially fail-soft dependencies,
-safe reindex and broader encryption coverage. Supersede/archive and
+blockers in the production audit are fixed—especially safe reindex, broader
+encryption coverage and authenticated UI delivery. Supersede/archive and
 operator conflict-winner precedence are enforced through atomic PostgreSQL
 revisions and Qdrant head validation.
 Database-role and operator-controlled agent/thread provisioning are implemented
@@ -75,9 +75,11 @@ flowchart LR
   API --> Vault["Markdown vault export/import"]
 ```
 
-Memory-LLM curation has a deterministic fallback. Qdrant/embedding source
-isolation is not yet complete: a vector dependency outage can still fail startup
-or recall instead of falling back to PostgreSQL. This is a P0 production blocker.
+Memory-LLM curation has a deterministic fallback. Recall treats PostgreSQL as
+the required canonical source and Qdrant as an optional accelerator: vector
+startup/query failures degrade to PostgreSQL lexical recall and are visible on
+`/ready`. Embedding workers still fail fast when Qdrant is unavailable so events
+are retried instead of silently losing index work.
 
 ## Quick start for local development
 
@@ -138,6 +140,7 @@ and the target credential/identity evidence passes.
 
    ```bash
    curl http://localhost:6798/health
+   curl http://localhost:6798/ready
    curl -H "Authorization: Bearer $UAM_API_KEY" http://localhost:6798/metrics
    ```
 

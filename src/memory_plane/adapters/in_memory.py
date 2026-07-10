@@ -55,6 +55,10 @@ class InMemoryMemoryStore:
         """Return the stable retrieval diagnostic name."""
         return "sql_lexical"
 
+    def ping(self) -> bool:
+        """In-process canonical storage is ready while the process is alive."""
+        return True
+
     def provision_agent_thread(
         self,
         agent: AgentIdentity,

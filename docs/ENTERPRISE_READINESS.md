@@ -32,6 +32,8 @@ remaining hard requirements.
 - [x] Production env validator catches placeholders, weak secrets and local-only
       settings before deployment.
 - [x] HTTP responses include baseline browser/API security headers.
+- [x] Liveness and canonical readiness are separate; optional vector failures
+      degrade recall to PostgreSQL and remain visible without failing readiness.
 - [x] Durable audit log records memory writes, supersedes, conflict decisions,
       vault imports/archives and model-setting changes.
 - [x] Audit export bundle writes JSONL, manifest, and SHA-256 checksum for
@@ -42,8 +44,9 @@ remaining hard requirements.
 - [x] Audit retention runner exports and verifies old audit windows before
       pruning, writes JSON evidence, and requires signed exports for `--apply`.
 - [x] Container liveness checks exist for API, PostgreSQL, and NATS.
-- [ ] Add an API readiness endpoint that reports PostgreSQL, Qdrant, NATS and
-      worker dependency state without claiming liveness is readiness.
+- [x] API readiness actively checks PostgreSQL and reports per-source retrieval
+      degradation without claiming liveness is readiness.
+- [ ] Extend readiness evidence to NATS and deployed worker state.
 - [x] Metrics endpoint exists.
 - [x] Metrics health evaluator can fail on outbox lag/dead letters and emit JSON
       reports/webhook alerts.
@@ -70,8 +73,9 @@ remaining hard requirements.
 - [x] Operator UI can accept, override or dismiss conflict cases through the
       persisted conflict-review API.
 - [x] Qdrant/vector indexing has an asynchronous worker path.
-- [ ] Isolate Qdrant/embedding failures so startup and recall fall back to
-      PostgreSQL, and make reindex failure-safe across workspaces.
+- [x] Isolate Qdrant startup/query failures so recall falls back to PostgreSQL;
+      embedding workers fail fast for durable retry.
+- [ ] Make reindex failure-safe across workspaces.
 - [x] PostgreSQL `memory_items.text` encryption can cover all memory rows or
       selected visibility scopes via `UAM_MEMORY_TEXT_ENCRYPTION_SCOPES`.
 - [ ] Encrypt or otherwise protect provenance, conversations, proposals,

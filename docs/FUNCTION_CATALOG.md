@@ -221,6 +221,7 @@
 | `GET /health` | Liveness, не readiness |
 | API-key middleware | Защищает все non-health routes при `UAM_API_KEY` |
 | `GET /metrics` | Prometheus counters/lag; защищён API key |
+| `GET /ready` | Canonical PostgreSQL readiness + retrieval source state | `503` only when canonical storage is unavailable; optional vector outage is `200 degraded` |
 | `GET /ui` | Local operator console | Same API-key middleware as API routes |
 | `GET /v1/system/status` | Реальное process/storage/runtime состояние для UI | Не подменяет dependency readiness |
 | `GET /v1/settings/models` | Текущие и desired model settings | Не раскрывает API keys |

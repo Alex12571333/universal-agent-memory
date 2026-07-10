@@ -729,7 +729,7 @@ def _registry_tenant_id() -> UUID:
 
 def _required_scope_for_request(path: str, method: str) -> str:
     """Return the minimum logical scope required for a route."""
-    if path == "/health":
+    if path in {"/health", "/ready"}:
         return "public"
     if path.startswith("/v1/keys"):
         return "operator"
@@ -1077,6 +1077,27 @@ def create_app(
         """Report process liveness; adapters should extend readiness separately."""
         return {"status": "ok"}
 
+    @app.get("/ready")
+    def readiness() -> JSONResponse:
+        """Report canonical-store readiness and optional retrieval degradation."""
+        ping = getattr(services.store, "ping", None)
+        try:
+            canonical_ready = bool(callable(ping) and ping())
+        except Exception:
+            canonical_ready = False
+        sources = services.retrieval.source_health()
+        status = "ready" if canonical_ready else "not_ready"
+        if canonical_ready and any(row["status"] == "degraded" for row in sources.values()):
+            status = "degraded"
+        return JSONResponse(
+            status_code=200 if canonical_ready else 503,
+            content={
+                "status": status,
+                "canonical_store": "healthy" if canonical_ready else "failed",
+                "retrieval_sources": sources,
+            },
+        )
+
     @app.get("/v1/audit/events")
     def list_audit_events(
         tenant_id: UUID = DEFAULT_SERVER_ID,
@@ -1239,6 +1260,7 @@ def create_app(
         embedding_collector = getattr(services.embedding, "collect_metrics", None)
         if callable(embedding_collector):
             rows = {**rows, **embedding_collector()}
+        rows = {**rows, **services.retrieval.collect_metrics()}
         return render_prometheus(rows)
 
     @app.get("/ui", response_class=HTMLResponse)

@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import replace
 from datetime import UTC, datetime
+from threading import RLock
+from typing import Any
 from uuid import UUID
 
 from memory_plane.contracts.dto import Candidate, RecallQuery, RecallResult
@@ -28,12 +30,19 @@ class RetrievalService:
         self,
         sources: tuple[CandidateSource, ...],
         weights: dict[str, float] | None = None,
+        required_sources: frozenset[str] | None = None,
     ) -> None:
         """Configure candidate sources and an explicit, inspectable score formula."""
         if not sources:
             raise ValueError("at least one candidate source is required")
         self._sources = sources
         self._weights = weights or DEFAULT_WEIGHTS
+        self._required_sources = required_sources or frozenset({sources[0].name})
+        self._health_lock = RLock()
+        self._source_health: dict[str, dict[str, Any]] = {
+            source.name: {"status": "unknown", "failures": 0, "error_type": None}
+            for source in sources
+        }
         if abs(sum(self._weights.values()) - 1.0) > 1e-9:
             raise ValueError("retrieval weights must sum to 1.0")
 
@@ -42,7 +51,14 @@ class RetrievalService:
         grouped: dict[UUID, list[Candidate]] = defaultdict(list)
         used: list[str] = []
         for source in self._sources:
-            candidates = source.search(query)
+            try:
+                candidates = source.search(query)
+            except Exception as exc:
+                self.record_failure(source.name, exc)
+                if source.name in self._required_sources:
+                    raise
+                continue
+            self.record_success(source.name)
             used.append(source.name)
             for candidate in candidates:
                 if candidate.item.tenant_id != query.tenant_id:
@@ -69,6 +85,47 @@ class RetrievalService:
         ranked = [row for row in ranked if row.final_score >= query.minimum_score]
         ranked.sort(key=lambda row: (row.final_score, row.item.created_at), reverse=True)
         return RecallResult(candidates=tuple(ranked[: query.top_k]), sources_used=tuple(used))
+
+    def record_success(self, source_name: str) -> None:
+        """Mark a candidate source healthy after a completed operation."""
+        with self._health_lock:
+            state = self._source_health.setdefault(
+                source_name,
+                {"status": "unknown", "failures": 0, "error_type": None},
+            )
+            state["status"] = "healthy"
+            state["error_type"] = None
+
+    def record_failure(self, source_name: str, error: Exception) -> None:
+        """Record failure type without retaining endpoint or credential text."""
+        with self._health_lock:
+            state = self._source_health.setdefault(
+                source_name,
+                {"status": "unknown", "failures": 0, "error_type": None},
+            )
+            state["status"] = (
+                "failed" if source_name in self._required_sources else "degraded"
+            )
+            state["failures"] = int(state["failures"]) + 1
+            state["error_type"] = type(error).__name__
+
+    def source_health(self) -> dict[str, dict[str, Any]]:
+        """Return a copy of dependency status safe for readiness responses."""
+        with self._health_lock:
+            return {name: dict(state) for name, state in self._source_health.items()}
+
+    def collect_metrics(self) -> dict[str, int]:
+        """Return aggregate source-failure metrics for the API exporter."""
+        with self._health_lock:
+            return {
+                "uam_retrieval_source_failures_total": sum(
+                    int(state["failures"]) for state in self._source_health.values()
+                ),
+                "uam_retrieval_degraded_sources": sum(
+                    state["status"] in {"degraded", "failed"}
+                    for state in self._source_health.values()
+                ),
+            }
 
     def _fuse(self, candidates: list[Candidate]) -> Candidate:
         """Fuse signals for one item by retaining each source's strongest evidence."""
