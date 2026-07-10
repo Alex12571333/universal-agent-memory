@@ -23,6 +23,8 @@ UAM_API_KEY=... PYTHONPATH=src python scripts/deployment_preflight.py \
   --public-url https://$UAM_PUBLIC_HOST \
   --backend-url http://$UAM_PUBLIC_HOST:6798 \
   --report ./ops/deployment-preflight.json
+PYTHONPATH=src python scripts/secret_files_preflight.py .env.production \
+  --report ./ops/secret-files.json
 UAM_VAULT_SIGNING_KEY=... python scripts/export_vault.py ./vault-release
 UAM_VAULT_SIGNING_KEY=... python scripts/import_vault.py ./vault-release \
   --require-signature \
@@ -84,6 +86,8 @@ Manual checks:
 - Confirm `UAM_MEMORY_TEXT_ENCRYPTION=pgcrypto` and
   `UAM_MEMORY_TEXT_ENCRYPTION_KEY` are supplied from a secret manager, not from
   the repository.
+- Confirm `ops/secret-files.json` reports `"ok": true` so required production
+  secrets come from mounted `*_FILE` paths, not raw env values.
 - Confirm `UAM_MEMORY_TEXT_ENCRYPTION_SCOPES=all` or a documented selective
   scope policy such as `private,thread`.
 - Confirm non-local deployments use HTTPS through the reverse proxy and direct

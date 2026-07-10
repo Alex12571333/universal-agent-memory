@@ -145,6 +145,8 @@ PostgreSQL, Qdrant, NATS, and MinIO internal.
      --public-url https://memory.example.com \
      --backend-url http://memory.example.com:6798 \
      --report ./ops/deployment-preflight.json
+   python scripts/secret_files_preflight.py .env.production \
+     --report ./ops/secret-files.json
    UAM_VAULT_SIGNING_KEY=... python scripts/export_vault.py ./vault-review
    UAM_VAULT_SIGNING_KEY=... python scripts/import_vault.py ./vault-review \
      --require-signature \
@@ -357,6 +359,8 @@ UAM_API_KEY=... python scripts/deployment_preflight.py \
   --public-url https://memory.example.com \
   --backend-url http://memory.example.com:6798 \
   --report ./ops/deployment-preflight.json
+python scripts/secret_files_preflight.py .env.production \
+  --report ./ops/secret-files.json
 UAM_VAULT_SIGNING_KEY=... python scripts/export_vault.py ./vault-review
 UAM_VAULT_SIGNING_KEY=... python scripts/import_vault.py ./vault-review \
   --require-signature \
