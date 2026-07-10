@@ -57,3 +57,31 @@ UAM_AGENT_ID=00000000-0000-0000-0000-000000000003
 ```
 
 Without those values, the plugin derives stable local UUIDs.
+
+## CLI bridge
+
+Some OpenClaw releases expose registered hooks in `openclaw hooks list`, but
+their embedded `openclaw agent` CLI runner does not dispatch them. For this
+execution path use the supplied native bridge instead of calling
+`openclaw agent` directly:
+
+```bash
+python3 agent-integrations/openclaw/obelisk_openclaw_cli.py \
+  --session-key agent:main:my-session \
+  --message "Продолжи работу над проектом" \
+  --json
+```
+
+The bridge reads the existing `universal-agent-memory` plugin configuration
+from `~/.openclaw/openclaw.json`, recalls before the run, injects a bounded
+reference-only context, then retains the successful final response. Both
+memory calls are fail-soft: a temporarily unavailable memory server never
+prevents OpenClaw from running. If the API key is deliberately kept out of the
+JSON config, it may instead be supplied as `UAM_API_KEY`; on a systemd-managed
+OpenClaw gateway the bridge also reads that manager environment locally.
+For a non-interactive CLI, a protected local environment file is supported as
+well: `~/.config/obelisk-memory/openclaw.env` (mode `0600`). The key is optional
+only when the local Obelisk server itself has no API authentication enabled.
+For a provisioned long-lived thread, set `threadId` in the plugin configuration
+(or `UAM_THREAD_ID`); otherwise the bridge deterministically derives one from
+`--session-key`, which must be provisioned before strict retention is enabled.
