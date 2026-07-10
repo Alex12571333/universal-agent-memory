@@ -6,7 +6,21 @@ import argparse
 import subprocess
 from pathlib import Path
 
-from memory_plane.config.secrets import read_secret_env
+from memory_plane.config.database import read_database_dsn
+
+
+def _default_database_dsn() -> str | None:
+    return (
+        read_database_dsn(
+            "UAM_BACKUP_DATABASE_URL",
+            component_prefix="UAM_BACKUP_DATABASE",
+        )
+        or read_database_dsn(
+            "UAM_ADMIN_DATABASE_URL",
+            component_prefix="UAM_ADMIN_DATABASE",
+        )
+        or read_database_dsn()
+    )
 
 
 def main() -> int:
@@ -15,11 +29,7 @@ def main() -> int:
     parser.add_argument("output", help="Path to write the .dump file")
     parser.add_argument(
         "--database-url",
-        default=read_secret_env(
-            "UAM_BACKUP_DATABASE_URL",
-            "UAM_ADMIN_DATABASE_URL",
-            "UAM_DATABASE_URL",
-        ),
+        default=_default_database_dsn(),
         help="PostgreSQL connection URL; defaults to UAM_BACKUP_DATABASE_URL",
     )
     args = parser.parse_args()

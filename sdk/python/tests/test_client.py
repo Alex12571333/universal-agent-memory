@@ -3,7 +3,13 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 import pytest
-from uam_client import InvalidRequestError, MemoryClient, RetainRequest, RetryPolicy
+from uam_client import (
+    IdentityProvisionRequest,
+    InvalidRequestError,
+    MemoryClient,
+    RetainRequest,
+    RetryPolicy,
+)
 from uam_client.client import HttpResponse
 
 
@@ -88,3 +94,30 @@ def test_api_key_is_sent_as_bearer_token() -> None:
     MemoryClient(api_key="secret", transport=transport).health()
 
     assert transport.headers[0]["Authorization"] == "Bearer secret"
+
+
+def test_operator_can_provision_agent_and_thread() -> None:
+    transport = FakeTransport(
+        [
+            HttpResponse(
+                200,
+                {
+                    "agent": {"id": "agent-1", "name": "OpenClaw"},
+                    "thread": {"id": "thread-1", "owner_agent_id": "agent-1"},
+                },
+                {},
+            )
+        ]
+    )
+
+    result = MemoryClient(transport=transport).provision_identity(
+        IdentityProvisionRequest(
+            agent_id="agent-1",
+            agent_name="OpenClaw",
+            agent_role="openclaw",
+            thread_id="thread-1",
+        )
+    )
+
+    assert result.thread == {"id": "thread-1", "owner_agent_id": "agent-1"}
+    assert transport.bodies[0]["agent_role"] == "openclaw"

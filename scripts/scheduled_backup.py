@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from memory_plane.config.database import read_database_dsn
 from memory_plane.config.secrets import read_secret_env
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -39,10 +40,16 @@ def main() -> int:
     )
     parser.add_argument(
         "--database-url",
-        default=read_secret_env(
-            "UAM_BACKUP_DATABASE_URL",
-            "UAM_ADMIN_DATABASE_URL",
-            "UAM_DATABASE_URL",
+        default=(
+            read_database_dsn(
+                "UAM_BACKUP_DATABASE_URL",
+                component_prefix="UAM_BACKUP_DATABASE",
+            )
+            or read_database_dsn(
+                "UAM_ADMIN_DATABASE_URL",
+                component_prefix="UAM_ADMIN_DATABASE",
+            )
+            or read_database_dsn()
         ),
         help="PostgreSQL URL passed to backup.py",
     )

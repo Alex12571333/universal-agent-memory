@@ -23,6 +23,8 @@ from uam_client.errors import (
 )
 from uam_client.models import (
     CompiledContext,
+    IdentityProvisionRequest,
+    IdentityProvisionResponse,
     IngestTextRequest,
     IngestTextResponse,
     MemoryResult,
@@ -129,6 +131,14 @@ class MemoryClient:
             memory_ids=tuple(value["memory_ids"]),
             created_count=value["created_count"],
         )
+
+    def provision_identity(
+        self,
+        request: IdentityProvisionRequest,
+    ) -> IdentityProvisionResponse:
+        """Provision stable IDs with an operator-scoped client."""
+        value = self._request("POST", "/v1/identities/provision", request.to_dict())
+        return IdentityProvisionResponse(agent=value["agent"], thread=value["thread"])
 
     def _request(
         self, method: str, path: str, body: dict[str, Any] | None

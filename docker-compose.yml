@@ -70,6 +70,8 @@ services:
     command: ["python", "scripts/migrate.py"]
     environment:
       UAM_ADMIN_DATABASE_URL: postgresql://memory_admin:memory@postgres:5432/memory
+      UAM_APP_DB_USER: memory_app
+      UAM_APP_DB_PASSWORD: memory
     depends_on:
       postgres:
         condition: service_healthy

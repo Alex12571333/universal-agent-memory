@@ -85,3 +85,26 @@ test("API key is sent as a bearer token", async () => {
 
   assert.equal(authorization, "Bearer secret");
 });
+
+test("operator client provisions stable identity", async () => {
+  let path = "";
+  const client = new MemoryClient({
+    fetch: async (input) => {
+      path = String(input);
+      return response(200, {
+        agent: { id: "agent-1", name: "Hermes" },
+        thread: { id: "thread-1", owner_agent_id: "agent-1" },
+      });
+    },
+  });
+
+  const result = await client.provisionIdentity({
+    agent_id: "agent-1",
+    agent_name: "Hermes",
+    agent_role: "hermes",
+    thread_id: "thread-1",
+  });
+
+  assert.equal(path, "http://localhost:8080/v1/identities/provision");
+  assert.equal(result.thread?.owner_agent_id, "agent-1");
+});

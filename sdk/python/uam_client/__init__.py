@@ -14,6 +14,8 @@ from uam_client.errors import (
 from uam_client.models import (
     IngestTextRequest,
     IngestTextResponse,
+    IdentityProvisionRequest,
+    IdentityProvisionResponse,
     RecallRequest,
     RecallResponse,
     RetainRequest,
@@ -26,6 +28,8 @@ __all__ = [
     "ConflictError",
     "IngestTextRequest",
     "IngestTextResponse",
+    "IdentityProvisionRequest",
+    "IdentityProvisionResponse",
     "InvalidRequestError",
     "MemoryClient",
     "MemoryServerError",

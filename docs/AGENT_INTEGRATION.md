@@ -4,13 +4,29 @@ Obelisk Memory is designed to be embedded into an agent runtime, not
 used as a sidecar chat tool. The intended integration point is the agent
 lifecycle.
 
-> **Persistent-runtime blocker:** the current PostgreSQL bootstrap does not
-> provision the stable agent and thread identities emitted by these adapters. A
-> fresh PostgreSQL deployment can reject retain/checkpoint calls with foreign-key
-> violations. Use the adapters with the in-memory development server only, or
-> explicitly provision matching database identities, until the P0 identity work
-> in [PRODUCTION_GAP_AUDIT_2026_07_10.md](PRODUCTION_GAP_AUDIT_2026_07_10.md) is
-> complete. Do not treat the installation outlines below as production-ready.
+Stable agent/thread identities must be registered once by an operator before an
+adapter starts retaining durable PostgreSQL records. Agent-scoped keys cannot
+create arbitrary identities. This is intentional until API principals are
+cryptographically bound to a tenant/workspace/agent boundary.
+
+```bash
+curl -X POST "$UAM_URL/v1/identities/provision" \
+  -H "Authorization: Bearer $UAM_OPERATOR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tenant_id":"00000000-0000-0000-0000-000000000001",
+    "workspace_id":"00000000-0000-0000-0000-000000000002",
+    "agent_id":"00000000-0000-0000-0000-000000000010",
+    "agent_name":"OpenClaw primary",
+    "agent_role":"openclaw",
+    "agent_config":{"namespace":"openclaw/default"},
+    "thread_id":"00000000-0000-0000-0000-000000000011"
+  }'
+```
+
+The operation is idempotent and may update display metadata/status, but it
+refuses to move an existing agent or thread ID into another scope. Give the
+adapter its own `agent`-scoped API key only after this operator step.
 
 ## Runtime flow
 
@@ -51,8 +67,10 @@ Minimal env:
 ```text
 UAM_URL=http://127.0.0.1:6798
 UAM_MEMORY_ENABLED=true
+UAM_API_KEY=<openclaw-agent-scoped-key>
 UAM_TENANT_ID=00000000-0000-0000-0000-000000000001
 UAM_WORKSPACE_ID=00000000-0000-0000-0000-000000000002
+UAM_AGENT_ID=00000000-0000-0000-0000-000000000010
 UAM_CONTEXT_BUDGET_TOKENS=131072
 UAM_CONTEXT_PER_LAYER_LIMIT=1000
 UAM_MEMORY_RECALL_TOP_K=8

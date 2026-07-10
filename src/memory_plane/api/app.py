@@ -34,6 +34,7 @@ from memory_plane.bootstrap import (
     build_postgres_container,
 )
 from memory_plane.build_info import BuildInfo
+from memory_plane.config.database import read_database_dsn
 from memory_plane.config.secrets import read_secret_env
 from memory_plane.contracts.dto import (
     ContextRecipe,
@@ -65,6 +66,7 @@ from memory_plane.services.conversations import (
     AppendConversationTurnCommand,
     CurateConversationTurnCommand,
 )
+from memory_plane.services.identities import ProvisionIdentityCommand
 from memory_plane.services.metrics import render_prometheus
 from memory_plane.services.proposals import (
     ReviewMemoryProposalCommand,
@@ -156,6 +158,19 @@ class ConversationMessageBody(BaseModel):
     content: str = Field(min_length=1)
     name: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class IdentityProvisionBody(BaseModel):
+    """Operator request to provision one stable agent and optional thread."""
+
+    tenant_id: UUID = DEFAULT_SERVER_ID
+    workspace_id: UUID = DEFAULT_PROJECT_ID
+    agent_id: UUID
+    agent_name: str = Field(min_length=1, max_length=160)
+    agent_role: str = Field(min_length=1, max_length=80)
+    agent_config: dict[str, Any] = Field(default_factory=dict)
+    thread_id: UUID | None = None
+    thread_status: Literal["active", "closed", "archived"] = "active"
 
 
 class ConversationTurnBody(BaseModel):
@@ -676,6 +691,8 @@ def _required_scope_for_request(path: str, method: str) -> str:
         return "operator"
     if path.startswith("/v1/audit"):
         return "operator"
+    if path.startswith("/v1/identities"):
+        return "operator"
     if path.startswith(("/ui", "/docs", "/redoc", "/openapi.json", "/metrics")):
         return "operator"
     if path.startswith(("/v1/system", "/v1/settings")):
@@ -905,6 +922,64 @@ def create_app(
             "tenant_id": str(tenant_id),
             "count": len(records),
             "keys": [_api_key_response(record) for record in records],
+        }
+
+    @app.post("/v1/identities/provision")
+    def provision_identity(
+        body: IdentityProvisionBody,
+        request: Request,
+    ) -> dict[str, Any]:
+        """Provision stable foreign-key identities under operator authority."""
+        try:
+            agent, thread = services.identities.provision(
+                ProvisionIdentityCommand(
+                    tenant_id=body.tenant_id,
+                    workspace_id=body.workspace_id,
+                    agent_id=body.agent_id,
+                    agent_name=body.agent_name,
+                    agent_role=body.agent_role,
+                    agent_config=body.agent_config,
+                    thread_id=body.thread_id,
+                    thread_status=body.thread_status,
+                )
+            )
+        except ValueError as exc:
+            status_code = 409 if "already belongs" in str(exc) else 400
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        record_audit(
+            request,
+            tenant_id=body.tenant_id,
+            workspace_id=body.workspace_id,
+            action="identity.provision",
+            resource_type="agent_identity",
+            resource_id=str(body.agent_id),
+            metadata={
+                "agent_name": agent.name,
+                "agent_role": agent.role,
+                "thread_id": str(thread.id) if thread else None,
+                "thread_status": thread.status if thread else None,
+            },
+        )
+        return {
+            "agent": {
+                "id": str(agent.id),
+                "tenant_id": str(agent.tenant_id),
+                "workspace_id": str(agent.workspace_id),
+                "name": agent.name,
+                "role": agent.role,
+                "config": agent.config,
+            },
+            "thread": None
+            if thread is None
+            else {
+                "id": str(thread.id),
+                "tenant_id": str(thread.tenant_id),
+                "workspace_id": str(thread.workspace_id),
+                "owner_agent_id": str(thread.owner_agent_id)
+                if thread.owner_agent_id
+                else None,
+                "status": thread.status,
+            },
         }
 
     @app.post("/v1/keys/{key_id}/revoke")
@@ -1829,8 +1904,8 @@ def create_app(
 
 
 def _build_runtime_container() -> Container:
-    """Select durable Docker mode when a database URL is configured."""
-    dsn = read_secret_env("UAM_DATABASE_URL")
+    """Select durable Docker mode when a database connection is configured."""
+    dsn = read_database_dsn()
     if not dsn:
         return build_in_memory_container()
     server_id = UUID(os.getenv("UAM_SERVER_ID", str(DEFAULT_SERVER_ID)))

@@ -15,6 +15,7 @@ from memory_plane.domain.checkpoint import Checkpoint, StaleRevisionError
 from memory_plane.domain.conflict import ConflictReviewDecision
 from memory_plane.domain.conversation import ConversationTurn
 from memory_plane.domain.graph import MemoryEdge, MemoryEdgeType
+from memory_plane.domain.identity import AgentIdentity, ThreadIdentity
 from memory_plane.domain.models import (
     MemoryItem,
     MemoryLayer,
@@ -44,6 +45,8 @@ class InMemoryMemoryStore:
         self._proposal_idempotency: dict[tuple[UUID, str], UUID] = {}
         self._audit_events: dict[UUID, AuditEvent] = {}
         self._api_keys: dict[UUID, ApiKeyRecord] = {}
+        self._agents: dict[UUID, AgentIdentity] = {}
+        self._threads: dict[UUID, ThreadIdentity] = {}
         self.events: list[IntegrationEvent] = []
         self._lock = RLock()
 
@@ -51,6 +54,40 @@ class InMemoryMemoryStore:
     def name(self) -> str:
         """Return the stable retrieval diagnostic name."""
         return "sql_lexical"
+
+    def provision_agent_thread(
+        self,
+        agent: AgentIdentity,
+        *,
+        thread_id: UUID | None = None,
+        thread_status: str = "active",
+    ) -> tuple[AgentIdentity, ThreadIdentity | None]:
+        """Create/update an identity while forbidding cross-scope ID reuse."""
+        with self._lock:
+            existing_agent = self._agents.get(agent.id)
+            if existing_agent is not None and (
+                existing_agent.tenant_id != agent.tenant_id
+                or existing_agent.workspace_id != agent.workspace_id
+            ):
+                raise ValueError("agent_id already belongs to another scope")
+            self._agents[agent.id] = agent
+            thread: ThreadIdentity | None = None
+            if thread_id is not None:
+                existing_thread = self._threads.get(thread_id)
+                if existing_thread is not None and (
+                    existing_thread.tenant_id != agent.tenant_id
+                    or existing_thread.workspace_id != agent.workspace_id
+                ):
+                    raise ValueError("thread_id already belongs to another scope")
+                thread = ThreadIdentity(
+                    id=thread_id,
+                    tenant_id=agent.tenant_id,
+                    workspace_id=agent.workspace_id,
+                    owner_agent_id=agent.id,
+                    status=thread_status,
+                )
+                self._threads[thread_id] = thread
+            return agent, thread
 
     def append(
         self, item: MemoryItem, idempotency_key: str | None = None
@@ -643,7 +680,7 @@ class InMemoryCheckpointStore:
         with self._lock:
             revs = self._revisions.get(checkpoint.thread_id, [])
             tenant_revs = [r for r in revs if r.tenant_id == checkpoint.tenant_id]
-            actual = tenant_revs[-1].revision if tenant_revs else None
+            actual = tenant_revs[-1].revision if tenant_revs else 0
             if actual != expected_revision:
                 raise StaleRevisionError(
                     checkpoint.thread_id, expected_revision, actual

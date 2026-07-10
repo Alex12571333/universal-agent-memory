@@ -41,11 +41,13 @@ Repository capability baseline:
 | Tests | Unit/API contracts, optional service integrations, Docker config and live evidence runners |
 
 The repository is an engineering preview with production-shaped components. It
-must not be used for a trusted production pilot until the P0 runtime blockers in
-the production audit are fixed—especially fresh database credentials,
-agent/thread provisioning, authorization boundaries, active-head recall,
-fail-soft dependencies and safe reindex. Full production additionally requires
-target-environment operations and signed release evidence.
+must not be used for a trusted production pilot until the remaining P0 runtime
+blockers in the production audit are fixed—especially identity-bound
+authorization, active-head recall, fail-soft dependencies and safe reindex.
+Database-role and operator-controlled agent/thread provisioning are implemented
+but still require target-deployment evidence and native installer wiring. Full
+production additionally requires target-environment operations and signed
+release evidence.
 
 Production gap audit:
 [docs/PRODUCTION_GAP_AUDIT_2026_07_10.md](docs/PRODUCTION_GAP_AUDIT_2026_07_10.md).
@@ -96,7 +98,8 @@ Local host ports are intentionally non-standard:
 The local compose file is convenient for debugging. The production compose is a
 reference topology that exposes only API/UI and keeps PostgreSQL, Qdrant, NATS,
 and MinIO internal. It is not an approved production deployment until the P0
-credential, identity, authorization, recall and reindex blockers are fixed.
+authorization, active-head recall, dependency isolation and reindex blockers
+are fixed and the target credential/identity evidence passes.
 
 ## Production reference deployment
 
@@ -104,8 +107,14 @@ credential, identity, authorization, recall and reindex blockers are fixed.
 
    ```bash
    cp .env.production.example .env.production
-   # edit secrets and model endpoints
+   # edit identifiers and model endpoints
    ```
+
+   Create two high-entropy database password files outside the repository,
+   restrict them to the deployment operator, and set their absolute host paths
+   in `POSTGRES_PASSWORD_FILE` and `UAM_APP_DB_PASSWORD_FILE`. Compose mounts
+   only those files into the services; database passwords are not interpolated
+   into container environment URLs.
 
 2. Start the production stack:
 
@@ -187,10 +196,25 @@ curl -X POST http://localhost:6798/v1/memory/recall \
   -d '{"query":"Какой язык используется в проекте?","top_k":20}'
 ```
 
-The raw-conversation API exists, but its PostgreSQL path requires a matching
-thread identity to be provisioned first. Automatic agent/thread provisioning is
-a P0 blocker, so the README does not present that endpoint as a working fresh
-production flow yet.
+Before an agent sends `agent_id` or `thread_id`, register those stable IDs with
+an operator-scoped key. This prevents an agent key from inventing identities in
+another namespace:
+
+```bash
+curl -X POST http://localhost:6798/v1/identities/provision \
+  -H "Authorization: Bearer $UAM_OPERATOR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "agent_id":"00000000-0000-0000-0000-000000000010",
+    "agent_name":"OpenClaw primary",
+    "agent_role":"openclaw",
+    "thread_id":"00000000-0000-0000-0000-000000000011"
+  }'
+```
+
+The endpoint is idempotent, audited and rejects cross-scope ID reuse. Native
+installers still need an operator bootstrap step until bearer keys are bound to
+specific tenant/workspace/agent identities.
 
 OpenAPI docs are available at `http://localhost:6798/docs` when authorized.
 
@@ -253,10 +277,13 @@ UAM_VAULT_SIGNING_KEY_FILE=/run/secrets/vault_signing_key
 UAM_RELEASE_SIGNING_KEY_FILE=/run/secrets/release_signing_key
 ```
 
-Direct variables still work for development. The shipped production compose
-does not yet mount secret objects or correctly construct every database DSN from
-file-backed passwords; deployment-level `*_FILE` support remains a P0 blocker,
-not a completed production guarantee.
+Direct variables and complete database URLs still work for development. The
+shipped production compose defines dedicated Docker secret mounts for the
+PostgreSQL administrator and application passwords. Runtime services assemble
+escaped DSNs from host/user/database components plus the mounted password;
+`scripts/migrate.py` creates or rotates the configured application role without
+a default credential. A clean target boot must still be captured as release
+evidence before approving a deployment.
 
 For local self-hosted alternatives, see
 [docs/DGX_SPARK_MEMORY_LLM.md](docs/DGX_SPARK_MEMORY_LLM.md) and

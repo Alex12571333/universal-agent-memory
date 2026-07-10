@@ -3,8 +3,9 @@
 > **Engineering preview:** the production-shaped Compose topology is available,
 > but a fresh production rollout is currently blocked by the P0 runtime issues in
 > [PRODUCTION_GAP_AUDIT_2026_07_10.md](PRODUCTION_GAP_AUDIT_2026_07_10.md),
-> including application-role credential provisioning and agent/thread identity
-> provisioning. The commands below are reference operating procedures; do not use
+> including identity-bound authorization and recall correctness. Database-role
+> and operator identity provisioning exist but need target evidence. The
+> commands below are reference operating procedures; do not use
 > them to claim or run a production deployment until those blockers are resolved
 > and the target release gates pass.
 
@@ -12,8 +13,18 @@
 
 ```bash
 cp .env.production.example .env.production
+install -d -m 0700 /srv/obelisk-secrets
+openssl rand -base64 48 > /srv/obelisk-secrets/postgres_password
+openssl rand -base64 48 > /srv/obelisk-secrets/app_db_password
+chmod 0600 /srv/obelisk-secrets/postgres_password /srv/obelisk-secrets/app_db_password
+# Set the two absolute host paths in .env.production before validation/start.
 docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
 ```
+
+The migration job creates or rotates `UAM_APP_DB_USER` with the mounted
+`UAM_APP_DB_PASSWORD_FILE` value and grants runtime privileges after schema
+migrations. It rejects reserved, malformed, or administrator role names. Never
+reuse the PostgreSQL administrator identity as the application role.
 
 Only API/UI port `6798` is exposed. PostgreSQL, Qdrant, NATS, and MinIO remain
 inside the Docker network.

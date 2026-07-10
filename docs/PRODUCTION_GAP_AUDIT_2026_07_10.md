@@ -11,7 +11,7 @@ under failure.
 | Area | Current state | Production verdict |
 |---|---|---|
 | Architecture | PostgreSQL source of truth, Qdrant index, outbox, NATS workers, vault, API, UI | Good foundation |
-| Docker | Dev/prod compose plus Caddy TLS proxy example exist; prod hides internal infra ports; deployment preflight writes boundary evidence | Production boot is blocked by application-role credential provisioning and still needs a verified TLS boundary |
+| Docker | Dev/prod compose plus Caddy TLS proxy example exist; prod hides internal infra ports; database secrets use dedicated mounts; deployment preflight writes boundary evidence | Fresh role provisioning is implemented but still needs clean target-boot evidence and a verified TLS boundary |
 | API auth | Bearer keys, coarse scopes, env validator and non-secret key registry exist; `/health` is public | Basic authentication only; tenant/workspace/agent authorization is a P0 blocker |
 | Audit trail | `audit_events`, export/signing and retention tools exist | Coverage is incomplete and most audit writes are not atomic with the operation they describe |
 | Browser/API hardening | Security headers are enforced by middleware and tests | Baseline present |
@@ -32,20 +32,27 @@ static readiness script are green.
 
 ### P0 — correctness and isolation
 
-1. **Fresh production database credentials are not provisioned.**
-   `docker-compose.prod.yml` connects as `UAM_APP_DB_USER` with the configured
-   random password, while `migrations/dev/002_app_role.sql` creates only
-   `memory_app` with password `memory`. `scripts/migrate.py` does not apply
-   `UAM_APP_DB_USER` or `UAM_APP_DB_PASSWORD`. File-backed database passwords
-   are also not converted into the DSNs used by the compose services. A strict
-   production environment can migrate successfully and then fail API
-   authentication to PostgreSQL.
+1. **Fresh production database provisioning needs target proof.**
+   The repository no longer ships the `memory_app/memory` login. The migration
+   runner now creates or rotates the configured application role with safe
+   identifier composition, rejects administrator/reserved identities, and
+   reapplies runtime grants. Production Compose mounts separate administrator
+   and application password files, while API/workers/backup assemble escaped
+   DSNs from explicit components. Unit and Compose-config tests cover this
+   contract. An isolated local PostgreSQL 17 clean boot passed all 11 ledger
+   integration scenarios, migration rerun and password rotation (old rejected,
+   new accepted). A separate production-Compose smoke also initialized a fresh
+   volume and completed all migrations through the two mounted Docker secrets.
+   The same proof must still be executed and preserved on the target Docker
+   runtime before this gate is closed.
 
-2. **Agent and thread identities are never provisioned.**
-   `memory_items.agent_id`, `memory_items.thread_id` and checkpoints have
-   foreign keys to `agents`/`threads`. Bootstrap creates only tenant/workspace,
-   while OpenClaw and Hermes send stable agent/thread IDs. Fresh PostgreSQL
-   retain and checkpoint calls can therefore fail with foreign-key violations.
+2. **Identity provisioning exists, but identity-bound bootstrap is incomplete.**
+   An operator-only, audited and idempotent endpoint now provisions an agent and
+   optional owned thread atomically, refuses cross-scope ID reuse, and has API,
+   service and optional PostgreSQL retain coverage. Agent keys intentionally
+   cannot self-provision arbitrary identities. Native OpenClaw/Hermes installers
+   still need an operator bootstrap step, and the remaining API-key binding
+   blocker must be closed before safe automatic first-use registration.
 
 3. **API keys are not bound to an identity boundary.**
    Authentication scopes are read/write/operator labels only; they are not
@@ -77,10 +84,14 @@ static readiness script are green.
    adapter deletes and recreates the shared collection. This removes vectors
    for other workspaces and leaves an empty index if reinsertion fails.
 
-8. **PostgreSQL checkpoint CAS needs a real integration fix.**
-   The adapter uses an aggregate `max(revision)` query with `FOR UPDATE`, which
-   PostgreSQL does not allow, and concurrent first saves can race into a unique
-   violation. This path lacks a PostgreSQL concurrency integration test.
+8. **PostgreSQL checkpoint CAS needs target concurrency evidence.**
+   The invalid aggregate `FOR UPDATE` query has been replaced by a
+   tenant/thread-scoped transaction advisory lock followed by an ordered head
+   read. First saves now use the same compare-and-swap path with expected head
+   zero, preventing the unique-violation race. Unit coverage and an optional
+   two-writer PostgreSQL integration test exist; that test passed on the
+   isolated PostgreSQL 17 clean boot. The real target run remains a required
+   release artifact.
 
 9. **Production UI authentication flow is incomplete.**
    `/ui` requires a bearer token when auth is enabled, but normal browser
@@ -198,11 +209,12 @@ Required gates:
    - Long random master key plus scoped per-agent/operator keys.
    - Key rotation record: owner, scope, created time, last used, revoked time.
      Baseline registry exists. Application code supports `*_FILE` reads for
-     API/model/signing/encryption secrets and complete database URLs, and
+     API/model/signing/encryption secrets and complete database URLs. Production
+     Compose also mounts separate database password files and assembles DSNs
+     without exposing password values through Compose interpolation. The
      `scripts/secret_files_preflight.py` writes release evidence that raw secret
-     env values are empty. The compose topology does not yet construct database
-     URLs from file-backed passwords. The target also needs an external secret
-     manager and rotation procedure.
+     env values are empty. The target still needs an external secret manager,
+     a rotation procedure and clean-boot evidence.
    - `.env.production` must pass `scripts/validate_production_env.py` with
      strict production flags before deployment.
    - Audit log export for write, supersede, conflict-decision, vault-import,
@@ -294,9 +306,11 @@ Required gates:
 
 ## Highest-priority next work
 
-1. Fix application-role provisioning and prove a fresh strict production boot.
-2. Add agent/thread provisioning and real PostgreSQL integration coverage for
-   OpenClaw/Hermes retain and checkpoint flows.
+1. Prove the implemented application-role provisioning on a fresh strict
+   production boot, including login and password rotation.
+2. Prove agent/thread provisioning on PostgreSQL and wire the operator bootstrap
+   into OpenClaw/Hermes installation; then add real checkpoint concurrency
+   coverage.
 3. Bind API principals to tenant/workspace/agent visibility policy.
 4. Enforce active-head recall semantics for supersede/archive/conflict review in
    PostgreSQL and Qdrant.

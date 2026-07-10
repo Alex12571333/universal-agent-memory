@@ -85,6 +85,22 @@ export interface IngestTextResponse {
   created_count: number;
 }
 
+export interface IdentityProvisionRequest {
+  agent_id: string;
+  agent_name: string;
+  agent_role: string;
+  tenant_id?: string;
+  workspace_id?: string;
+  agent_config?: Record<string, unknown>;
+  thread_id?: string;
+  thread_status?: "active" | "closed" | "archived";
+}
+
+export interface IdentityProvisionResponse {
+  agent: Record<string, unknown>;
+  thread: Record<string, unknown> | null;
+}
+
 export interface RetryPolicy {
   maxRetries?: number;
   baseDelayMs?: number;

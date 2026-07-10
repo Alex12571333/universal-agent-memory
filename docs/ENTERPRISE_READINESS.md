@@ -108,8 +108,9 @@ remaining hard requirements.
 ## Required before calling it full production
 
 - [ ] Prove a fresh production boot with generated application-role credentials.
-- [ ] Provision agent/thread identities and pass real PostgreSQL retain plus
-      concurrent checkpoint-CAS tests.
+- [ ] Preserve target PostgreSQL evidence for operator-provisioned agent/thread
+      retain and concurrent checkpoint-CAS tests. The provisioning endpoint and
+      optional integration test exist; live target proof remains required.
 - [ ] Enforce one active-head recall policy for superseded, archived and
       conflict-resolved memories in PostgreSQL and Qdrant.
 - [ ] Implement retention-policy semantics and route LLM-derived durable memory

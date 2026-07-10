@@ -13,6 +13,7 @@ from uuid import UUID
 
 from memory_plane.adapters.postgres import PostgresMemoryLedger
 from memory_plane.api.app import DEFAULT_PROJECT_ID, DEFAULT_SERVER_ID
+from memory_plane.config.database import read_database_dsn
 from memory_plane.config.secrets import read_secret_env
 from memory_plane.services.audit import AuditLogService
 
@@ -44,7 +45,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--database-url",
-        default=read_secret_env("UAM_DATABASE_URL"),
+        default=read_database_dsn(),
         help="PostgreSQL app-role URL; defaults to UAM_DATABASE_URL",
     )
     parser.add_argument(
