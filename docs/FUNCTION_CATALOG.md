@@ -374,5 +374,6 @@
 | `process_memory_retained(tenant, id)` | Асинхронная обработка и индексация памяти | Загружает память и делает upsert в Qdrant |
 | `reindex_all(tenant, workspace)` | Полная переиндексация воркспейса | Precomputes vectors, serializes per workspace and calls scoped Qdrant sync |
 | `sync_workspace(tenant, workspace, items)` | Atomic-order workspace vector replacement | Upsert replacement first; delete only stale IDs from the requested boundary |
+| `migrate_vector_collection.py` | Build new model-specific collection + exact count report | Never deletes or mutates the active source collection |
 | `collect_metrics()` | Process-local embedding health counters | Operations/failures/latency/reindex metrics for `/metrics` |
 | `_validate_dimension(vector)` | Provider output guard | Mismatch aborts before Qdrant write |

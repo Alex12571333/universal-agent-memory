@@ -16,12 +16,12 @@ under failure.
 | Audit trail | `audit_events`, export/signing and retention tools exist | Coverage is incomplete and most audit writes are not atomic with the operation they describe |
 | Browser/API hardening | Security headers are enforced by middleware and tests | Baseline present |
 | Data model | Append-only memory, CAS supersede, atomic conflict-winner revisions, canonical active-head recall, provenance, statuses and optional ciphertext for `memory_items.text` exist | Sensitive-table encryption remains incomplete |
-| Conversation capture | Raw ledger, explicit curation endpoint and live pipeline runner exist | Retention policy semantics, identity provisioning and installed agent hooks are incomplete |
-| Embeddings | Provider-neutral endpoints, async worker, fail-soft recall and workspace-scoped Qdrant sync exist | Collection model/dimension identity and target failure evidence remain P0 blockers |
+| Conversation capture | Raw ledger, explicit curation endpoint, stable identities and live pipeline runner exist | Retention policy semantics and installed agent hooks are incomplete |
+| Embeddings | Provider-neutral endpoints, async worker, fail-soft recall, scoped sync and immutable collection identity exist | Target outage/migration evidence remains required |
 | Memory LLM | Provider-neutral OpenAI-compatible contract, deterministic fallback and live runner exist | LLM output currently bypasses proposal/review and cannot be autonomous in production |
 | OpenClaw/Hermes | Native adapter scaffolds, tests and live soak runner exist | Needs saved soak evidence from the deployed runtime versions |
 | UI | React dashboard supports memory/vault editing, conflict decisions and a JSON walkthrough runner | Authenticated browser flow, endpoint egress policy and durable settings are incomplete |
-| Testing | Unit/API tests, live PostgreSQL/Qdrant isolation tests, benchmark scripts, web build and load runner exist | Failure isolation and target chaos/security evidence are still missing |
+| Testing | Unit/API tests, live PostgreSQL/Qdrant isolation/failure tests, benchmark scripts, web build and load runner exist | Target chaos/security evidence is still missing |
 | Release process | PR flow, release reports and a signed content-addressed evidence manifest exist | OCI build provenance, SBOM, scanning and image signing are still required |
 | Operations | Runbook, backup/restore scripts, isolated restore drill, schedule/observability preflights, signed vault/audit bundles and release evidence verifier | Needs target evidence and the runtime blockers below resolved |
 
@@ -106,9 +106,14 @@ static readiness script are green.
    same tenant/workspace boundary. Empty canonical workspaces clear only their
    own vectors. Other workspaces are never deleted, and provider/upsert failure
    cannot empty the previous set. Unit tests cover cross-workspace preservation,
-   empty sync, boundary rejection and provider failure. Live Qdrant passed 9/9,
+   empty sync, boundary rejection and provider failure. Live Qdrant passed 11/11,
    including scoped replacement and failed-upsert preservation. Multi-replica
    target concurrency and crash-during-partial-upsert evidence are still needed.
+   Collection startup now enforces dense dimension and immutable model metadata;
+   incompatible configuration fails before serving recall. The migration runner
+   builds a separately named collection, verifies exact workspace point count,
+   preserves the source for rollback and emits an activation report. A local
+   PostgreSQL/Qdrant migration indexed and verified 19/19 active points.
 
 8. **PostgreSQL checkpoint CAS needs target concurrency evidence.**
    The invalid aggregate `FOR UPDATE` query has been replaced by a
@@ -174,9 +179,9 @@ static readiness script are green.
 10. Published outbox events, processed-event IDs, raw conversations, proposals,
     idempotency records and checkpoint revisions do not have an installed data
     lifecycle policy.
-11. Qdrant retrieval is dense-only in the actual worker path, multi-layer filter
-    handling is incomplete, and existing collection model/dimension identity is
-    not verified before use.
+11. Qdrant retrieval is dense-only in the actual worker path and multi-layer
+    filter handling is incomplete. Model/dimension identity is now enforced,
+    but collection migration still needs target release evidence.
 12. Conflict/reflection extraction is mostly deterministic English-pattern
     matching. Russian paraphrases and temporal facts need evaluated multilingual
     extraction with provenance and operator-decision precedence.
@@ -343,8 +348,8 @@ Required gates:
 4. Preserve target evidence for atomic accepted/overridden conflict winners,
    stale-CAS rollback and Qdrant precedence; the implementation and local live
    coverage are complete.
-5. Preserve Qdrant outage/recovery and workspace-reindex evidence; add verified
-   collection model/dimension identity and a safe collection migration path.
+5. Preserve target evidence for Qdrant outage/recovery, workspace reindex and
+   the verified model/dimension collection migration.
 6. Complete encryption/backup coverage and close the authenticated UI/SSRF
    boundaries.
 7. Install schedules, immutable storage, monitoring and alert routing; then run

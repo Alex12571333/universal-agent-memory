@@ -13,8 +13,10 @@ Wire-поля `tenant_id` и `workspace_id` используются как ст
 обновляет display metadata и status, но никогда не переносит существующий ID в
 другой tenant/workspace. Agent-scoped ключ не может вызывать этот endpoint.
 После provisioning внешние ключи memory/checkpoint/conversation ledger валидны.
-Автоматическая self-registration допустима только после реализации binding
-API principal → tenant/workspace/agent.
+В production каждый `agent` principal обязан иметь server-side binding к
+tenant/workspace/agent. Middleware отклоняет forged IDs и чужие threads;
+private recall дополнительно фильтруется в canonical, vector и fusion layers.
+Саморегистрация агентским ключом не допускается.
 
 ## Event envelope
 

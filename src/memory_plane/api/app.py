@@ -2122,6 +2122,7 @@ def _build_runtime_container() -> Container:
     server_id = UUID(os.getenv("UAM_SERVER_ID", str(DEFAULT_SERVER_ID)))
     project_id = UUID(os.getenv("UAM_PROJECT_ID", str(DEFAULT_PROJECT_ID)))
     qdrant_url = os.getenv("UAM_QDRANT_URL")
+    qdrant_collection = os.getenv("UAM_QDRANT_COLLECTION", "memory_items")
     qdrant_dim = int(os.getenv("UAM_EMBEDDING_DIM", "1536"))
     return build_postgres_container(
         dsn,
@@ -2129,6 +2130,7 @@ def _build_runtime_container() -> Container:
         project_id=project_id,
         qdrant_url=qdrant_url,
         qdrant_dim=qdrant_dim,
+        qdrant_collection=qdrant_collection,
     )
 
 
@@ -2642,7 +2644,7 @@ _OPERATOR_UI_HTML = """
       text-align: center;
     }
     a { color: var(--cyan); }
-    /* Reference dashboard skin: matches the supplied generated image layout. */
+    /* Operator dashboard visual system. */
     body {
       background:
         radial-gradient(circle at 70% 2%, rgba(37, 99, 235, .20), transparent 23rem),

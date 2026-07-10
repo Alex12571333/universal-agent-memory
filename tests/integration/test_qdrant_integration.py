@@ -23,8 +23,10 @@ _PROV = Provenance(source_kind="integration-test")
 
 
 class _StaticEmbeddingClient:
-    model_name = "integration-static"
     dimension = 4
+
+    def __init__(self, model_name: str = "integration-static") -> None:
+        self.model_name = model_name
 
     def embed(self, _text: str) -> list[float]:
         return [1.0, 0.0, 0.0, 0.0]
@@ -186,6 +188,45 @@ class QdrantIntegrationTest(unittest.TestCase):
         info = client.get_collection(self.collection)
         self.assertIn("dense", info.config.params.vectors)
 
+    def test_connect_rejects_existing_collection_dimension_mismatch(self) -> None:
+        from memory_plane.adapters.qdrant import QdrantCandidateSource
+
+        incompatible = QdrantCandidateSource(
+            url=QDRANT_URL,  # type: ignore[arg-type]
+            collection=self.collection,
+            dense_dim=3,
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "dense dimension"):
+            incompatible.connect()
+
+    def test_connect_persists_and_enforces_embedding_model_identity(self) -> None:
+        from memory_plane.adapters.qdrant import QdrantCandidateSource
+
+        first = QdrantCandidateSource(
+            url=QDRANT_URL,  # type: ignore[arg-type]
+            collection=self.collection,
+            dense_dim=4,
+            query_embedding_client=_StaticEmbeddingClient("model-a"),
+        )
+        first.connect()
+        compatible = QdrantCandidateSource(
+            url=QDRANT_URL,  # type: ignore[arg-type]
+            collection=self.collection,
+            dense_dim=4,
+            query_embedding_client=_StaticEmbeddingClient("model-a"),
+        )
+        compatible.connect()
+        incompatible = QdrantCandidateSource(
+            url=QDRANT_URL,  # type: ignore[arg-type]
+            collection=self.collection,
+            dense_dim=4,
+            query_embedding_client=_StaticEmbeddingClient("model-b"),
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "belongs to model"):
+            incompatible.connect()
+
     def test_payload_contains_metadata(self) -> None:
         item = _item("metadata check", labels=("alpha",))
         self.source.upsert(item, dense_vector=[0.1, 0.2, 0.3, 0.4])
@@ -211,7 +252,11 @@ class QdrantIntegrationTest(unittest.TestCase):
         )
         source.connect()
         item = _item("stale indexed value")
-        source.upsert(item, dense_vector=[1.0, 0.0, 0.0, 0.0])
+        source.upsert(
+            item,
+            dense_vector=[1.0, 0.0, 0.0, 0.0],
+            model_name="integration-static",
+        )
 
         results = source.search(
             RecallQuery(tenant_id=_T, workspace_id=_W, text="stale value")
@@ -241,8 +286,16 @@ class QdrantIntegrationTest(unittest.TestCase):
             scope=MemoryScope.PRIVATE,
             agent_id=agent_b,
         )
-        source.upsert(private_a, dense_vector=[1.0, 0.0, 0.0, 0.0])
-        source.upsert(private_b, dense_vector=[1.0, 0.0, 0.0, 0.0])
+        source.upsert(
+            private_a,
+            dense_vector=[1.0, 0.0, 0.0, 0.0],
+            model_name="integration-static",
+        )
+        source.upsert(
+            private_b,
+            dense_vector=[1.0, 0.0, 0.0, 0.0],
+            model_name="integration-static",
+        )
 
         results = source.search(
             RecallQuery(

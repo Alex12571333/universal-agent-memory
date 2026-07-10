@@ -148,6 +148,34 @@ class QdrantAdapterTest(unittest.TestCase):
         results = self.source.search(query)
         self.assertEqual((), results)
 
+    def test_mutations_reject_dimension_and_model_mismatch_before_write(self) -> None:
+        first = _item("model one")
+        second = _item("model two")
+        self.source.upsert(
+            first,
+            dense_vector=[0.1, 0.2, 0.3, 0.4],
+            model_name="embedding-v1",
+        )
+
+        with self.assertRaisesRegex(ValueError, "dimension mismatch"):
+            self.source.upsert(second, dense_vector=[0.1, 0.2])
+        with self.assertRaisesRegex(ValueError, "does not match collection model"):
+            self.source.upsert(
+                second,
+                dense_vector=[0.1, 0.2, 0.3, 0.4],
+                model_name="embedding-v2",
+            )
+
+        self.assertEqual(
+            (first.id,),
+            tuple(
+                row.item.id
+                for row in self.source.search(
+                    RecallQuery(tenant_id=_T, workspace_id=_W, text="model")
+                )
+            ),
+        )
+
     def test_canonical_ledger_blocks_stale_point_during_index_lag(self) -> None:
         ledger = InMemoryMemoryStore()
         source = QdrantCandidateSource(

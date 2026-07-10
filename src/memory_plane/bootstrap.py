@@ -113,6 +113,7 @@ def build_postgres_container(
     project_id: UUID,
     qdrant_url: str | None = None,
     qdrant_dim: int = 1536,
+    qdrant_collection: str | None = None,
     require_qdrant: bool = False,
 ) -> Container:
     """Build the durable single-server graph used by the Docker image."""
@@ -137,10 +138,14 @@ def build_postgres_container(
 
     sources: list[CandidateSource] = [store]
     qdrant_url_val = qdrant_url or os.getenv("UAM_QDRANT_URL")
+    qdrant_collection_val = (
+        qdrant_collection or os.getenv("UAM_QDRANT_COLLECTION") or "memory_items"
+    )
     qdrant_payload_text = _env_bool("UAM_QDRANT_PAYLOAD_TEXT", default=True)
     if qdrant_url_val:
         qdrant = QdrantCandidateSource(
             url=qdrant_url_val,
+            collection=qdrant_collection_val,
             dense_dim=qdrant_dim,
             query_embedding_client=client,
             ledger=store,
@@ -157,6 +162,7 @@ def build_postgres_container(
     else:
         qdrant = QdrantCandidateSource(
             url="http://localhost:6333",
+            collection=qdrant_collection_val,
             dense_dim=qdrant_dim,
             query_embedding_client=client,
             ledger=store,

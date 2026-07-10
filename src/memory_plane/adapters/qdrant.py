@@ -13,7 +13,7 @@ from datetime import datetime
 from math import sqrt
 from threading import RLock
 from typing import TYPE_CHECKING, Protocol, cast
-from uuid import UUID
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 from memory_plane.contracts.dto import Candidate, RecallQuery
 from memory_plane.domain.models import (
@@ -105,6 +105,7 @@ class QdrantCandidateSource:
         self._ledger = ledger
         self._payload_text = payload_text
         self._client: object | None = None  # QdrantClient when connected
+        self._collection_model_name: str | None = None
         # In-memory fallback for tests (activated by ``_use_in_memory_backend``).
         self._mem_items: dict[UUID, tuple[MemoryItem, list[float]]] | None = None
         self._mem_lock: RLock | None = None
@@ -147,6 +148,7 @@ class QdrantCandidateSource:
                     "sparse": SparseVectorParams(),
                 },
             )
+        self._validate_collection_identity()
 
     def _use_in_memory_backend(self) -> None:
         """Activate a minimal in-memory backend for unit tests.
@@ -182,6 +184,8 @@ class QdrantCandidateSource:
         model_name: str | None = None,
     ) -> None:
         """Insert or update a point with full metadata payload."""
+        self._validate_vector_dimensions(((item, dense_vector),))
+        self._validate_write_model(model_name)
         if self._mem_items is not None:
             return self._upsert_in_memory(item, dense_vector, model_name)
         self._upsert_qdrant(item, dense_vector, sparse_indices, sparse_values, model_name)
@@ -203,10 +207,160 @@ class QdrantCandidateSource:
         for item, _vector in items:
             if item.tenant_id != tenant_id or item.workspace_id != workspace_id:
                 raise ValueError("workspace sync contains an item outside its boundary")
+        self._validate_vector_dimensions(items)
+        self._validate_write_model(model_name)
         if self._mem_items is not None:
             self._sync_workspace_in_memory(tenant_id, workspace_id, items)
             return
         self._sync_workspace_qdrant(tenant_id, workspace_id, items, model_name)
+
+    def count_workspace_points(self, tenant_id: UUID, workspace_id: UUID) -> int:
+        """Count indexed memory points inside one boundary, excluding metadata."""
+        if self._mem_items is not None:
+            return sum(
+                item.tenant_id == tenant_id and item.workspace_id == workspace_id
+                for item, _vector in self._mem_items.values()
+            )
+        from qdrant_client.models import FieldCondition, Filter, MatchValue
+
+        result = self._client.count(  # type: ignore[union-attr]
+            collection_name=self.collection,
+            count_filter=Filter(
+                must=[
+                    FieldCondition(key="tenant_id", match=MatchValue(value=str(tenant_id))),
+                    FieldCondition(
+                        key="workspace_id",
+                        match=MatchValue(value=str(workspace_id)),
+                    ),
+                ]
+            ),
+            exact=True,
+        )
+        return int(result.count)
+
+    def _validate_collection_identity(self) -> None:
+        """Reject a collection whose vector or embedding-model identity is incompatible."""
+        from qdrant_client.models import PointStruct
+
+        info = self._client.get_collection(self.collection)  # type: ignore[union-attr]
+        vectors = info.config.params.vectors
+        dense = vectors.get("dense") if isinstance(vectors, dict) else None
+        actual_dimension = getattr(dense, "size", None)
+        if actual_dimension != self.dense_dim:
+            raise RuntimeError(
+                f"Qdrant collection {self.collection!r} dense dimension is "
+                f"{actual_dimension!r}; expected {self.dense_dim}. "
+                "Select a new collection and run a controlled migration."
+            )
+
+        expected_model = getattr(self._query_embedding_client, "model_name", None)
+        if not expected_model:
+            return
+        metadata_id = self._metadata_point_id()
+        metadata = self._client.retrieve(  # type: ignore[union-attr]
+            self.collection,
+            ids=[str(metadata_id)],
+            with_payload=True,
+            with_vectors=False,
+        )
+        if metadata:
+            payload = metadata[0].payload or {}
+            actual_model = payload.get("model_name")
+            actual_meta_dimension = payload.get("dimension")
+            if actual_model != expected_model or actual_meta_dimension != self.dense_dim:
+                raise RuntimeError(
+                    f"Qdrant collection {self.collection!r} belongs to model "
+                    f"{actual_model!r}/{actual_meta_dimension!r}, expected "
+                    f"{expected_model!r}/{self.dense_dim}. Select a new collection "
+                    "and run a controlled migration."
+                )
+            self._collection_model_name = str(actual_model)
+            return
+
+        observed_models = self._scan_existing_model_names()
+        if observed_models and observed_models != {expected_model}:
+            raise RuntimeError(
+                f"Qdrant collection {self.collection!r} contains model identities "
+                f"{sorted(observed_models)!r}, expected {expected_model!r}. "
+                "Select a new collection and run a controlled migration."
+            )
+        self._client.upsert(  # type: ignore[union-attr]
+            collection_name=self.collection,
+            points=[
+                PointStruct(
+                    id=str(metadata_id),
+                    vector={"dense": [0.0] * self.dense_dim},
+                    payload={
+                        "_uam_record_type": "collection_metadata",
+                        "model_name": expected_model,
+                        "dimension": self.dense_dim,
+                    },
+                )
+            ],
+        )
+        self._collection_model_name = expected_model
+
+    def _scan_existing_model_names(self) -> set[str]:
+        """Read legacy point metadata before adopting a collection identity."""
+        models: set[str] = set()
+        missing_model = False
+        offset: object | None = None
+        while True:
+            points, next_offset = self._client.scroll(  # type: ignore[union-attr]
+                collection_name=self.collection,
+                limit=256,
+                offset=offset,
+                with_payload=True,
+                with_vectors=False,
+            )
+            for point in points:
+                payload = point.payload or {}
+                if payload.get("_uam_record_type") == "collection_metadata":
+                    continue
+                model_name = payload.get("model_name")
+                if model_name:
+                    models.add(str(model_name))
+                else:
+                    missing_model = True
+            if next_offset is None:
+                break
+            offset = next_offset
+        if missing_model:
+            raise RuntimeError(
+                f"Qdrant collection {self.collection!r} contains points without a "
+                "verifiable embedding model. Select a new collection and reindex."
+            )
+        return models
+
+    def _validate_write_model(self, model_name: str | None) -> None:
+        """Prevent mixed embedding models inside one collection."""
+        if model_name is None:
+            if self._collection_model_name is not None:
+                raise ValueError("model_name is required for an identified Qdrant collection")
+            return
+        if self._collection_model_name is None:
+            self._collection_model_name = model_name
+            return
+        if model_name != self._collection_model_name:
+            raise ValueError(
+                f"embedding model {model_name!r} does not match collection model "
+                f"{self._collection_model_name!r}"
+            )
+
+    def _validate_vector_dimensions(
+        self,
+        items: Sequence[tuple[MemoryItem, list[float]]],
+    ) -> None:
+        """Reject malformed vectors before any index mutation."""
+        for _item, vector in items:
+            if len(vector) != self.dense_dim:
+                raise ValueError(
+                    f"dense vector dimension mismatch: expected {self.dense_dim}, "
+                    f"got {len(vector)}"
+                )
+
+    def _metadata_point_id(self) -> UUID:
+        return uuid5(NAMESPACE_URL, f"obelisk-memory:qdrant:{self.collection}:metadata")
 
     # ---- in-memory fallback implementation ------------------------------
 
