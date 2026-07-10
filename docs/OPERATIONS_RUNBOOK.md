@@ -158,6 +158,14 @@ UAM_MEMORY_LLM_API_KEY_FILE=/run/secrets/memory_llm_api_key
 The API rejects unlisted origins and redirects. Apply a matching network egress
 policy at the container or cluster layer as defense in depth.
 
+## Conversation staging retention
+
+Install [conversation-retention.cron](../deploy/ops/conversation-retention.cron)
+as the `obelisk` service account. It runs the bounded purge endpoint hourly for
+expired `curated_only` transcript staging rows. Source its environment from the
+secret manager and provide an operator key through `UAM_RETENTION_OPERATOR_KEY`;
+do not put a credential in the cron file. Monitor its exit status and log file.
+
 Provision the referenced agent and thread UUIDs with the operator key before
 starting native integrations. Prefer
 `UAM_API_PRINCIPAL_BINDINGS_JSON_FILE=/run/secrets/uam_principal_bindings` when

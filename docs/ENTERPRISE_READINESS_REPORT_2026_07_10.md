@@ -1,6 +1,6 @@
 # Production envelope report — 2026-07-10
 
-Passed: 148
+Passed: 150
 Failed: 0
 
 | Check | Status | Detail |
@@ -37,6 +37,7 @@ Failed: 0
 | `file:scripts/audit_retention.py` | PASS | required production artifact |
 | `file:scripts/verify_release_evidence.py` | PASS | required production artifact |
 | `file:scripts/migrate_vector_collection.py` | PASS | required production artifact |
+| `file:scripts/purge_expired_conversations.py` | PASS | required production artifact |
 | `file:docs/assets/obelisk-memory-hero.png` | PASS | required production artifact |
 | `file:docs/GITHUB_BRANCH_PROTECTION.md` | PASS | required production artifact |
 | `file:docs/OPERATIONS_RUNBOOK.md` | PASS | required production artifact |
@@ -145,6 +146,7 @@ Failed: 0
 | `conversation:pipeline-runner` | PASS | conversation pipeline runner validates raw capture, curation and recall |
 | `conversation:curated-only-purge` | PASS | curated-only policy purges raw message content after curation |
 | `conversation:staging-ttl` | PASS | curated-only staging has bounded TTL and operator purge coverage |
+| `conversation:retention-schedule` | PASS | hourly transcript-staging retention schedule is supplied |
 | `proposals:atomic-accept` | PASS | proposal acceptance has one PostgreSQL memory/outbox/status transaction |
 | `tests:conversation-pipeline-runner` | PASS | conversation pipeline runner behavior is covered |
 | `embedding:live-regression-runner` | PASS | live OpenAI-compatible embedding runner validates dimension and semantic recall |

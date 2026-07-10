@@ -1,0 +1,3 @@
+# Run hourly as the deployment service account. Source /etc/obelisk-memory.env
+# from the secret manager; never place the operator key directly in this file.
+17 * * * * obelisk /usr/local/bin/python /app/scripts/purge_expired_conversations.py --base-url "$UAM_INTERNAL_BASE_URL" --api-key "$UAM_RETENTION_OPERATOR_KEY" --tenant-id "$UAM_SERVER_ID" --workspace-id "$UAM_PROJECT_ID" >> /var/log/obelisk/conversation-retention.log 2>&1
