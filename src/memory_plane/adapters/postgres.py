@@ -133,6 +133,12 @@ class PostgresMemoryLedger:
             if row is None or row["table_name"] is None:
                 raise RuntimeError("memory schema is not installed")
 
+    def ping(self) -> bool:
+        """Actively verify canonical PostgreSQL readiness."""
+        with self._connection() as connection:
+            row = connection.execute("select 1 as ready").fetchone()
+        return bool(row and row["ready"] == 1)
+
     @property
     def name(self) -> str:
         """Return the stable retrieval diagnostic name."""

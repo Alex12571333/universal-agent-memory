@@ -73,3 +73,27 @@ groups:
             Reindex failures can leave Qdrant dimensions/model metadata
             inconsistent with configured embeddings. Stop model switches until
             the failure is investigated.
+
+      - alert: ObeliskRetrievalDegraded
+        expr: uam_retrieval_degraded_sources > 0
+        for: 2m
+        labels:
+          severity: warning
+          service: obelisk-memory
+        annotations:
+          summary: Obelisk Memory retrieval is degraded
+          description: >
+            At least one recall candidate source is unavailable. Canonical
+            PostgreSQL recall remains ready, but semantic coverage may be lower.
+
+      - alert: ObeliskRetrievalSourceFailures
+        expr: increase(uam_retrieval_source_failures_total[10m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+          service: obelisk-memory
+        annotations:
+          summary: Obelisk Memory retrieval source failures detected
+          description: >
+            One or more recall sources failed during the last ten minutes.
+            Inspect readiness and dependency logs even if the source recovered.

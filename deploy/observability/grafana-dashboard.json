@@ -376,6 +376,50 @@
       ],
       "title": "Ledger growth",
       "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 14
+      },
+      "id": 8,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "expr": "uam_retrieval_degraded_sources",
+          "legendFormat": "degraded sources",
+          "refId": "A"
+        },
+        {
+          "expr": "uam_retrieval_source_failures_total",
+          "legendFormat": "source failures total",
+          "refId": "B"
+        }
+      ],
+      "title": "Retrieval dependency health",
+      "type": "timeseries"
     }
   ],
   "refresh": "30s",

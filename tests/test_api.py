@@ -119,6 +119,30 @@ def test_api_key_protects_memory_routes_but_not_health() -> None:
     assert valid.status_code == 201
 
 
+def test_readiness_is_public_and_reports_optional_degradation(monkeypatch) -> None:
+    container = build_in_memory_container()
+    client = TestClient(create_app(container, api_key="secret"))
+
+    healthy = client.get("/ready")
+    container.retrieval.record_failure("qdrant_hybrid", ConnectionError("offline"))
+    degraded = client.get("/ready")
+    monkeypatch.setattr(container.store, "ping", lambda: False)
+    failed = client.get("/ready")
+
+    assert healthy.status_code == 200
+    assert healthy.json()["status"] == "ready"
+    assert degraded.status_code == 200
+    assert degraded.json()["status"] == "degraded"
+    assert degraded.json()["retrieval_sources"]["qdrant_hybrid"]["error_type"] == (
+        "ConnectionError"
+    )
+    metrics = client.get("/metrics", headers={"Authorization": "Bearer secret"})
+    assert "uam_retrieval_source_failures_total 1" in metrics.text
+    assert "uam_retrieval_degraded_sources 1" in metrics.text
+    assert failed.status_code == 503
+    assert failed.json()["status"] == "not_ready"
+
+
 def test_api_responses_include_security_headers() -> None:
     client = TestClient(create_app(build_in_memory_container(), api_key="secret"))
 

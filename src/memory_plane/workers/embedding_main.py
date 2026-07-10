@@ -25,7 +25,12 @@ async def run() -> None:
     poll_seconds = float(os.getenv("UAM_EMBED_POLL_SECONDS", "0.5"))
 
     # Build container to get PostgresLedger and EmbeddingService
-    container = build_postgres_container(dsn, server_id=server_id, project_id=project_id)
+    container = build_postgres_container(
+        dsn,
+        server_id=server_id,
+        project_id=project_id,
+        require_qdrant=True,
+    )
 
     async def handler(event: IntegrationEvent) -> None:
         if event.name != "memory.retained.v1":

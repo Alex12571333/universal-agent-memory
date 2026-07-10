@@ -86,11 +86,18 @@ static readiness script are green.
    must not describe `UAM_MEMORY_TEXT_ENCRYPTION_SCOPES=all` as full-database or
    backup encryption.
 
-6. **Fail-soft recall is not implemented end to end.**
-   Bootstrap synchronously connects Qdrant and retrieval calls each source
-   without source-level failure isolation. A Qdrant or embedding outage can
-   fail startup/recall instead of falling back to PostgreSQL. `/health` reports
-   process liveness only and cannot prove PostgreSQL/Qdrant/NATS readiness.
+6. **Fail-soft recall is implemented; target outage evidence remains required.**
+   PostgreSQL is the required canonical candidate source. Qdrant connection and
+   query failures are isolated per source, recorded without endpoint/credential
+   text, and recall falls back to PostgreSQL lexical results. `/health` remains
+   liveness-only while public `/ready` actively checks canonical storage,
+   returns `503 not_ready` for PostgreSQL failure and `200 degraded` for an
+   optional vector outage. The embedding worker requires Qdrant and fails fast
+   so JetStream retry semantics remain intact. Unit/API tests cover optional,
+   required and recovery transitions. A local PostgreSQL 17 runtime test passed
+   both API fallback and worker fail-fast scenarios against an intentionally
+   unreachable Qdrant endpoint; target container outage/recovery evidence is
+   still needed.
 
 7. **Workspace reindex is destructive outside its scope.**
    `EmbeddingService.reindex_all()` selects one workspace, then the Qdrant
@@ -173,9 +180,10 @@ static readiness script are green.
 14. `index_stale` is not computed from outbox/index state or exposed as an API
     invariant, so agents cannot distinguish complete recall from a lagging
     vector index.
-15. Worker logs are unstructured, worker-specific Prometheus metrics are not
-    served by the worker, and readiness does not expose dependency state or
-    build/deployment identity validation as an operational gate.
+15. Worker logs are unstructured and worker-specific Prometheus metrics are not
+    served by the worker. API readiness exposes canonical/vector retrieval
+    state, but NATS/worker state and build/deployment identity are not yet an
+    operational readiness gate.
 
 ### P2 — deployment hardening and supply chain
 
@@ -329,7 +337,7 @@ Required gates:
 4. Preserve target evidence for atomic accepted/overridden conflict winners,
    stale-CAS rollback and Qdrant precedence; the implementation and local live
    coverage are complete.
-5. Implement source-isolated fail-soft recall, dependency readiness and safe
+5. Preserve Qdrant outage/recovery readiness evidence and implement safe
    multi-workspace reindex.
 6. Complete encryption/backup coverage and close the authenticated UI/SSRF
    boundaries.

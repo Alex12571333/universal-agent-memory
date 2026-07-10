@@ -17,6 +17,8 @@ REQUIRED_METRICS = (
     "uam_processed_events_inflight_total",
     "uam_embedding_failures_total",
     "uam_embedding_reindex_failures_total",
+    "uam_retrieval_degraded_sources",
+    "uam_retrieval_source_failures_total",
 )
 REQUIRED_ALERTS = (
     "ObeliskOutboxDeadLetters",
@@ -25,6 +27,8 @@ REQUIRED_ALERTS = (
     "ObeliskProcessedEventLeasesHigh",
     "ObeliskEmbeddingFailures",
     "ObeliskReindexFailures",
+    "ObeliskRetrievalDegraded",
+    "ObeliskRetrievalSourceFailures",
 )
 
 

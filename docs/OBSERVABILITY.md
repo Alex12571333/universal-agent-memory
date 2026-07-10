@@ -35,11 +35,12 @@ The dashboard covers:
 - active processed-event leases;
 - embedding and reindex throughput/failures;
 - embedding/reindex latency;
+- degraded retrieval sources and cumulative source failures;
 - memory, audit and API-key ledger growth.
 
 The alert rules cover the same production failure modes used by
 `scripts/check_metrics_health.py`: dead letters, outbox backlog, outbox lag,
-stuck leases, embedding failures and reindex failures.
+stuck leases, embedding failures, reindex failures and recall-source outages.
 
 ## Release gate
 
@@ -53,6 +54,8 @@ UAM_API_KEY=... PYTHONPATH=src python scripts/check_metrics_health.py \
   --require-metric uam_outbox_lag_seconds \
   --require-metric uam_processed_events_inflight_total \
   --require-metric uam_embedding_failures_total \
+  --require-metric uam_retrieval_degraded_sources \
+  --require-metric uam_retrieval_source_failures_total \
   --report ./ops/metrics-health.json
 
 PYTHONPATH=src python scripts/observability_preflight.py \

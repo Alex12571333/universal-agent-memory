@@ -77,6 +77,9 @@ def build_in_memory_container() -> Container:
     )
     qdrant._use_in_memory_backend()
     embedding = EmbeddingService(store, qdrant, client)
+    retrieval = RetrievalService((store, qdrant))
+    retrieval.record_success(store.name)
+    retrieval.record_success(qdrant.name)
     observations = InMemoryObservationRepository(store)
     conflict_reviews = InMemoryConflictReviewRepository(store)
     graph = InMemoryGraphRepository(store)
@@ -85,7 +88,7 @@ def build_in_memory_container() -> Container:
         retention=retention,
         ingestion=IngestionService(retention),
         identities=IdentityProvisioningService(store),
-        retrieval=RetrievalService((store, qdrant)),
+        retrieval=retrieval,
         context=ContextCompiler(),
         reflection=ReflectionService(store, observations),
         conflicts=ConflictService(store, conflict_reviews),
@@ -110,6 +113,7 @@ def build_postgres_container(
     project_id: UUID,
     qdrant_url: str | None = None,
     qdrant_dim: int = 1536,
+    require_qdrant: bool = False,
 ) -> Container:
     """Build the durable single-server graph used by the Docker image."""
     store = PostgresMemoryLedger(dsn)
@@ -142,7 +146,13 @@ def build_postgres_container(
             ledger=store,
             payload_text=qdrant_payload_text,
         )
-        qdrant.connect()
+        qdrant_error: Exception | None = None
+        try:
+            qdrant.connect()
+        except Exception as exc:
+            if require_qdrant:
+                raise
+            qdrant_error = exc
         sources.append(qdrant)
     else:
         qdrant = QdrantCandidateSource(
@@ -154,6 +164,14 @@ def build_postgres_container(
         )
         qdrant._use_in_memory_backend()
 
+    retrieval = RetrievalService(tuple(sources), required_sources=frozenset({store.name}))
+    retrieval.record_success(store.name)
+    if qdrant_url_val:
+        if qdrant_error is None:
+            retrieval.record_success(qdrant.name)
+        else:
+            retrieval.record_failure(qdrant.name, qdrant_error)
+
     embedding = EmbeddingService(store, qdrant, client)
     memory_llm = build_memory_llm_client()
 
@@ -161,7 +179,7 @@ def build_postgres_container(
         retention=retention,
         ingestion=IngestionService(retention),
         identities=IdentityProvisioningService(store),
-        retrieval=RetrievalService(tuple(sources)),
+        retrieval=retrieval,
         context=ContextCompiler(),
         reflection=ReflectionService(store, observations),
         conflicts=ConflictService(store, conflict_reviews),

@@ -62,6 +62,7 @@ contains placeholders on purpose.
 
 ```bash
 curl http://localhost:6798/health
+curl http://localhost:6798/ready
 curl -H "Authorization: Bearer $UAM_API_KEY" http://localhost:6798/metrics
 UAM_API_KEY=... PYTHONPATH=src python scripts/check_metrics_health.py \
   --metrics-url http://localhost:6798/metrics \

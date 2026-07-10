@@ -33,6 +33,8 @@ def test_grafana_dashboard_uses_real_exposed_metrics() -> None:
         "uam_audit_events_total",
         "uam_api_keys_total",
         "uam_api_keys_revoked_total",
+        "uam_retrieval_degraded_sources",
+        "uam_retrieval_source_failures_total",
     }
 
     all_expressions = "\n".join(sorted(panel_exprs))
@@ -52,6 +54,8 @@ def test_prometheus_alerts_cover_production_failure_modes() -> None:
         "ObeliskProcessedEventLeasesHigh",
         "ObeliskEmbeddingFailures",
         "ObeliskReindexFailures",
+        "ObeliskRetrievalDegraded",
+        "ObeliskRetrievalSourceFailures",
     ):
         assert f"alert: {alert_name}" in alerts
 
@@ -62,6 +66,8 @@ def test_prometheus_alerts_cover_production_failure_modes() -> None:
         "uam_processed_events_inflight_total",
         "uam_embedding_failures_total",
         "uam_embedding_reindex_failures_total",
+        "uam_retrieval_degraded_sources",
+        "uam_retrieval_source_failures_total",
     ):
         assert metric in alerts
 

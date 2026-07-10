@@ -5,6 +5,7 @@ from uuid import uuid4
 
 from memory_plane.bootstrap import build_in_memory_container
 from memory_plane.contracts.dto import (
+    Candidate,
     ContextRecipe,
     IngestDocumentCommand,
     RecallQuery,
@@ -21,7 +22,28 @@ from memory_plane.domain.models import (
     MemoryStatus,
     Provenance,
 )
+from memory_plane.services.retrieval import RetrievalService
 from memory_plane.workers.handlers import RetainedEventRouter
+
+
+class _FailingCandidateSource:
+    name = "optional_vector"
+
+    def search(self, _query: RecallQuery) -> tuple[Candidate, ...]:
+        raise ConnectionError("vector dependency unavailable")
+
+
+class _RecoveringCandidateSource:
+    name = "recovering_vector"
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def search(self, _query: RecallQuery) -> tuple[Candidate, ...]:
+        self.calls += 1
+        if self.calls == 1:
+            raise ConnectionError("temporary vector outage")
+        return ()
 
 
 class MemoryPlaneTest(unittest.TestCase):
@@ -149,6 +171,59 @@ class MemoryPlaneTest(unittest.TestCase):
 
         self.assertEqual(expected.item.id, result.candidates[0].item.id)
         self.assertTrue(all(row.item.tenant_id == self.tenant for row in result.candidates))
+
+    def test_recall_falls_back_when_optional_candidate_source_fails(self) -> None:
+        expected = self.retain("PostgreSQL fallback survives vector outage")
+        retrieval = RetrievalService((self.container.store, _FailingCandidateSource()))
+
+        result = retrieval.recall(
+            RecallQuery(
+                tenant_id=self.tenant,
+                workspace_id=self.workspace,
+                text="vector outage fallback",
+            )
+        )
+
+        self.assertEqual((expected.item.id,), tuple(row.item.id for row in result.candidates))
+        self.assertEqual((self.container.store.name,), result.sources_used)
+        self.assertEqual(
+            "degraded",
+            retrieval.source_health()["optional_vector"]["status"],
+        )
+
+    def test_recall_propagates_required_canonical_source_failure(self) -> None:
+        retrieval = RetrievalService(
+            (_FailingCandidateSource(),),
+            required_sources=frozenset({"optional_vector"}),
+        )
+
+        with self.assertRaises(ConnectionError):
+            retrieval.recall(
+                RecallQuery(
+                    tenant_id=self.tenant,
+                    workspace_id=self.workspace,
+                    text="required source",
+                )
+            )
+
+        self.assertEqual("failed", retrieval.source_health()["optional_vector"]["status"])
+
+    def test_optional_source_health_recovers_after_success(self) -> None:
+        source = _RecoveringCandidateSource()
+        retrieval = RetrievalService((self.container.store, source))
+        query = RecallQuery(
+            tenant_id=self.tenant,
+            workspace_id=self.workspace,
+            text="dependency recovery",
+        )
+
+        retrieval.recall(query)
+        retrieval.recall(query)
+
+        state = retrieval.source_health()[source.name]
+        self.assertEqual("healthy", state["status"])
+        self.assertEqual(1, state["failures"])
+        self.assertIsNone(state["error_type"])
 
     def test_recall_excludes_rejected_and_archived_memory(self) -> None:
         self.retain("Alpha secret rejected", status=MemoryStatus.REJECTED)
