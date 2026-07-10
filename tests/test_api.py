@@ -119,6 +119,99 @@ def test_api_key_protects_memory_routes_but_not_health() -> None:
     assert valid.status_code == 201
 
 
+def test_operator_browser_session_uses_httponly_cookie_and_csrf(monkeypatch) -> None:
+    monkeypatch.setenv(
+        "UAM_API_KEYS",
+        "operator:operator-secret:operator,agent:agent-secret:agent",
+    )
+    monkeypatch.setenv("UAM_UI_SESSION_SIGNING_KEY", "u" * 64)
+    monkeypatch.setenv("UAM_UI_COOKIE_SECURE", "false")
+    client = TestClient(create_app(build_in_memory_container()))
+
+    assert client.get("/ui").status_code == 200
+    anonymous = client.get("/v1/ui/session")
+    denied_agent = client.post("/v1/ui/session", json={"api_key": "agent-secret"})
+    login = client.post("/v1/ui/session", json={"api_key": "operator-secret"})
+
+    assert anonymous.json() == {"authenticated": False, "auth_required": True}
+    assert denied_agent.status_code == 403
+    assert login.status_code == 200
+    assert login.json()["principal"] == "operator"
+    assert "operator-secret" not in login.text
+    cookie = login.headers["set-cookie"]
+    assert "HttpOnly" in cookie
+    assert "SameSite=strict" in cookie
+    assert "operator-secret" not in cookie
+
+    assert client.get("/v1/settings/models").status_code == 200
+    body = {
+        "layer": "semantic",
+        "scope": "workspace",
+        "kind": "operator_note",
+        "text": "browser session protected write",
+    }
+    missing_csrf = client.post("/v1/memory/retain", json=body)
+    accepted = client.post(
+        "/v1/memory/retain",
+        json=body,
+        headers={"X-CSRF-Token": login.json()["csrf_token"]},
+    )
+    assert missing_csrf.status_code == 403
+    assert accepted.status_code == 201
+
+    bad_logout = client.delete("/v1/ui/session")
+    logout = client.delete(
+        "/v1/ui/session",
+        headers={"X-CSRF-Token": login.json()["csrf_token"]},
+    )
+    assert bad_logout.status_code == 403
+    assert logout.status_code == 200
+    assert client.get("/v1/settings/models").status_code == 401
+
+
+def test_browser_session_requires_signing_key_and_secure_cookie_is_configurable(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("UAM_API_KEYS", "operator:operator-secret:operator")
+    monkeypatch.delenv("UAM_UI_SESSION_SIGNING_KEY", raising=False)
+    missing_key = TestClient(create_app(build_in_memory_container()))
+    assert missing_key.post(
+        "/v1/ui/session",
+        json={"api_key": "operator-secret"},
+    ).status_code == 503
+
+    monkeypatch.setenv("UAM_UI_SESSION_SIGNING_KEY", "too-short")
+    with pytest.raises(ValueError, match="at least 32"):
+        create_app(build_in_memory_container())
+
+    monkeypatch.setenv("UAM_UI_SESSION_SIGNING_KEY", "u" * 64)
+    monkeypatch.setenv("UAM_UI_COOKIE_SECURE", "true")
+    secure = TestClient(create_app(build_in_memory_container()))
+    response = secure.post("/v1/ui/session", json={"api_key": "operator-secret"})
+    assert response.status_code == 200
+    assert "Secure" in response.headers["set-cookie"]
+
+
+def test_api_key_revocation_invalidates_existing_browser_session(monkeypatch) -> None:
+    monkeypatch.setenv("UAM_API_KEYS", "operator:operator-secret:operator")
+    monkeypatch.setenv("UAM_UI_SESSION_SIGNING_KEY", "u" * 64)
+    client = TestClient(create_app(build_in_memory_container()))
+    login = client.post("/v1/ui/session", json={"api_key": "operator-secret"})
+    csrf = login.json()["csrf_token"]
+    listed = client.get("/v1/keys")
+    operator_key = listed.json()["keys"][0]
+
+    revoked = client.post(
+        f"/v1/keys/{operator_key['id']}/revoke",
+        json={"reason": "browser-session revocation test"},
+        headers={"X-CSRF-Token": csrf},
+    )
+    denied = client.get("/v1/settings/models")
+
+    assert revoked.status_code == 200
+    assert denied.status_code == 401
+
+
 def test_readiness_is_public_and_reports_optional_degradation(monkeypatch) -> None:
     container = build_in_memory_container()
     client = TestClient(create_app(container, api_key="secret"))
@@ -1123,6 +1216,70 @@ def test_model_settings_endpoints_save_and_probe_fake_provider() -> None:
     assert probed.json()["dimension"] == 32
     assert resaved.status_code == 200
     assert resaved.json()["desired"]["api_key"] == "loca…cret"
+
+
+def test_model_settings_enforce_endpoint_allowlist_and_never_persist_api_key(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    settings_path = tmp_path / "model-settings.json"
+    monkeypatch.setenv("UAM_MODEL_SETTINGS_PATH", str(settings_path))
+    monkeypatch.setenv("UAM_MODEL_ENDPOINT_ALLOWLIST", "https://allowed.example")
+    client = TestClient(create_app(build_in_memory_container()))
+    body = {
+        "provider": "openai-compatible",
+        "model_name": "provider/model-v2",
+        "dimension": 32,
+        "base_url": "https://allowed.example/v1",
+        "api_key": "provider-secret-value",
+        "timeout_seconds": 5,
+    }
+
+    blocked_save = client.put(
+        "/v1/settings/models",
+        json={**body, "base_url": "http://169.254.169.254/latest/meta-data"},
+    )
+    blocked_probe = client.post(
+        "/v1/settings/models/test",
+        json={**body, "base_url": "https://not-allowed.example/v1"},
+    )
+    saved = client.put("/v1/settings/models", json=body)
+
+    assert blocked_save.status_code == 422
+    assert blocked_probe.status_code == 422
+    assert "allowlist" in blocked_probe.json()["detail"]
+    assert saved.status_code == 200
+    assert saved.json()["desired"]["api_key"] == "prov…alue"
+    persisted = json.loads(settings_path.read_text(encoding="utf-8"))
+    assert "api_key" not in persisted
+    assert "provider-secret-value" not in settings_path.read_text(encoding="utf-8")
+    assert settings_path.stat().st_mode & 0o777 == 0o600
+
+
+def test_loading_legacy_model_settings_removes_persisted_api_key(monkeypatch, tmp_path) -> None:
+    settings_path = tmp_path / "model-settings.json"
+    settings_path.write_text(
+        json.dumps(
+            {
+                "provider": "fake",
+                "model_name": "legacy",
+                "dimension": 32,
+                "base_url": None,
+                "api_key": "legacy-plaintext-secret",
+                "timeout_seconds": 5,
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("UAM_MODEL_SETTINGS_PATH", str(settings_path))
+
+    response = TestClient(create_app(build_in_memory_container())).get(
+        "/v1/settings/models"
+    )
+
+    assert response.status_code == 200
+    assert response.json()["desired"]["api_key"] is None
+    assert "legacy-plaintext-secret" not in settings_path.read_text(encoding="utf-8")
 
 
 def test_system_status_endpoint_reports_real_process_fields(monkeypatch) -> None:

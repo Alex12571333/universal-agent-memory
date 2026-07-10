@@ -134,7 +134,29 @@ normal integrations:
 UAM_API_KEYS=openclaw:...:agent,hermes:...:agent,operator:...:operator
 UAM_API_PRINCIPAL_BINDINGS_JSON={"openclaw":{"tenant_id":"<server-uuid>","workspace_id":"<project-uuid>","agent_id":"<openclaw-uuid>"},"hermes":{"tenant_id":"<server-uuid>","workspace_id":"<project-uuid>","agent_id":"<hermes-uuid>"}}
 UAM_REQUIRE_IDENTITY_BINDINGS=true
+UAM_UI_SESSION_SIGNING_KEY_FILE=/absolute/path/to/ui_session_signing_key
+UAM_UI_SESSION_TTL_SECONDS=28800
+UAM_UI_COOKIE_SECURE=true
 ```
+
+The browser submits the operator key only to `POST /v1/ui/session`. The server
+returns an HttpOnly `SameSite=Strict` cookie and a CSRF token used by the React
+client for mutations. Never put an API key in a URL, localStorage or reverse
+proxy header. Production browser sessions require HTTPS and a dedicated signing
+key mounted from the secret manager.
+
+Model endpoint probes are an outbound-network boundary. Set an exact-origin
+allowlist and keep provider credentials in secret files rather than the desired
+settings JSON:
+
+```dotenv
+UAM_MODEL_ENDPOINT_ALLOWLIST=https://embedding-gateway.example.com,https://model-gateway.example.com
+UAM_EMBEDDING_API_KEY_FILE=/run/secrets/embedding_api_key
+UAM_MEMORY_LLM_API_KEY_FILE=/run/secrets/memory_llm_api_key
+```
+
+The API rejects unlisted origins and redirects. Apply a matching network egress
+policy at the container or cluster layer as defense in depth.
 
 Provision the referenced agent and thread UUIDs with the operator key before
 starting native integrations. Prefer

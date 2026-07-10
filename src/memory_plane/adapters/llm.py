@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit, urlunsplit
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from memory_plane.config.secrets import read_secret_env
 
@@ -44,6 +44,21 @@ _RESERVED_EXTRA_BODY_FIELDS = frozenset(
         "user",
     }
 )
+
+
+class _RejectRedirects(HTTPRedirectHandler):
+    """Prevent a trusted model gateway from redirecting to another origin."""
+
+    def redirect_request(self, *args: Any, **kwargs: Any) -> None:
+        return None
+
+
+_NO_REDIRECT_OPENER = build_opener(_RejectRedirects())
+
+
+def urlopen(request: Request, timeout: float) -> Any:
+    """Open one model request without following HTTP redirects."""
+    return _NO_REDIRECT_OPENER.open(request, timeout=timeout)
 
 
 @dataclass(frozen=True, slots=True)

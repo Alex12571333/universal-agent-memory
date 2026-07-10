@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit, urlunsplit
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from memory_plane.config.secrets import read_secret_env
 from memory_plane.ports.embeddings import EmbeddingClient
@@ -18,6 +18,21 @@ from memory_plane.ports.embeddings import EmbeddingClient
 _SUPPORTED_PROVIDERS = frozenset({"fake", "openai-compatible", "openai", "ollama", "tei"})
 _OPENAI_API_BASE_URL = "https://api.openai.com/v1"
 _COMPATIBLE_API_BASE_URL = "http://localhost:8000/v1"
+
+
+class _RejectRedirects(HTTPRedirectHandler):
+    """Prevent an allowlisted model endpoint from redirecting to another origin."""
+
+    def redirect_request(self, *args: Any, **kwargs: Any) -> None:
+        return None
+
+
+_NO_REDIRECT_OPENER = build_opener(_RejectRedirects())
+
+
+def urlopen(request: Request, timeout: float) -> Any:
+    """Open one provider request without following HTTP redirects."""
+    return _NO_REDIRECT_OPENER.open(request, timeout=timeout)
 
 
 class FakeEmbeddingClient(EmbeddingClient):

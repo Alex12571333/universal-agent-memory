@@ -1,6 +1,6 @@
 import { Component, useEffect, useMemo, useState } from "react";
-import type { PointerEvent, ReactNode } from "react";
-import { api } from "./api";
+import type { FormEvent, PointerEvent, ReactNode } from "react";
+import { api, setCsrfToken, type UiSession } from "./api";
 import {
   DEFAULT_TENANT,
   DEFAULT_WORKSPACE,
@@ -62,8 +62,104 @@ type GraphNode = {
 export function App() {
   return (
     <ErrorBoundary>
-      <Dashboard />
+      <AuthenticatedApp />
     </ErrorBoundary>
+  );
+}
+
+function AuthenticatedApp() {
+  const [session, setSession] = useState<UiSession | null>(null);
+  const [checking, setChecking] = useState(true);
+  const [apiKey, setApiKey] = useState("");
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  async function bootstrap() {
+    setChecking(true);
+    try {
+      const current = await api.session();
+      setCsrfToken(current.csrf_token);
+      setSession(current);
+      setError("");
+    } catch (reason) {
+      setCsrfToken(null);
+      setSession({ authenticated: false, auth_required: true });
+      setError(reason instanceof Error ? reason.message : "Не удалось проверить сессию");
+    } finally {
+      setChecking(false);
+    }
+  }
+
+  useEffect(() => {
+    void bootstrap();
+    const requireAuth = () => {
+      setCsrfToken(null);
+      setSession({ authenticated: false, auth_required: true });
+    };
+    window.addEventListener("uam-auth-required", requireAuth);
+    return () => window.removeEventListener("uam-auth-required", requireAuth);
+  }, []);
+
+  async function login(event: FormEvent) {
+    event.preventDefault();
+    if (!apiKey.trim()) return;
+    setSubmitting(true);
+    setError("");
+    try {
+      const current = await api.login(apiKey.trim());
+      setApiKey("");
+      setCsrfToken(current.csrf_token);
+      setSession(current);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Вход не выполнен");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function logout() {
+    try {
+      await api.logout();
+    } finally {
+      setCsrfToken(null);
+      setSession({ authenticated: false, auth_required: true });
+    }
+  }
+
+  if (checking) {
+    return <div className="auth-screen"><div className="auth-card"><span className="auth-orb" /><p>Проверка защищённой сессии…</p></div></div>;
+  }
+  if (!session?.authenticated) {
+    return (
+      <div className="auth-screen">
+        <form className="auth-card" onSubmit={login}>
+          <span className="auth-orb" />
+          <p className="eyebrow">Защищённая консоль оператора</p>
+          <h1>Вход в Obelisk Memory</h1>
+          <p>Ключ используется один раз для создания HttpOnly-сессии и не сохраняется в браузерном хранилище.</p>
+          <label htmlFor="operator-key">API-ключ operator или admin</label>
+          <input
+            id="operator-key"
+            type="password"
+            autoComplete="current-password"
+            value={apiKey}
+            onChange={(event) => setApiKey(event.target.value)}
+            autoFocus
+          />
+          {error ? <div className="auth-error">{error}</div> : null}
+          <button type="submit" disabled={submitting || !apiKey.trim()}>
+            {submitting ? "Проверка…" : "Войти"}
+          </button>
+        </form>
+      </div>
+    );
+  }
+  return (
+    <Dashboard
+      principal={session.principal ?? "local-dev"}
+      canLogout={session.auth_required}
+      onLogout={logout}
+    />
   );
 }
 
@@ -91,7 +187,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
   }
 }
 
-function Dashboard() {
+function Dashboard(props: { principal: string; canLogout: boolean; onLogout: () => void }) {
   const [view, setView] = useState<View>("dashboard");
   const [tenant, setTenant] = useState(DEFAULT_TENANT);
   const [workspace, setWorkspace] = useState(DEFAULT_WORKSPACE);
@@ -216,6 +312,9 @@ function Dashboard() {
           tenant={tenant}
           workspace={workspace}
           loading={loading}
+          principal={props.principal}
+          canLogout={props.canLogout}
+          onLogout={props.onLogout}
         />
         <section className="kpi-row">
           {kpis.map(([label, value, hint, icon]) => (
@@ -398,6 +497,9 @@ function Hero(props: {
   tenant: string;
   workspace: string;
   loading: boolean;
+  principal: string;
+  canLogout: boolean;
+  onLogout: () => void;
 }) {
   return (
     <header className="hero">
@@ -411,7 +513,9 @@ function Hero(props: {
         <span className="self-hosted"><i /> Локально</span>
         <div className="identity-row"><span>Сервер</span><code title={props.tenant}>{shortUuid(props.tenant)}</code></div>
         <div className="identity-row"><span>Проект</span><code title={props.workspace}>{shortUuid(props.workspace)}</code></div>
+        <div className="identity-row"><span>Оператор</span><code>{props.principal}</code></div>
         <span className={props.loading ? "sync loading" : "sync"}>{props.loading ? "Синхронизация" : "Живой статус"}</span>
+        {props.canLogout ? <button className="logout-button" onClick={props.onLogout}>Выйти</button> : null}
       </div>
     </header>
   );

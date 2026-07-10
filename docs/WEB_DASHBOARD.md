@@ -11,6 +11,28 @@ SaaS admin UI. If the React build is absent during development, the server serve
 the embedded minimal dashboard so API smoke tests and local operation remain
 available.
 
+## Browser authentication
+
+When API keys are configured, `/ui` and its static assets remain loadable so the
+login screen can render, but every operator API remains protected. The login
+form exchanges an `operator` or `admin` key for a short-lived HMAC-signed
+HttpOnly cookie. The original key is held only in component memory during the
+exchange and is never written to localStorage, sessionStorage or JavaScript
+cookies.
+
+Unsafe cookie-authenticated requests require the per-session `X-CSRF-Token`.
+Cookies use `SameSite=Strict`; production requires `Secure` and TLS. Key
+revocation or rotation invalidates existing sessions because every request
+re-resolves the signed fingerprint against current server configuration.
+
+Required production configuration:
+
+```dotenv
+UAM_UI_SESSION_SIGNING_KEY_FILE=/run/secrets/ui_session_signing_key
+UAM_UI_SESSION_TTL_SECONDS=28800
+UAM_UI_COOKIE_SECURE=true
+```
+
 ## Main areas
 
 - **Overview dashboard** — Russian glass-style cockpit with workspace KPIs,
@@ -61,14 +83,32 @@ two-step operation:
    - `UAM_EMBEDDING_DIM`
    - `UAM_EMBEDDING_BASE_URL`
    - `UAM_EMBEDDING_TIMEOUT_SECONDS`
-2. Restart `memory-server` and `embedding-worker`, then run workspace reindex.
+2. Build and verify a newly named collection with
+   `scripts/migrate_vector_collection.py`.
+3. Switch `memory-server` and `embedding-worker` to the new
+   `UAM_QDRANT_COLLECTION` together.
 
 This prevents accidentally mixing vectors produced by different models or
-different dimensions in the same Qdrant collection.
+different dimensions in the same Qdrant collection. See
+[VECTOR_COLLECTION_MIGRATION.md](VECTOR_COLLECTION_MIGRATION.md).
 
 The desired settings endpoint can persist JSON when
 `UAM_MODEL_SETTINGS_PATH=/path/to/settings.json` is set. Without that variable,
 settings are kept in memory for the current server process.
+
+Provider secrets are never written to this JSON file. A key entered in the UI
+is held only by the current server process so the endpoint can be tested; after
+a restart it must come from `UAM_EMBEDDING_API_KEY_FILE` (or another deployment
+secret). Production also requires `UAM_MODEL_ENDPOINT_ALLOWLIST` with the exact
+origins that operators may probe, for example:
+
+```dotenv
+UAM_MODEL_ENDPOINT_ALLOWLIST=https://api.openai.com,https://models.example.com
+```
+
+Origins include scheme, host and effective port. Credentials, query strings,
+fragments, unlisted origins and HTTP redirects are rejected. When the allowlist
+is absent, only localhost and numeric loopback endpoints are accepted.
 
 API:
 
@@ -98,6 +138,7 @@ The dashboard is covered by:
 
 - `tests/test_api.py::test_memory_list_endpoint_and_operator_ui`
 - `tests/test_api.py::test_operator_ui_serves_react_dist_when_built`
+- `tests/test_api.py::test_operator_browser_session_uses_httponly_cookie_and_csrf`
 - `tests/test_api.py::test_model_settings_endpoints_save_and_probe_fake_provider`
 - `npm run build` in `web/`
 - `scripts/api_e2e_eval.py`, including `PASS ui` and `PASS model_settings`

@@ -187,6 +187,8 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 "prod-compose:secret-files",
                 "UAM_API_KEY_FILE: ${UAM_API_KEY_FILE:-}" in prod_compose
                 and "UAM_API_KEYS_FILE: ${UAM_API_KEYS_FILE:-}" in prod_compose
+                and "UAM_UI_SESSION_SIGNING_KEY_FILE: /run/secrets/ui_session_signing_key"
+                in prod_compose
                 and (
                     "UAM_API_PRINCIPAL_BINDINGS_JSON_FILE: "
                     "${UAM_API_PRINCIPAL_BINDINGS_JSON_FILE:-}"
@@ -199,7 +201,8 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 and "UAM_DATABASE_PASSWORD_FILE: /run/secrets/app_db_password" in prod_compose
                 and "POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password" in prod_compose
                 and "file: ${POSTGRES_PASSWORD_FILE:?" in prod_compose
-                and "file: ${UAM_APP_DB_PASSWORD_FILE:?" in prod_compose,
+                and "file: ${UAM_APP_DB_PASSWORD_FILE:?" in prod_compose
+                and "file: ${UAM_UI_SESSION_SIGNING_KEY_FILE:?" in prod_compose,
                 "production compose includes dedicated database secret mounts and *_FILE paths",
             ),
             Check(
@@ -328,11 +331,23 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 "UAM_API_KEY_FILE=" in env
                 and "UAM_API_KEYS_FILE=" in env
                 and "UAM_API_PRINCIPAL_BINDINGS_JSON_FILE=" in env
+                and "UAM_UI_SESSION_SIGNING_KEY_FILE=" in env
                 and "UAM_MEMORY_TEXT_ENCRYPTION_KEY_FILE=" in env
                 and "UAM_MEMORY_LLM_API_KEY_FILE=" in env
                 and "UAM_EMBEDDING_API_KEY_FILE=" in env
                 and "UAM_RELEASE_SIGNING_KEY_FILE=" in env,
                 "mounted secret-file env alternatives are documented",
+            ),
+            Check(
+                "env:ui-session",
+                "UAM_UI_COOKIE_SECURE=true" in env
+                and "UAM_UI_SESSION_TTL_SECONDS=28800" in env,
+                "secure browser-session policy is documented",
+            ),
+            Check(
+                "env:model-endpoint-allowlist",
+                "UAM_MODEL_ENDPOINT_ALLOWLIST=" in env,
+                "exact-origin model endpoint allowlist is documented",
             ),
             Check(
                 "env:identity-bindings",

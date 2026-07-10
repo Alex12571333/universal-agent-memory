@@ -7,6 +7,8 @@ import asyncio
 import base64
 import binascii
 import hashlib
+import hmac
+import ipaddress
 import json
 import os
 import re
@@ -17,6 +19,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import urlsplit
 from uuid import UUID
 
 from fastapi import FastAPI, HTTPException, Request
@@ -151,6 +154,12 @@ class RecallBody(BaseModel):
     minimum_score: float = Field(default=0, ge=0, le=1)
     operation: str = "chat_reply"
     context_budget_tokens: int = Field(default=DEFAULT_CONTEXT_BUDGET_TOKENS, ge=128)
+
+
+class UiSessionLoginBody(BaseModel):
+    """One-time operator credential exchange for an HttpOnly browser session."""
+
+    api_key: str = Field(min_length=1, max_length=8192)
 
 
 class ConversationMessageBody(BaseModel):
@@ -553,20 +562,72 @@ def _load_model_settings() -> dict[str, Any] | None:
         return None
     with open(path, encoding="utf-8") as handle:
         data = json.load(handle)
-    return data if isinstance(data, dict) else None
+    if not isinstance(data, dict):
+        return None
+    if "api_key" in data:
+        data.pop("api_key", None)
+        _save_model_settings(data)
+    return data
 
 
 def _save_model_settings(settings: dict[str, Any]) -> None:
-    """Persist desired model settings when the server is configured to do so."""
+    """Atomically persist non-secret desired settings with owner-only permissions."""
     path = _settings_path()
     if not path:
         return
     directory = os.path.dirname(path)
     if directory:
         os.makedirs(directory, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as handle:
-        json.dump(settings, handle, ensure_ascii=False, indent=2, sort_keys=True)
+    persisted = {key: value for key, value in settings.items() if key != "api_key"}
+    temporary = f"{path}.tmp"
+    with open(temporary, "w", encoding="utf-8") as handle:
+        json.dump(persisted, handle, ensure_ascii=False, indent=2, sort_keys=True)
         handle.write("\n")
+    os.chmod(temporary, 0o600)
+    os.replace(temporary, path)
+
+
+def _model_endpoint_origin(base_url: str) -> str:
+    """Normalize an HTTP(S) endpoint to an exact scheme/host/port origin."""
+    parsed = urlsplit(base_url.strip())
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise ValueError("model base URL must use http or https with a hostname")
+    if parsed.username or parsed.password or parsed.query or parsed.fragment:
+        raise ValueError("model base URL must not contain credentials, query or fragment")
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    host = parsed.hostname.casefold()
+    formatted_host = f"[{host}]" if ":" in host else host
+    return f"{parsed.scheme}://{formatted_host}:{port}"
+
+
+def _assert_model_endpoint_allowed(settings: dict[str, Any]) -> None:
+    """Enforce an exact-origin egress policy before saving or probing an endpoint."""
+    if settings["provider"] == "fake":
+        return
+    base_url = str(settings.get("base_url") or "").strip()
+    if not base_url:
+        raise ValueError("model base URL is required for this provider")
+    origin = _model_endpoint_origin(base_url)
+    configured = os.getenv("UAM_MODEL_ENDPOINT_ALLOWLIST", "")
+    allowed_origins = {
+        _model_endpoint_origin(entry)
+        for entry in configured.split(",")
+        if entry.strip()
+    }
+    if allowed_origins:
+        if origin not in allowed_origins:
+            raise ValueError(f"model endpoint origin {origin!r} is not in the allowlist")
+        return
+    hostname = urlsplit(base_url).hostname or ""
+    is_loopback = hostname.casefold() == "localhost"
+    try:
+        is_loopback = is_loopback or ipaddress.ip_address(hostname).is_loopback
+    except ValueError:
+        pass
+    if not is_loopback:
+        raise ValueError(
+            "remote model endpoints require UAM_MODEL_ENDPOINT_ALLOWLIST"
+        )
 
 
 def _mask_secret(value: str | None) -> str | None:
@@ -658,6 +719,68 @@ class ApiPrincipal:
         return "admin" in self.scopes or "operator" in self.scopes or scope in self.scopes
 
 
+UI_SESSION_COOKIE = "uam_ui_session"
+
+
+def _base64url_encode(value: bytes) -> str:
+    return base64.urlsafe_b64encode(value).decode("ascii").rstrip("=")
+
+
+def _base64url_decode(value: str) -> bytes:
+    return base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
+
+
+def _issue_ui_session(
+    principal: ApiPrincipal,
+    signing_key: str,
+    *,
+    ttl_seconds: int,
+) -> tuple[str, str, int]:
+    """Create a signed bearer-free browser session and its CSRF token."""
+    now = int(time.time())
+    expires_at = now + ttl_seconds
+    csrf_token = secrets.token_urlsafe(32)
+    payload = {
+        "sub": principal.name,
+        "fp": principal.secret_fingerprint,
+        "iat": now,
+        "exp": expires_at,
+        "csrf": csrf_token,
+    }
+    encoded = _base64url_encode(
+        json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    )
+    signature = _base64url_encode(
+        hmac.new(signing_key.encode("utf-8"), encoded.encode("ascii"), hashlib.sha256).digest()
+    )
+    return f"{encoded}.{signature}", csrf_token, expires_at
+
+
+def _verify_ui_session(token: str, signing_key: str) -> dict[str, Any] | None:
+    """Verify signature, shape and expiry of a browser session cookie."""
+    try:
+        encoded, signature = token.split(".", 1)
+        expected = _base64url_encode(
+            hmac.new(
+                signing_key.encode("utf-8"),
+                encoded.encode("ascii"),
+                hashlib.sha256,
+            ).digest()
+        )
+        if not hmac.compare_digest(signature, expected):
+            return None
+        payload = json.loads(_base64url_decode(encoded))
+        if not isinstance(payload, dict):
+            return None
+        if int(payload.get("exp", 0)) <= int(time.time()):
+            return None
+        if not all(isinstance(payload.get(field), str) for field in ("sub", "fp", "csrf")):
+            return None
+        return payload
+    except (ValueError, TypeError, UnicodeDecodeError, json.JSONDecodeError, binascii.Error):
+        return None
+
+
 @dataclass(frozen=True, slots=True)
 class PrincipalBinding:
     """Stable authorization boundary attached to one configured principal."""
@@ -729,7 +852,9 @@ def _registry_tenant_id() -> UUID:
 
 def _required_scope_for_request(path: str, method: str) -> str:
     """Return the minimum logical scope required for a route."""
-    if path in {"/health", "/ready"}:
+    if path in {"/health", "/ready"} or path.startswith("/ui"):
+        return "public"
+    if path == "/v1/ui/session":
         return "public"
     if path.startswith("/v1/keys"):
         return "operator"
@@ -759,7 +884,7 @@ def _required_scope_for_request(path: str, method: str) -> str:
         return "operator"
     if path.startswith("/v1/checkpoints/") and path.endswith("/compact"):
         return "operator"
-    if path.startswith(("/ui", "/docs", "/redoc", "/openapi.json", "/metrics")):
+    if path.startswith(("/docs", "/redoc", "/openapi.json", "/metrics")):
         return "operator"
     if path.startswith(("/v1/system", "/v1/settings")):
         return "operator"
@@ -919,6 +1044,21 @@ def create_app(
         "UAM_REQUIRE_IDENTITY_BINDINGS",
         "false",
     ).strip().lower() in {"1", "true", "yes", "on"}
+    ui_session_signing_key = read_secret_env("UAM_UI_SESSION_SIGNING_KEY")
+    if ui_session_signing_key is not None and len(ui_session_signing_key) < 32:
+        raise ValueError("UAM_UI_SESSION_SIGNING_KEY must contain at least 32 characters")
+    try:
+        ui_session_ttl_seconds = int(os.getenv("UAM_UI_SESSION_TTL_SECONDS", "28800"))
+    except ValueError as exc:
+        raise ValueError("UAM_UI_SESSION_TTL_SECONDS must be an integer") from exc
+    if not 300 <= ui_session_ttl_seconds <= 86400:
+        raise ValueError("UAM_UI_SESSION_TTL_SECONDS must be between 300 and 86400")
+    ui_cookie_secure = os.getenv("UAM_UI_COOKIE_SECURE", "false").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
     if require_identity_bindings:
         missing_bindings = sorted(
             name
@@ -966,6 +1106,70 @@ def create_app(
 
     sync_configured_api_keys()
 
+    def principal_for_credential(credential: str) -> ApiPrincipal | None:
+        """Resolve a configured bearer secret without exposing it to browser storage."""
+        if configured_key and secrets.compare_digest(credential, configured_key):
+            return ApiPrincipal(
+                name="server",
+                scopes=frozenset({"admin"}),
+                secret_fingerprint=_secret_fingerprint(credential),
+            )
+        for name, secret, scopes in configured_scoped_keys:
+            if secrets.compare_digest(credential, secret):
+                binding = principal_bindings.get(name)
+                return ApiPrincipal(
+                    name=name,
+                    scopes=scopes,
+                    secret_fingerprint=_secret_fingerprint(credential),
+                    tenant_id=binding.tenant_id if binding else None,
+                    workspace_id=binding.workspace_id if binding else None,
+                    agent_id=binding.agent_id if binding else None,
+                )
+        return None
+
+    def principal_for_session_claims(claims: dict[str, Any]) -> ApiPrincipal | None:
+        """Re-resolve a session against current key configuration on every request."""
+        name = str(claims.get("sub", ""))
+        fingerprint = str(claims.get("fp", ""))
+        if name == "server" and configured_key:
+            principal = principal_for_credential(configured_key)
+            if principal and secrets.compare_digest(
+                fingerprint,
+                principal.secret_fingerprint or "",
+            ):
+                return principal
+        for configured_name, secret, _scopes in configured_scoped_keys:
+            if configured_name != name:
+                continue
+            principal = principal_for_credential(secret)
+            if principal and secrets.compare_digest(
+                fingerprint,
+                principal.secret_fingerprint or "",
+            ):
+                return principal
+        return None
+
+    def revoked(principal: ApiPrincipal) -> bool:
+        if not principal.secret_fingerprint:
+            return False
+        record = services.api_keys.get_by_fingerprint(
+            auth_tenant_id,
+            principal.secret_fingerprint,
+        )
+        return bool(record is not None and record.revoked)
+
+    def browser_session(request: Request) -> tuple[ApiPrincipal, dict[str, Any]] | None:
+        if not ui_session_signing_key:
+            return None
+        token = request.cookies.get(UI_SESSION_COOKIE, "")
+        claims = _verify_ui_session(token, ui_session_signing_key)
+        if claims is None:
+            return None
+        principal = principal_for_session_claims(claims)
+        if principal is None or revoked(principal):
+            return None
+        return principal, claims
+
     @app.middleware("http")
     async def require_api_key(request: Request, call_next: Any) -> Any:
         """Protect every endpoint except liveness when API keys are configured."""
@@ -977,26 +1181,13 @@ def create_app(
         authorization = request.headers.get("Authorization", "")
         scheme, _, credential = authorization.partition(" ")
         principal: ApiPrincipal | None = None
+        session_claims: dict[str, Any] | None = None
         if scheme.casefold() == "bearer":
-            if configured_key and secrets.compare_digest(credential, configured_key):
-                principal = ApiPrincipal(
-                    name="server",
-                    scopes=frozenset({"admin"}),
-                    secret_fingerprint=_secret_fingerprint(credential),
-                )
-            else:
-                for name, secret, scopes in configured_scoped_keys:
-                    if secrets.compare_digest(credential, secret):
-                        binding = principal_bindings.get(name)
-                        principal = ApiPrincipal(
-                            name=name,
-                            scopes=scopes,
-                            secret_fingerprint=_secret_fingerprint(credential),
-                            tenant_id=binding.tenant_id if binding else None,
-                            workspace_id=binding.workspace_id if binding else None,
-                            agent_id=binding.agent_id if binding else None,
-                        )
-                        break
+            principal = principal_for_credential(credential)
+        else:
+            session = browser_session(request)
+            if session is not None:
+                principal, session_claims = session
         if principal is None:
             return _apply_security_headers(
                 JSONResponse(
@@ -1005,19 +1196,14 @@ def create_app(
                     headers={"WWW-Authenticate": "Bearer"},
                 )
             )
-        if principal.secret_fingerprint:
-            record = services.api_keys.get_by_fingerprint(
-                auth_tenant_id,
-                principal.secret_fingerprint,
-            )
-            if record is not None and record.revoked:
-                return _apply_security_headers(
-                    JSONResponse(
-                        status_code=401,
-                        content={"detail": "API key has been revoked"},
-                        headers={"WWW-Authenticate": "Bearer"},
-                    )
+        if revoked(principal):
+            return _apply_security_headers(
+                JSONResponse(
+                    status_code=401,
+                    content={"detail": "API key has been revoked"},
+                    headers={"WWW-Authenticate": "Bearer"},
                 )
+            )
         if not _scope_allowed(principal, required_scope):
             return _apply_security_headers(
                 JSONResponse(
@@ -1028,6 +1214,19 @@ def create_app(
                     },
                 )
             )
+        if session_claims is not None and request.method.upper() not in {
+            "GET",
+            "HEAD",
+            "OPTIONS",
+        }:
+            supplied_csrf = request.headers.get("X-CSRF-Token", "")
+            if not secrets.compare_digest(supplied_csrf, str(session_claims["csrf"])):
+                return _apply_security_headers(
+                    JSONResponse(
+                        status_code=403,
+                        content={"detail": "missing or invalid CSRF token"},
+                    )
+                )
         binding_error = await _agent_binding_error(
             request,
             principal,
@@ -1045,6 +1244,7 @@ def create_app(
                 )
             )
         request.state.api_principal = principal
+        request.state.ui_session_claims = session_claims
         if principal.secret_fingerprint:
             services.api_keys.touch(auth_tenant_id, principal.secret_fingerprint)
         return _apply_security_headers(await call_next(request))
@@ -1097,6 +1297,111 @@ def create_app(
                 "retrieval_sources": sources,
             },
         )
+
+    @app.post("/v1/ui/session")
+    def create_ui_session(body: UiSessionLoginBody) -> JSONResponse:
+        """Exchange an operator key for a signed HttpOnly same-origin session."""
+        if not configured_key and not configured_scoped_keys:
+            return JSONResponse(
+                {"authenticated": True, "auth_required": False, "csrf_token": None}
+            )
+        if not ui_session_signing_key:
+            raise HTTPException(
+                status_code=503,
+                detail="browser sessions are not configured",
+            )
+        principal = principal_for_credential(body.api_key)
+        if principal is None or revoked(principal):
+            raise HTTPException(status_code=401, detail="invalid operator credential")
+        if not _scope_allowed(principal, "operator"):
+            raise HTTPException(status_code=403, detail="operator scope is required")
+        token, csrf_token, expires_at = _issue_ui_session(
+            principal,
+            ui_session_signing_key,
+            ttl_seconds=ui_session_ttl_seconds,
+        )
+        services.audit.record(
+            tenant_id=auth_tenant_id,
+            workspace_id=None,
+            action="ui.session.login",
+            actor=principal.name,
+            actor_type=_audit_actor_type(principal),
+            resource_type="ui_session",
+            resource_id=principal.secret_fingerprint,
+            metadata={"expires_at": expires_at},
+        )
+        response = JSONResponse(
+            {
+                "authenticated": True,
+                "auth_required": True,
+                "principal": principal.name,
+                "csrf_token": csrf_token,
+                "expires_at": expires_at,
+            }
+        )
+        response.set_cookie(
+            UI_SESSION_COOKIE,
+            token,
+            max_age=ui_session_ttl_seconds,
+            expires=ui_session_ttl_seconds,
+            path="/",
+            secure=ui_cookie_secure,
+            httponly=True,
+            samesite="strict",
+        )
+        return response
+
+    @app.get("/v1/ui/session")
+    def get_ui_session(request: Request) -> dict[str, Any]:
+        """Bootstrap React auth state without exposing the original API key."""
+        if not configured_key and not configured_scoped_keys:
+            return {
+                "authenticated": True,
+                "auth_required": False,
+                "principal": "local-dev",
+                "csrf_token": None,
+            }
+        session = browser_session(request)
+        if session is None:
+            return {"authenticated": False, "auth_required": True}
+        principal, claims = session
+        if not _scope_allowed(principal, "operator"):
+            return {"authenticated": False, "auth_required": True}
+        return {
+            "authenticated": True,
+            "auth_required": True,
+            "principal": principal.name,
+            "csrf_token": claims["csrf"],
+            "expires_at": claims["exp"],
+        }
+
+    @app.delete("/v1/ui/session")
+    def delete_ui_session(request: Request) -> JSONResponse:
+        """Invalidate the browser cookie; key rotation/revocation invalidates it server-side."""
+        session = browser_session(request)
+        if session is not None:
+            principal, claims = session
+            supplied_csrf = request.headers.get("X-CSRF-Token", "")
+            if not secrets.compare_digest(supplied_csrf, str(claims["csrf"])):
+                raise HTTPException(status_code=403, detail="missing or invalid CSRF token")
+            services.audit.record(
+                tenant_id=auth_tenant_id,
+                workspace_id=None,
+                action="ui.session.logout",
+                actor=principal.name,
+                actor_type=_audit_actor_type(principal),
+                resource_type="ui_session",
+                resource_id=principal.secret_fingerprint,
+            )
+        response = JSONResponse({"authenticated": False})
+        response.delete_cookie(
+            UI_SESSION_COOKIE,
+            path="/",
+            secure=ui_cookie_secure,
+            httponly=True,
+            samesite="strict",
+        )
+        return response
 
     @app.get("/v1/audit/events")
     def list_audit_events(
@@ -1298,7 +1603,12 @@ def create_app(
         """Save desired model settings without hot-swapping a live vector index."""
         nonlocal model_settings
         previous_settings = model_settings or {}
-        model_settings = _settings_from_body(body)
+        proposed_settings = _settings_from_body(body)
+        try:
+            _assert_model_endpoint_allowed(proposed_settings)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        model_settings = proposed_settings
         if model_settings["api_key"] is None:
             existing_key = previous_settings.get("api_key")
             if existing_key:
@@ -1327,6 +1637,10 @@ def create_app(
     def test_model_settings(body: ModelSettingsBody) -> dict[str, Any]:
         """Probe an embedding provider using the proposed settings."""
         settings = _settings_from_body(body)
+        try:
+            _assert_model_endpoint_allowed(settings)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         try:
             config = EmbeddingProviderConfig(**settings)
             client = build_embedding_client(config)

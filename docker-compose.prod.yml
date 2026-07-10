@@ -21,6 +21,9 @@ services:
       UAM_API_KEY_FILE: ${UAM_API_KEY_FILE:-}
       UAM_API_KEYS: ${UAM_API_KEYS:-}
       UAM_API_KEYS_FILE: ${UAM_API_KEYS_FILE:-}
+      UAM_UI_SESSION_SIGNING_KEY_FILE: /run/secrets/ui_session_signing_key
+      UAM_UI_SESSION_TTL_SECONDS: ${UAM_UI_SESSION_TTL_SECONDS:-28800}
+      UAM_UI_COOKIE_SECURE: ${UAM_UI_COOKIE_SECURE:-true}
       UAM_API_PRINCIPAL_BINDINGS_JSON: ${UAM_API_PRINCIPAL_BINDINGS_JSON:-}
       UAM_API_PRINCIPAL_BINDINGS_JSON_FILE: ${UAM_API_PRINCIPAL_BINDINGS_JSON_FILE:-}
       UAM_REQUIRE_IDENTITY_BINDINGS: ${UAM_REQUIRE_IDENTITY_BINDINGS:-true}
@@ -52,10 +55,12 @@ services:
       UAM_MEMORY_LLM_CONTEXT_TOKENS: ${UAM_MEMORY_LLM_CONTEXT_TOKENS:-131072}
       UAM_MEMORY_LLM_MAX_TOKENS: ${UAM_MEMORY_LLM_MAX_TOKENS:-1600}
       UAM_MEMORY_LLM_EXTRA_BODY_JSON: ${UAM_MEMORY_LLM_EXTRA_BODY_JSON:-}
+      UAM_MODEL_ENDPOINT_ALLOWLIST: ${UAM_MODEL_ENDPOINT_ALLOWLIST:?UAM_MODEL_ENDPOINT_ALLOWLIST must be set}
     ports:
       - "6798:8080"
     secrets:
       - app_db_password
+      - ui_session_signing_key
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -230,3 +235,5 @@ secrets:
     file: ${POSTGRES_PASSWORD_FILE:?POSTGRES_PASSWORD_FILE must point to a host secret file}
   app_db_password:
     file: ${UAM_APP_DB_PASSWORD_FILE:?UAM_APP_DB_PASSWORD_FILE must point to a host secret file}
+  ui_session_signing_key:
+    file: ${UAM_UI_SESSION_SIGNING_KEY_FILE:?UAM_UI_SESSION_SIGNING_KEY_FILE must point to a host secret file}

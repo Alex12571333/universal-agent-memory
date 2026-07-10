@@ -226,7 +226,7 @@
 | `GET /v1/system/status` | Реальное process/storage/runtime состояние для UI | Не подменяет dependency readiness |
 | `GET /v1/settings/models` | Текущие и desired model settings | Не раскрывает API keys |
 | `PUT /v1/settings/models` | Сохраняет desired embedding settings | Требует restart/reindex для применения |
-| `POST /v1/settings/models/test` | Проверяет operator-supplied embedding endpoint | Production требует SSRF allowlist/egress policy |
+| `POST /v1/settings/models/test` | Проверяет operator-supplied embedding endpoint | Exact-origin allowlist, запрет redirects; production также требует egress policy |
 | `GET /v1/audit/events` | Operator audit export | Operator/admin scope only; tenant/workspace/action filters |
 | `GET /v1/keys` | Operator API-key registry | Non-secret fingerprints, scopes, last-used/revoked state |
 | `POST /v1/keys/{id}/revoke` | Revoke one configured key | Future requests with that bearer are denied |
