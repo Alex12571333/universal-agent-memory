@@ -54,8 +54,14 @@ UAM_API_KEY=... PYTHONPATH=src python scripts/check_metrics_health.py \
   --require-metric uam_processed_events_inflight_total \
   --require-metric uam_embedding_failures_total \
   --report ./ops/metrics-health.json
+
+PYTHONPATH=src python scripts/observability_preflight.py \
+  --grafana-dashboard ./deploy/observability/grafana-dashboard.json \
+  --prometheus-alerts ./deploy/observability/prometheus-alerts.yml \
+  --report ./ops/observability-preflight.json
 ```
 
 For full production, import the dashboard into Grafana, load the Prometheus alert
 rules into the target alerting stack, and preserve the generated
-`ops/metrics-health.json` in release evidence.
+`ops/metrics-health.json` and `ops/observability-preflight.json` in release
+evidence.

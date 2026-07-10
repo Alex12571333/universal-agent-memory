@@ -16,6 +16,7 @@ REQUIRED_ARTIFACTS = {
     "load_smoke",
     "metrics_health",
     "ops_schedule",
+    "observability",
     "scheduled_backup",
     "audit_retention",
     "deployment_preflight",
@@ -112,6 +113,7 @@ def verify_manifest(path: Path) -> list[EvidenceCheck]:
         "load_smoke": _verify_load_smoke,
         "metrics_health": _verify_metrics_health,
         "ops_schedule": _verify_ops_schedule,
+        "observability": _verify_observability,
         "scheduled_backup": _verify_scheduled_backup,
         "audit_retention": _verify_audit_retention,
         "deployment_preflight": _verify_deployment_preflight,
@@ -242,6 +244,27 @@ def _verify_ops_schedule(payload: dict[str, Any]) -> list[EvidenceCheck]:
         _ok_check("ops_schedule", payload),
         EvidenceCheck(
             "ops_schedule:required-checks",
+            not missing,
+            "required checks present" if not missing else "missing: " + ", ".join(missing),
+        ),
+    ]
+
+
+def _verify_observability(payload: dict[str, Any]) -> list[EvidenceCheck]:
+    names = _check_names(payload)
+    required = {
+        "grafana-dashboard:json-valid",
+        "grafana-dashboard:required-metrics",
+        "prometheus-alerts:required-alerts",
+        "prometheus-alerts:required-metrics",
+        "prometheus-alerts:production-group",
+    }
+    missing = sorted(required - names)
+    return [
+        _format_check("observability", payload, "obelisk-observability-preflight-v1"),
+        _ok_check("observability", payload),
+        EvidenceCheck(
+            "observability:required-checks",
             not missing,
             "required checks present" if not missing else "missing: " + ", ".join(missing),
         ),

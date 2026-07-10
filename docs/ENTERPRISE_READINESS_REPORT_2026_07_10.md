@@ -1,6 +1,6 @@
 # Production envelope report — 2026-07-10
 
-Passed: 127
+Passed: 130
 Failed: 0
 
 | Check | Status | Detail |
@@ -18,6 +18,7 @@ Failed: 0
 | `file:scripts/check_branch_protection.py` | PASS | required production artifact |
 | `file:scripts/check_metrics_health.py` | PASS | required production artifact |
 | `file:scripts/deployment_preflight.py` | PASS | required production artifact |
+| `file:scripts/observability_preflight.py` | PASS | required production artifact |
 | `file:scripts/ops_schedule_preflight.py` | PASS | required production artifact |
 | `file:scripts/secret_files_preflight.py` | PASS | required production artifact |
 | `file:scripts/validate_production_env.py` | PASS | required production artifact |
@@ -106,6 +107,8 @@ Failed: 0
 | `tests:scheduled-backup` | PASS | scheduled backup success/failure reporting is covered |
 | `release:evidence-verifier` | PASS | release evidence verifier checks saved production reports |
 | `tests:release-evidence-verifier` | PASS | release evidence verifier behavior is covered |
+| `ops:observability-preflight-runner` | PASS | observability preflight validates dashboard and alert coverage |
+| `tests:observability-preflight-runner` | PASS | observability preflight behavior is covered |
 | `ops:schedule-preflight-runner` | PASS | ops schedule preflight validates schedules, alerts and artifact roots |
 | `tests:ops-schedule-preflight-runner` | PASS | ops schedule preflight behavior is covered |
 | `deploy:preflight-runner` | PASS | deployment preflight runner validates public TLS and backend exposure |
