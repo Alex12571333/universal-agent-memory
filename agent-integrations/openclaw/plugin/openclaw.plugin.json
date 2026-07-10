@@ -1,0 +1,26 @@
+{
+  "id": "universal-agent-memory",
+  "name": "Obelisk Memory",
+  "description": "Native Obelisk Memory lifecycle hooks for OpenClaw.",
+  "enabledByDefault": false,
+  "activation": {
+    "onStartup": true,
+    "onConfigPaths": [
+      "plugins.entries.universal-agent-memory"
+    ]
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "url": { "type": "string" },
+      "apiKey": { "type": "string" },
+      "tenantId": { "type": "string" },
+      "workspaceId": { "type": "string" },
+      "agentId": { "type": "string" },
+      "enabled": { "type": "boolean", "default": true },
+      "topK": { "type": "number", "minimum": 1, "maximum": 1000, "default": 8 },
+      "contextBudgetTokens": { "type": "number", "minimum": 1, "maximum": 131072, "default": 131072 }
+    }
+  }
+}

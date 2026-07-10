@@ -12,6 +12,8 @@ The installable plugin lives in `plugin/` and uses the OpenClaw extension
 contract:
 
 - `package.json` exposes `openclaw.extensions: ["./index.js"]`;
+- `openclaw.plugin.json` supplies the manifest required by current OpenClaw
+  releases;
 - `index.js` exports a default plugin entry object with `register(api)`;
 - hooks are registered with OpenClaw `api.registerHook(...)`.
 

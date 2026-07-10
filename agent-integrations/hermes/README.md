@@ -29,8 +29,8 @@ Implemented behavior:
 Install outline:
 
 ```bash
-mkdir -p "$HERMES_HOME/plugins"
-cp -R agent-integrations/hermes/universal_agent_memory "$HERMES_HOME/plugins/"
+mkdir -p "$HERMES_HOME/plugins/memory"
+cp -R agent-integrations/hermes/universal_agent_memory "$HERMES_HOME/plugins/memory/"
 ```
 
 Then set Hermes config:
