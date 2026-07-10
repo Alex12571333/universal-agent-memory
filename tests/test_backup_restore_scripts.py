@@ -37,6 +37,7 @@ export_vault = _load_script("export_vault")
 import_vault = _load_script("import_vault")
 migrate = _load_script("migrate")
 validate_production_env = _load_script("validate_production_env")
+verify_release_evidence = _load_script("verify_release_evidence")
 
 
 def test_migration_runner_includes_every_versioned_sql_file() -> None:
@@ -648,6 +649,140 @@ def test_scheduled_backup_alerts_on_failure(
     assert payload["steps"][0]["name"] == "backup"
     assert payload["steps"][0]["returncode"] == 7
     assert alerts and alerts[0]["ok"] is False
+
+
+def test_verify_release_evidence_accepts_complete_manifest(tmp_path: Path) -> None:
+    manifest = _write_release_evidence_bundle(tmp_path)
+
+    checks = verify_release_evidence.verify_manifest(manifest)
+
+    assert all(check.passed for check in checks)
+    assert {check.name for check in checks} >= {
+        "agent_soak:openclaw",
+        "agent_soak:hermes",
+        "scheduled_backup:restore-drill",
+        "branch_protection:passed",
+    }
+
+
+def test_verify_release_evidence_rejects_skipped_restore_drill(tmp_path: Path) -> None:
+    manifest = _write_release_evidence_bundle(tmp_path)
+    backup_path = tmp_path / "scheduled-backup.json"
+    backup = json.loads(backup_path.read_text(encoding="utf-8"))
+    for step in backup["steps"]:
+        if step["name"] == "restore_drill":
+            step["skipped"] = True
+    backup_path.write_text(json.dumps(backup), encoding="utf-8")
+
+    checks = verify_release_evidence.verify_manifest(manifest)
+
+    restore_check = next(
+        check for check in checks if check.name == "scheduled_backup:restore-drill"
+    )
+    assert restore_check.passed is False
+    assert not all(check.passed for check in checks)
+
+
+def test_verify_release_evidence_json_cli_output(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    manifest = _write_release_evidence_bundle(tmp_path)
+    monkeypatch.setattr(
+        "sys.argv",
+        ["verify_release_evidence.py", str(manifest), "--json"],
+    )
+
+    assert verify_release_evidence.main() == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["passed"] is True
+    assert any(check["name"] == "branch_protection:passed" for check in payload["checks"])
+
+
+def _write_release_evidence_bundle(tmp_path: Path) -> Path:
+    _write_json(
+        tmp_path / "agent-soak.json",
+        {
+            "format": "obelisk-agent-soak-v1",
+            "ok": True,
+            "checks": [
+                {"name": "health", "ok": True},
+                {"name": "openclaw:recall:0", "ok": True},
+                {"name": "hermes:recall:0", "ok": True},
+                {"name": "cross-workspace-leakage", "ok": True},
+            ],
+        },
+    )
+    _write_json(
+        tmp_path / "memory-llm.json",
+        {
+            "format": "obelisk-memory-llm-eval-v1",
+            "ok": True,
+            "checks": [
+                {"name": "chat-completions", "ok": True},
+                {"name": "json-memory-curation", "ok": True},
+            ],
+        },
+    )
+    _write_json(
+        tmp_path / "metrics-health.json",
+        {
+            "format": "obelisk-metrics-health-v1",
+            "ok": True,
+            "checks": [
+                {"name": "outbox_pending_total", "ok": True},
+                {"name": "outbox_dead_letter_total", "ok": True},
+                {"name": "outbox_lag_seconds", "ok": True},
+                {"name": "processed_events_inflight_total", "ok": True},
+            ],
+        },
+    )
+    _write_json(
+        tmp_path / "scheduled-backup.json",
+        {
+            "format": "obelisk-scheduled-backup-report-v1",
+            "ok": True,
+            "steps": [
+                {"name": "backup", "ok": True},
+                {"name": "restore_drill", "ok": True},
+                {"name": "audit_export", "ok": True},
+            ],
+        },
+    )
+    _write_json(
+        tmp_path / "branch-protection.json",
+        {
+            "passed": True,
+            "checks": [
+                {"name": "pull-request-required", "passed": True},
+                {"name": "status-checks-required", "passed": True},
+                {"name": "strict-status-checks", "passed": True},
+                {"name": "admins-enforced", "passed": True},
+            ],
+        },
+    )
+    manifest = tmp_path / "release-evidence.json"
+    _write_json(
+        manifest,
+        {
+            "format": "obelisk-release-evidence-manifest-v1",
+            "release": "test",
+            "artifacts": {
+                "agent_soak": "agent-soak.json",
+                "memory_llm": "memory-llm.json",
+                "metrics_health": "metrics-health.json",
+                "scheduled_backup": "scheduled-backup.json",
+                "branch_protection": "branch-protection.json",
+            },
+        },
+    )
+    return manifest
+
+
+def _write_json(path: Path, payload: dict[str, object]) -> None:
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def test_export_vault_builds_postgres_exporter(

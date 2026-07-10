@@ -32,7 +32,9 @@ python scripts/real_memory_llm_eval.py \
 GITHUB_TOKEN=... python scripts/check_branch_protection.py \
   --repo Alex12571333/universal-agent-memory \
   --required-check python \
-  --required-check web
+  --required-check web \
+  --json > ./ops/branch-protection.json
+python scripts/verify_release_evidence.py ./release-evidence.json
 docker compose --profile advanced config
 docker compose -f docker-compose.prod.yml --env-file .env.production config
 docker compose \
@@ -71,6 +73,8 @@ Manual checks:
 - Confirm `ops/metrics-health.json` reports `"ok": true`.
 - Confirm `ops/agent-soak.json` reports `"ok": true` after running against the
   same server and `.14` OpenClaw/Hermes hosts used for production.
+- Confirm `scripts/verify_release_evidence.py ./release-evidence.json` prints
+  `release_evidence=PASS`.
 - Confirm worker logs do not show repeated NATS/Qdrant connection failures.
 - Confirm restore drill passes against the backup intended for rollback.
 - Confirm `.env.production` is not staged.

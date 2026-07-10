@@ -58,6 +58,7 @@ def run_checks(*, static_only: bool) -> list[Check]:
         "scripts/vault_manifest.py",
         "scripts/restore_drill.py",
         "scripts/scheduled_backup.py",
+        "scripts/verify_release_evidence.py",
         "docs/assets/obelisk-memory-hero.png",
         "docs/GITHUB_BRANCH_PROTECTION.md",
         "docs/OPERATIONS_RUNBOOK.md",
@@ -65,6 +66,7 @@ def run_checks(*, static_only: bool) -> list[Check]:
         "docs/ENTERPRISE_READINESS.md",
         "docs/PRODUCTION_GAP_AUDIT_2026_07_10.md",
         "docs/RELEASE_CHECKLIST.md",
+        "docs/RELEASE_EVIDENCE.md",
         "docs/DGX_SPARK_MEMORY_LLM.md",
         "docs/BENCHMARK_RESULTS_2026_07_09.md",
     ]
@@ -403,6 +405,23 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 and "test_scheduled_backup_alerts_on_failure"
                 in read("tests/test_backup_restore_scripts.py"),
                 "scheduled backup success/failure reporting is covered",
+            ),
+            Check(
+                "release:evidence-verifier",
+                "obelisk-release-evidence-manifest-v1"
+                in read("scripts/verify_release_evidence.py")
+                and "agent_soak" in read("scripts/verify_release_evidence.py")
+                and "branch_protection" in read("scripts/verify_release_evidence.py")
+                and "release_evidence=PASS" in read("docs/RELEASE_EVIDENCE.md"),
+                "release evidence verifier checks saved production reports",
+            ),
+            Check(
+                "tests:release-evidence-verifier",
+                "test_verify_release_evidence_accepts_complete_manifest"
+                in read("tests/test_backup_restore_scripts.py")
+                and "test_verify_release_evidence_rejects_skipped_restore_drill"
+                in read("tests/test_backup_restore_scripts.py"),
+                "release evidence verifier behavior is covered",
             ),
             Check(
                 "agents:soak-runner",
