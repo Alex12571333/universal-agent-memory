@@ -314,11 +314,15 @@ class InMemoryMemoryStore:
 
     def purge_turn_content(self, tenant_id: UUID, turn_id: UUID) -> bool:
         """Replace transcript text after curated-only curation, preserving audit IDs."""
+        return self._purge_turn_content(tenant_id, turn_id, "purged_after_curation")
+
+    def _purge_turn_content(self, tenant_id: UUID, turn_id: UUID, reason: str) -> bool:
+        """Replace transcript content and preserve the reason in immutable audit metadata."""
         with self._lock:
             turn = self._turns.get(turn_id)
             if turn is None or turn.tenant_id != tenant_id:
                 return False
-            retention = {"raw_content": "purged_after_curation"}
+            retention = {"raw_content": reason}
             self._turns[turn_id] = ConversationTurn(
                 id=turn.id,
                 tenant_id=turn.tenant_id,
@@ -329,6 +333,7 @@ class InMemoryMemoryStore:
                 source_kind=turn.source_kind,
                 retention_policy=turn.retention_policy,
                 created_at=turn.created_at,
+                expires_at=turn.expires_at,
                 metadata={**turn.metadata, "retention": retention},
                 messages=tuple(
                     ConversationMessage(
@@ -341,6 +346,32 @@ class InMemoryMemoryStore:
                 ),
             )
             return True
+
+    def purge_expired_turns(
+        self,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        *,
+        now: datetime,
+        limit: int,
+    ) -> tuple[UUID, ...]:
+        """Purge due staged transcripts without deleting their audit identity."""
+        with self._lock:
+            turn_ids = tuple(
+                turn.id
+                for turn in sorted(
+                    self._turns.values(),
+                    key=lambda item: (item.expires_at or now, item.id),
+                )
+                if turn.tenant_id == tenant_id
+                and turn.workspace_id == workspace_id
+                and turn.expires_at is not None
+                and turn.expires_at <= now
+                and any(message.content != PURGED_CONVERSATION_CONTENT for message in turn.messages)
+            )[:limit]
+        for turn_id in turn_ids:
+            self._purge_turn_content(tenant_id, turn_id, "purged_after_expiry")
+        return turn_ids
 
     def append_proposal(
         self, proposal: MemoryProposal, idempotency_key: str | None = None

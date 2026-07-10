@@ -370,6 +370,7 @@ def _conversation_turn_response(turn: Any, *, created: bool | None = None) -> di
         "retention_policy": turn.retention_policy.value,
         "metadata": turn.metadata,
         "created_at": turn.created_at.isoformat(),
+        "expires_at": turn.expires_at.isoformat() if turn.expires_at else None,
         "messages": [
             {
                 "role": message.role,
@@ -1759,6 +1760,34 @@ def create_app(
             "workspace_id": str(workspace_id),
             "count": len(turns),
             "turns": [_conversation_turn_response(turn) for turn in turns],
+        }
+
+    @app.post("/v1/workspaces/{workspace_id}/conversations/purge-expired")
+    def purge_expired_conversation_turns(
+        workspace_id: UUID,
+        request: Request,
+        tenant_id: UUID = DEFAULT_SERVER_ID,
+        limit: int = 500,
+    ) -> dict[str, Any]:
+        """Purge expired curated-only staging text through an operator maintenance call."""
+        turn_ids = services.conversations.purge_expired_turns(
+            tenant_id,
+            workspace_id,
+            limit=limit,
+        )
+        record_audit(
+            request,
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            action="conversation.retention.purge_expired",
+            resource_type="conversation_turn",
+            metadata={"count": len(turn_ids), "limit": max(1, min(int(limit), 5000))},
+        )
+        return {
+            "tenant_id": str(tenant_id),
+            "workspace_id": str(workspace_id),
+            "purged_turn_ids": [str(turn_id) for turn_id in turn_ids],
+            "count": len(turn_ids),
         }
 
     @app.post("/v1/conversations/turns/{turn_id}/curate", status_code=201)

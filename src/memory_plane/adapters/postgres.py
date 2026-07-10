@@ -964,7 +964,7 @@ class PostgresMemoryLedger:
                 select
                   t.id, t.tenant_id, t.workspace_id, t.thread_id, t.agent_id,
                   t.namespace, t.source_kind, t.retention_policy, t.metadata,
-                  t.created_at,
+                  t.created_at, t.expires_at,
                   coalesce(
                     jsonb_agg(
                       jsonb_build_object(
@@ -1004,7 +1004,7 @@ class PostgresMemoryLedger:
                 select
                   t.id, t.tenant_id, t.workspace_id, t.thread_id, t.agent_id,
                   t.namespace, t.source_kind, t.retention_policy, t.metadata,
-                  t.created_at,
+                  t.created_at, t.expires_at,
                   coalesce(
                     jsonb_agg(
                       jsonb_build_object(
@@ -1057,6 +1057,51 @@ class PostgresMemoryLedger:
                 (PURGED_CONVERSATION_CONTENT, turn_id),
             )
             return True
+
+    def purge_expired_turns(
+        self,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        *,
+        now: datetime,
+        limit: int,
+    ) -> tuple[UUID, ...]:
+        """Purge a bounded batch of expired staged transcript text under RLS."""
+        safe_limit = max(1, min(int(limit), 5000))
+        with self._connection() as connection:
+            self._set_tenant(connection, tenant_id)
+            rows = connection.execute(
+                """
+                with due as (
+                  select id
+                  from conversation_turns
+                  where workspace_id = %s
+                    and expires_at is not null
+                    and expires_at <= %s
+                    and coalesce(metadata #>> '{retention,raw_content}', '')
+                      not in ('purged_after_curation', 'purged_after_expiry')
+                  order by expires_at, id
+                  limit %s
+                  for update skip locked
+                ), updated_turns as (
+                  update conversation_turns t
+                  set metadata = metadata ||
+                    '{"retention":{"raw_content":"purged_after_expiry"}}'::jsonb
+                  from due
+                  where t.id = due.id
+                  returning t.id
+                )
+                update conversation_messages m
+                set content = %s,
+                    metadata = metadata ||
+                      '{"retention":{"raw_content":"purged_after_expiry"}}'::jsonb
+                from updated_turns u
+                where m.turn_id = u.id
+                returning u.id
+                """,
+                (workspace_id, now, safe_limit, PURGED_CONVERSATION_CONTENT),
+            ).fetchall()
+        return tuple(dict.fromkeys(row["id"] for row in rows))
 
     def append_proposal(
         self, proposal: MemoryProposal, idempotency_key: str | None = None
@@ -1574,7 +1619,7 @@ class PostgresMemoryLedger:
             select
               t.id, t.tenant_id, t.workspace_id, t.thread_id, t.agent_id,
               t.namespace, t.source_kind, t.retention_policy, t.metadata,
-              t.created_at,
+              t.created_at, t.expires_at,
               coalesce(
                 jsonb_agg(
                   jsonb_build_object(
@@ -1810,8 +1855,8 @@ class PostgresMemoryLedger:
             """
             insert into conversation_turns (
               id, tenant_id, workspace_id, thread_id, agent_id, namespace,
-              source_kind, retention_policy, metadata, created_at
-            ) values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+              source_kind, retention_policy, metadata, created_at, expires_at
+            ) values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             (
                 turn.id,
@@ -1824,6 +1869,7 @@ class PostgresMemoryLedger:
                 turn.retention_policy.value,
                 Jsonb(turn.metadata),
                 turn.created_at,
+                turn.expires_at,
             ),
         )
         for position, message in enumerate(turn.messages):
@@ -1935,6 +1981,7 @@ class PostgresMemoryLedger:
             retention_policy=ConversationRetentionPolicy(row["retention_policy"]),
             metadata=row["metadata"],
             created_at=row["created_at"],
+            expires_at=row.get("expires_at"),
             messages=tuple(
                 ConversationMessage(
                     role=str(message.get("role") or ""),

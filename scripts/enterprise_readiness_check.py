@@ -871,6 +871,13 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 "curated-only policy purges raw message content after curation",
             ),
             Check(
+                "conversation:staging-ttl",
+                "UAM_CONVERSATION_CURATED_ONLY_TTL_SECONDS" in env
+                and "purge_expired_turns" in read("src/memory_plane/services/conversations.py")
+                and "test_curated_only_staging_ttl_purges_abandoned_raw_text" in tests,
+                "curated-only staging has bounded TTL and operator purge coverage",
+            ),
+            Check(
                 "tests:conversation-pipeline-runner",
                 "test_conversation_pipeline_eval_passes_full_pipeline"
                 in read("tests/test_conversation_pipeline_eval.py")

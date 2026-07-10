@@ -65,6 +65,7 @@ def test_migration_runner_includes_every_versioned_sql_file() -> None:
         "008_audit_events.sql",
         "009_api_key_registry.sql",
         "010_conflict_resolution_memory.sql",
+        "011_conversation_staging_retention.sql",
     }
     configured = {path.name for path in migrate.MIGRATIONS}
 
@@ -163,6 +164,7 @@ def test_validate_production_env_accepts_strict_real_config(tmp_path: Path) -> N
                 "UAM_REQUIRE_IDENTITY_BINDINGS=true",
                 "UAM_UI_SESSION_SIGNING_KEY=ui_" + "h" * 40,
                 "UAM_UI_SESSION_TTL_SECONDS=28800",
+                "UAM_CONVERSATION_CURATED_ONLY_TTL_SECONDS=86400",
                 "UAM_UI_COOKIE_SECURE=true",
                 "UAM_SERVER_ID=00000000-0000-0000-0000-000000000001",
                 "UAM_PROJECT_ID=00000000-0000-0000-0000-000000000002",
@@ -250,6 +252,7 @@ def test_validate_production_env_accepts_secret_files(tmp_path: Path) -> None:
                 *secret_lines,
                 "UAM_REQUIRE_IDENTITY_BINDINGS=true",
                 "UAM_UI_SESSION_TTL_SECONDS=28800",
+                "UAM_CONVERSATION_CURATED_ONLY_TTL_SECONDS=86400",
                 "UAM_UI_COOKIE_SECURE=true",
                 "UAM_SERVER_ID=00000000-0000-0000-0000-000000000001",
                 "UAM_PROJECT_ID=00000000-0000-0000-0000-000000000002",

@@ -24,6 +24,7 @@ MIGRATIONS = (
     ROOT / "migrations/008_audit_events.sql",
     ROOT / "migrations/009_api_key_registry.sql",
     ROOT / "migrations/010_conflict_resolution_memory.sql",
+    ROOT / "migrations/011_conversation_staging_retention.sql",
 )
 
 

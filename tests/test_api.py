@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+from datetime import datetime
 from uuid import uuid4
 
 import pytest
@@ -836,6 +837,41 @@ def test_curated_only_policy_purges_raw_text_after_successful_curation() -> None
     assert stored_turn["metadata"]["retention"]["raw_content"] == (
         "purged_after_curation"
     )
+
+
+def test_curated_only_staging_ttl_purges_abandoned_raw_text(monkeypatch) -> None:
+    monkeypatch.setenv("UAM_CONVERSATION_CURATED_ONLY_TTL_SECONDS", "300")
+    container = build_in_memory_container()
+    client = TestClient(create_app(container))
+    marker = "abandoned staging transcript 3d0f"
+    created = client.post(
+        "/v1/conversations/turns",
+        json={
+            "namespace": "expiry-test",
+            "retention_policy": "curated_only",
+            "messages": [{"role": "user", "content": marker}],
+        },
+    )
+    expires_at = datetime.fromisoformat(created.json()["expires_at"])
+
+    purged = container.conversations.purge_expired_turns(
+        DEFAULT_SERVER_ID,
+        DEFAULT_PROJECT_ID,
+        now=expires_at,
+    )
+    listed = client.get("/v1/conversations/turns?namespace=expiry-test")
+    repeated = container.conversations.purge_expired_turns(
+        DEFAULT_SERVER_ID,
+        DEFAULT_PROJECT_ID,
+        now=expires_at,
+    )
+
+    assert created.status_code == 201
+    assert len(purged) == 1
+    assert repeated == ()
+    stored_turn = listed.json()["turns"][0]
+    assert marker not in json.dumps(stored_turn)
+    assert stored_turn["metadata"]["retention"]["raw_content"] == "purged_after_expiry"
 
 
 def test_memory_proposal_endpoint_stores_review_item_not_recall_memory() -> None:
