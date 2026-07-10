@@ -565,9 +565,15 @@ class EmbeddingServiceTest(unittest.TestCase):
 
         # 2. Run full reindex with a spy
         qdrant = self.container.embedding._qdrant
-        with patch.object(qdrant, "reindex", wraps=qdrant.reindex) as mock_reindex:
+        with patch.object(
+            qdrant,
+            "sync_workspace",
+            wraps=qdrant.sync_workspace,
+        ) as mock_reindex:
             count = self.container.embedding.reindex_all(self.tenant, self.workspace)
             mock_reindex.assert_called_once_with(
+                self.tenant,
+                self.workspace,
                 ANY,
                 model_name="fake-embed-v1",
             )
@@ -586,6 +592,52 @@ class EmbeddingServiceTest(unittest.TestCase):
         metrics = self.container.embedding.collect_metrics()
         self.assertEqual(1, metrics["embedding_reindex_total"])
         self.assertEqual(0, metrics["embedding_reindex_failures_total"])
+
+    def test_reindex_embedding_failure_does_not_mutate_workspace_vectors(self) -> None:
+        retained = self.container.retention.retain(
+            RetainCommand(
+                tenant_id=self.tenant,
+                workspace_id=self.workspace,
+                agent_id=self.agent,
+                layer=MemoryLayer.SEMANTIC,
+                scope=MemoryScope.WORKSPACE,
+                kind="fact",
+                text="must remain indexed after provider failure",
+                provenance=Provenance(source_kind="test"),
+            )
+        )
+        qdrant = self.container.embedding._qdrant
+        qdrant.upsert(retained.item, dense_vector=[0.25] * 1536)
+
+        with (
+            patch.object(
+                self.container.embedding,
+                "_embed_document",
+                side_effect=RuntimeError("provider unavailable"),
+            ),
+            patch.object(qdrant, "sync_workspace", wraps=qdrant.sync_workspace) as sync,
+            self.assertRaisesRegex(RuntimeError, "provider unavailable"),
+        ):
+            self.container.embedding.reindex_all(self.tenant, self.workspace)
+
+        sync.assert_not_called()
+        recalled = qdrant.search(
+            RecallQuery(
+                tenant_id=self.tenant,
+                workspace_id=self.workspace,
+                text="provider failure indexed",
+            )
+        )
+        self.assertEqual((retained.item.id,), tuple(row.item.id for row in recalled))
+
+    def test_reindex_serialization_lock_is_scoped_per_workspace(self) -> None:
+        service = self.container.embedding
+        same_a = service._workspace_reindex_lock(self.tenant, self.workspace)
+        same_b = service._workspace_reindex_lock(self.tenant, self.workspace)
+        other = service._workspace_reindex_lock(self.tenant, uuid4())
+
+        self.assertIs(same_a, same_b)
+        self.assertIsNot(same_a, other)
 
 
 if __name__ == "__main__":

@@ -17,7 +17,7 @@ under failure.
 | Browser/API hardening | Security headers are enforced by middleware and tests | Baseline present |
 | Data model | Append-only memory, CAS supersede, atomic conflict-winner revisions, canonical active-head recall, provenance, statuses and optional ciphertext for `memory_items.text` exist | Sensitive-table encryption remains incomplete |
 | Conversation capture | Raw ledger, explicit curation endpoint and live pipeline runner exist | Retention policy semantics, identity provisioning and installed agent hooks are incomplete |
-| Embeddings | Provider-neutral endpoints, async worker and Qdrant hydration exist | Dependency isolation, collection identity and multi-workspace reindex are P0 blockers |
+| Embeddings | Provider-neutral endpoints, async worker, fail-soft recall and workspace-scoped Qdrant sync exist | Collection model/dimension identity and target failure evidence remain P0 blockers |
 | Memory LLM | Provider-neutral OpenAI-compatible contract, deterministic fallback and live runner exist | LLM output currently bypasses proposal/review and cannot be autonomous in production |
 | OpenClaw/Hermes | Native adapter scaffolds, tests and live soak runner exist | Needs saved soak evidence from the deployed runtime versions |
 | UI | React dashboard supports memory/vault editing, conflict decisions and a JSON walkthrough runner | Authenticated browser flow, endpoint egress policy and durable settings are incomplete |
@@ -99,10 +99,16 @@ static readiness script are green.
    unreachable Qdrant endpoint; target container outage/recovery evidence is
    still needed.
 
-7. **Workspace reindex is destructive outside its scope.**
-   `EmbeddingService.reindex_all()` selects one workspace, then the Qdrant
-   adapter deletes and recreates the shared collection. This removes vectors
-   for other workspaces and leaves an empty index if reinsertion fails.
+7. **Workspace-safe reindex needs target concurrency evidence.**
+   `EmbeddingService.reindex_all()` now computes and validates every embedding
+   before touching Qdrant, serializes concurrent work per workspace, upserts the
+   complete replacement set, then deletes only stale IDs captured inside the
+   same tenant/workspace boundary. Empty canonical workspaces clear only their
+   own vectors. Other workspaces are never deleted, and provider/upsert failure
+   cannot empty the previous set. Unit tests cover cross-workspace preservation,
+   empty sync, boundary rejection and provider failure. Live Qdrant passed 9/9,
+   including scoped replacement and failed-upsert preservation. Multi-replica
+   target concurrency and crash-during-partial-upsert evidence are still needed.
 
 8. **PostgreSQL checkpoint CAS needs target concurrency evidence.**
    The invalid aggregate `FOR UPDATE` query has been replaced by a
@@ -337,8 +343,8 @@ Required gates:
 4. Preserve target evidence for atomic accepted/overridden conflict winners,
    stale-CAS rollback and Qdrant precedence; the implementation and local live
    coverage are complete.
-5. Preserve Qdrant outage/recovery readiness evidence and implement safe
-   multi-workspace reindex.
+5. Preserve Qdrant outage/recovery and workspace-reindex evidence; add verified
+   collection model/dimension identity and a safe collection migration path.
 6. Complete encryption/backup coverage and close the authenticated UI/SSRF
    boundaries.
 7. Install schedules, immutable storage, monitoring and alert routing; then run
