@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import replace
 from datetime import UTC, datetime
 from threading import RLock
@@ -31,6 +32,7 @@ class RetrievalService:
         sources: tuple[CandidateSource, ...],
         weights: dict[str, float] | None = None,
         required_sources: frozenset[str] | None = None,
+        staleness_check: Callable[[RecallQuery], bool] | None = None,
     ) -> None:
         """Configure candidate sources and an explicit, inspectable score formula."""
         if not sources:
@@ -38,6 +40,7 @@ class RetrievalService:
         self._sources = sources
         self._weights = weights or DEFAULT_WEIGHTS
         self._required_sources = required_sources or frozenset({sources[0].name})
+        self._staleness_check = staleness_check
         self._health_lock = RLock()
         self._source_health: dict[str, dict[str, Any]] = {
             source.name: {"status": "unknown", "failures": 0, "error_type": None}
@@ -84,7 +87,20 @@ class RetrievalService:
         ranked = [self._fuse(rows) for rows in grouped.values()]
         ranked = [row for row in ranked if row.final_score >= query.minimum_score]
         ranked.sort(key=lambda row: (row.final_score, row.item.created_at), reverse=True)
-        return RecallResult(candidates=tuple(ranked[: query.top_k]), sources_used=tuple(used))
+        return RecallResult(
+            candidates=tuple(ranked[: query.top_k]),
+            sources_used=tuple(used),
+            index_stale=self._index_stale(query),
+        )
+
+    def _index_stale(self, query: RecallQuery) -> bool:
+        """Return a conservative freshness flag for asynchronous vector indexing."""
+        if self._staleness_check is None:
+            return False
+        try:
+            return bool(self._staleness_check(query))
+        except Exception:  # noqa: BLE001 - unknown freshness must not be reported as fresh.
+            return True
 
     def record_success(self, source_name: str) -> None:
         """Mark a candidate source healthy after a completed operation."""

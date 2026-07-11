@@ -77,7 +77,10 @@ def build_in_memory_container() -> Container:
     )
     qdrant._use_in_memory_backend()
     embedding = EmbeddingService(store, qdrant, client)
-    retrieval = RetrievalService((store, qdrant))
+    retrieval = RetrievalService(
+        (store, qdrant),
+        staleness_check=lambda query: _outbox_pending(store, query.tenant_id),
+    )
     retrieval.record_success(store.name)
     retrieval.record_success(qdrant.name)
     observations = InMemoryObservationRepository(store)
@@ -171,7 +174,11 @@ def build_postgres_container(
         )
         qdrant._use_in_memory_backend()
 
-    retrieval = RetrievalService(tuple(sources), required_sources=frozenset({store.name}))
+    retrieval = RetrievalService(
+        tuple(sources),
+        required_sources=frozenset({store.name}),
+        staleness_check=lambda query: _outbox_pending(store, query.tenant_id),
+    )
     retrieval.record_success(store.name)
     if qdrant_url_val:
         if qdrant_error is None:
@@ -208,6 +215,15 @@ def build_postgres_container(
         vault=VaultExporter(store, observations, retention),
         store=store,
     )
+
+
+def _outbox_pending(store: object, tenant_id: UUID) -> bool:
+    """Report conservative vector freshness from the canonical outbox ledger."""
+    collector = getattr(store, "collect_metrics", None)
+    if not callable(collector):
+        raise RuntimeError("outbox freshness metrics unavailable")
+    metrics = collector(tenant_id)
+    return int(metrics.get("outbox_pending_total", 0)) > 0
 
 
 def _env_bool(name: str, *, default: bool) -> bool:
