@@ -12,6 +12,7 @@ from memory_plane.bootstrap import build_postgres_container
 from memory_plane.config.database import read_database_dsn
 from memory_plane.contracts.events import IntegrationEvent
 from memory_plane.services.consumer import IdempotentEventConsumer
+from memory_plane.workers.logging import log_event
 from memory_plane.workers.metrics_server import WorkerMetricsServer
 from memory_plane.workers.nats_consumer import NatsPullWorker
 
@@ -58,6 +59,12 @@ async def run() -> None:
             event.tenant_id,
             memory_id,
         )
+        log_event(
+            "embedding_completed",
+            worker="embedding",
+            tenant_id=event.tenant_id,
+            memory_id=memory_id,
+        )
 
     # Postgres store is both MemoryLedger and ProcessedEventRepository
     consumer = IdempotentEventConsumer(
@@ -83,13 +90,17 @@ async def run() -> None:
     await worker.connect()
     await metrics_server.start("0.0.0.0", metrics_port)
     worker_ready = True
+    log_event("worker_started", worker="embedding", metrics_port=metrics_port)
     try:
         while True:
             acked = await worker.run_once(batch_size=10, timeout=poll_seconds)
+            if acked:
+                log_event("worker_batch_completed", worker="embedding", acknowledged=acked)
             if acked == 0:
                 await asyncio.sleep(poll_seconds)
     finally:
         worker_ready = False
+        log_event("worker_stopped", worker="embedding")
         await metrics_server.close()
         await worker.close()
 
