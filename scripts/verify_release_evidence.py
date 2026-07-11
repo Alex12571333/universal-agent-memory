@@ -32,6 +32,7 @@ REQUIRED_ARTIFACTS = {
     "observability",
     "release_notes",
     "scheduled_backup",
+    "restore_recovery",
     "audit_retention",
     "deployment_preflight",
     "secret_files",
@@ -199,6 +200,7 @@ def verify_manifest(
         "observability": _verify_observability,
         "release_notes": _verify_release_notes,
         "scheduled_backup": _verify_scheduled_backup,
+        "restore_recovery": _verify_restore_recovery,
         "audit_retention": _verify_audit_retention,
         "deployment_preflight": _verify_deployment_preflight,
         "secret_files": _verify_secret_files,
@@ -1008,6 +1010,21 @@ def _verify_scheduled_backup(payload: dict[str, Any]) -> list[EvidenceCheck]:
             and isinstance(payload.get("backup_encryption"), dict)
             and payload["backup_encryption"].get("algorithm") == "AES-256-GCM",
             "backup encryption completed with an AES-256-GCM artifact",
+        ),
+    ]
+
+
+def _verify_restore_recovery(payload: dict[str, Any]) -> list[EvidenceCheck]:
+    checks = payload.get("checks") if isinstance(payload.get("checks"), dict) else {}
+    required = {"restore_drill", "reindex", "semantic_recall"}
+    missing = sorted(name for name in required if checks.get(name) is not True)
+    return [
+        _format_check("restore_recovery", payload, "obelisk-restore-recovery-evidence-v1"),
+        _ok_check("restore_recovery", payload),
+        EvidenceCheck(
+            "restore_recovery:required-checks",
+            not missing,
+            "recovery facts verified" if not missing else "missing: " + ", ".join(missing),
         ),
     ]
 
