@@ -172,8 +172,10 @@ static readiness script are green.
     the proposal and writes canonical memory, idempotency, outbox and accepted
     status in one transaction. A live target concurrent-accept check on
     2026-07-12 returned the same memory ID to both requests with exactly one
-    creation. Target PostgreSQL failure-injection evidence is still required
-    before the release gate is closed.
+    creation. A live runtime-role PostgreSQL failure-injection test then forced
+    outbox insertion to fail and proved that the transaction left the proposal
+    open with no proposal-derived memory or outbox event. Multi-replica
+    reliability evidence remains part of the broader release gate.
 
 ### P1 — reliability, scale and operations
 

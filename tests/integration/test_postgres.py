@@ -4,6 +4,7 @@ import os
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
+from unittest.mock import patch
 from uuid import uuid4
 
 from memory_plane.adapters.postgres import (
@@ -30,7 +31,14 @@ from memory_plane.domain.models import (
     MemoryStatus,
     Provenance,
 )
+from memory_plane.domain.proposal import MemoryProposalStatus, MemoryProposalTarget
 from memory_plane.services.conflicts import ConflictService
+from memory_plane.services.proposals import (
+    MemoryProposalService,
+    ReviewMemoryProposalCommand,
+    SubmitMemoryProposalCommand,
+)
+from memory_plane.services.retention import RetentionService
 
 DATABASE_URL = os.getenv("UAM_TEST_DATABASE_URL")
 if DATABASE_URL:
@@ -126,6 +134,64 @@ class PostgresMemoryLedgerTest(unittest.TestCase):
                 (item.id,),
             ).fetchone()["count"]
         self.assertEqual(1, count)
+
+    def test_proposal_accept_rolls_back_memory_and_status_when_outbox_insert_fails(self) -> None:
+        """A failed atomic accept must never turn an LLM proposal into a fact."""
+        service = MemoryProposalService(self.store, RetentionService(self.store))
+        submitted = service.submit(
+            SubmitMemoryProposalCommand(
+                tenant_id=self.tenant,
+                workspace_id=self.workspace,
+                namespace="postgres-failure-injection",
+                requester="integration-test",
+                target=MemoryProposalTarget.FACT,
+                proposal="Synthetic proposal must not survive a failed outbox write.",
+                evidence="Failure injection test evidence.",
+                idempotency_key="proposal-outbox-failure",
+            )
+        )
+
+        with patch.object(
+            self.store,
+            "_insert_event",
+            side_effect=RuntimeError("outbox unavailable"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "outbox unavailable"):
+                service.accept(
+                    ReviewMemoryProposalCommand(
+                        tenant_id=self.tenant,
+                        proposal_id=submitted.proposal.id,
+                        reviewer="integration-test",
+                        reason="intentional failure injection",
+                    )
+                )
+
+        proposal = self.store.get_proposal(self.tenant, submitted.proposal.id)
+        self.assertIsNotNone(proposal)
+        assert proposal is not None
+        self.assertEqual(MemoryProposalStatus.OPEN, proposal.status)
+        self.assertNotIn("accepted_memory_id", proposal.metadata)
+        with self.store._connection() as connection:
+            self.store._set_tenant(connection, self.tenant)
+            memory_count = connection.execute(
+                """
+                select count(*) as count
+                from memory_items m
+                join memory_provenance p on p.memory_item_id = m.id
+                where m.workspace_id = %s and p.origin_uri = %s
+                """,
+                (self.workspace, f"proposal://{submitted.proposal.id}"),
+            ).fetchone()["count"]
+            outbox_count = connection.execute(
+                """
+                select count(*) as count
+                from outbox_events
+                where workspace_id = %s and correlation_id is not null
+                """,
+                (self.workspace,),
+            ).fetchone()["count"]
+        self.assertEqual(0, memory_count)
+        self.assertEqual(0, outbox_count)
 
     def test_curated_only_raw_content_can_be_purged_without_losing_turn_identity(
         self,
