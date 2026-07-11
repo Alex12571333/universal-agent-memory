@@ -105,11 +105,13 @@ class InMemoryMemoryStore:
             return agent, thread
 
     def provision_workspace(self, workspace: WorkspaceIdentity) -> WorkspaceIdentity:
-        """Create/update an in-memory workspace without changing tenant ownership."""
+        """Create or return an in-memory workspace without changing ownership."""
         with self._lock:
             existing = self._workspaces.get(workspace.id)
             if existing is not None and existing.tenant_id != workspace.tenant_id:
                 raise ValueError("workspace_id already belongs to another tenant")
+            if existing is not None:
+                return existing
             self._workspaces[workspace.id] = workspace
             return workspace
 

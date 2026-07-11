@@ -67,7 +67,7 @@ class IdentityRegistry(Protocol):
     """Atomic stable identity registry for agents and their threads."""
 
     def provision_workspace(self, workspace: WorkspaceIdentity) -> WorkspaceIdentity:
-        """Create/update a workspace without allowing a cross-tenant move."""
+        """Create or return a workspace without allowing a cross-tenant move."""
         ...
 
     def provision_agent_thread(

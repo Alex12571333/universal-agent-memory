@@ -361,7 +361,7 @@ def test_workspace_provisioning_is_operator_only_idempotent_and_scope_safe(monke
         json=body,
         headers={"Authorization": "Bearer operator-secret"},
     )
-    updated = client.post(
+    idempotent = client.post(
         "/v1/workspaces/provision",
         json={**body, "workspace_name": "Isolated agent soak updated"},
         headers={"Authorization": "Bearer operator-secret"},
@@ -378,8 +378,8 @@ def test_workspace_provisioning_is_operator_only_idempotent_and_scope_safe(monke
     assert denied.status_code == 403
     assert created.status_code == 200
     assert created.json()["workspace"]["id"] == str(workspace_id)
-    assert updated.status_code == 200
-    assert updated.json()["workspace"]["name"] == "Isolated agent soak updated"
+    assert idempotent.status_code == 200
+    assert idempotent.json()["workspace"]["name"] == "Isolated agent soak"
     assert collision.status_code == 409
 
 
