@@ -196,6 +196,28 @@ services:
         condition: service_started
     restart: unless-stopped
 
+  maintenance-worker:
+    build:
+      context: .
+    command: ["python", "-m", "memory_plane.workers.maintenance_main"]
+    environment:
+      UAM_DATABASE_HOST: postgres
+      UAM_DATABASE_PORT: 5432
+      UAM_DATABASE_NAME: ${POSTGRES_DB}
+      UAM_DATABASE_USER: ${UAM_APP_DB_USER}
+      UAM_DATABASE_PASSWORD_FILE: /run/secrets/app_db_password
+      UAM_SERVER_ID: ${UAM_SERVER_ID}
+      UAM_PROJECT_ID: ${UAM_PROJECT_ID}
+      UAM_NATS_URL: nats://nats:4222
+    secrets:
+      - app_db_password
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      nats:
+        condition: service_healthy
+    restart: unless-stopped
+
   minio:
     image: minio/minio:RELEASE.2024-12-18T13-15-44Z
     command: server /data --console-address ":9001"

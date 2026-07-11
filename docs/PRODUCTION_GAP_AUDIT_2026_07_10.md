@@ -167,9 +167,9 @@ static readiness script are green.
 
 ### P1 — reliability, scale and operations
 
-1. Only embedding jobs have a deployed worker even though retain events request
-   embedding, dedupe, graph and reflection work. Graph/reflection maintenance is
-   not an automatic production pipeline and graph is not a recall source.
+1. Embedding and deterministic reflection jobs have deployed workers. Dedupe
+   and graph extraction still need an evidence-grounded policy and graph is not
+   yet a recall source.
 2. Outbox retry uses capped exponential backoff before an event is
    dead-lettered. JetStream delivery is bounded with exponential NAK delays,
    durable DLQ records and an operator-selected replay command. Stream
