@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import time
 from threading import Lock
 from typing import TYPE_CHECKING, cast
@@ -35,6 +36,9 @@ class EmbeddingService:
         self._reindex_last_duration_seconds = 0.0
         self._reindex_locks_guard = Lock()
         self._reindex_locks: dict[tuple[UUID, UUID], Lock] = {}
+        self._document_chunk_chars = max(
+            256, int(os.getenv("UAM_EMBEDDING_DOCUMENT_CHUNK_CHARS", "2000"))
+        )
 
     def process_memory_retained(self, tenant_id: UUID, memory_id: UUID) -> None:
         """Generate embedding for the retained memory and upsert it into the vector store."""
@@ -141,8 +145,24 @@ class EmbeddingService:
             )
 
     def _embed_document(self, text: str) -> list[float]:
-        """Use document-specific embeddings when the provider exposes them."""
+        """Embed long notes in bounded pieces and mean-pool their vectors."""
         embed_document = getattr(self._client, "embed_document", None)
-        if callable(embed_document):
-            return cast(list[float], embed_document(text))
-        return self._client.embed(text)
+        chunks = tuple(
+            text[offset : offset + self._document_chunk_chars]
+            for offset in range(0, len(text), self._document_chunk_chars)
+        ) or ("",)
+        vectors = [
+            cast(list[float], embed_document(chunk))
+            if callable(embed_document)
+            else self._client.embed(chunk)
+            for chunk in chunks
+        ]
+        if len(vectors) == 1:
+            return vectors[0]
+        dimension = len(vectors[0])
+        if any(len(vector) != dimension for vector in vectors):
+            raise ValueError("embedding provider returned inconsistent chunk dimensions")
+        return [
+            sum(vector[index] for vector in vectors) / len(vectors)
+            for index in range(dimension)
+        ]
