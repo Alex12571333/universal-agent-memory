@@ -322,7 +322,7 @@ Dry-run the retention job:
 
 ```bash
 UAM_AUDIT_SIGNING_KEY=... PYTHONPATH=src python scripts/audit_retention.py \
-  --database-url "$UAM_DATABASE_URL" \
+  --database-url "$UAM_AUDIT_RETENTION_DATABASE_URL" \
   --tenant-id "$UAM_SERVER_ID" \
   --workspace-id "$UAM_PROJECT_ID" \
   --retain-days 365 \
@@ -335,7 +335,7 @@ storage:
 
 ```bash
 UAM_AUDIT_SIGNING_KEY=... PYTHONPATH=src python scripts/audit_retention.py \
-  --database-url "$UAM_DATABASE_URL" \
+  --database-url "$UAM_AUDIT_RETENTION_DATABASE_URL" \
   --tenant-id "$UAM_SERVER_ID" \
   --workspace-id "$UAM_PROJECT_ID" \
   --retain-days 365 \
@@ -345,7 +345,10 @@ UAM_AUDIT_SIGNING_KEY=... PYTHONPATH=src python scripts/audit_retention.py \
 ```
 
 `--apply` requires a signing key unless `--allow-unsigned-export` is explicitly
-passed. Production deployments should not use unsigned retention exports. The
+passed. Production deployments should not use unsigned retention exports. Use
+an operator/admin connection for `--apply`: `UAM_AUDIT_RETENTION_DATABASE_URL`
+is preferred automatically, then backup/admin DSNs; the runtime app role is
+only a read/export fallback and cannot prune immutable audit rows. The
 JSON report uses format `obelisk-audit-retention-v1` and records cutoff,
 exported event count, signature/verification status and pruned row count.
 

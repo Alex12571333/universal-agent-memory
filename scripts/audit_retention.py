@@ -21,6 +21,25 @@ ROOT = Path(__file__).resolve().parents[1]
 REPORT_FORMAT = "obelisk-audit-retention-v1"
 
 
+def _retention_database_dsn() -> str | None:
+    """Prefer an operator/admin DSN: app roles cannot prune append-only audit."""
+    return (
+        read_database_dsn(
+            "UAM_AUDIT_RETENTION_DATABASE_URL",
+            component_prefix="UAM_AUDIT_RETENTION_DATABASE",
+        )
+        or read_database_dsn(
+            "UAM_BACKUP_DATABASE_URL",
+            component_prefix="UAM_BACKUP_DATABASE",
+        )
+        or read_database_dsn(
+            "UAM_ADMIN_DATABASE_URL",
+            component_prefix="UAM_ADMIN_DATABASE",
+        )
+        or read_database_dsn()
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class AuditRetentionReport:
     """Machine-readable evidence for one audit retention run."""
@@ -45,8 +64,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--database-url",
-        default=read_database_dsn(),
-        help="PostgreSQL app-role URL; defaults to UAM_DATABASE_URL",
+        default=_retention_database_dsn(),
+        help="Operator/admin PostgreSQL URL; app-role URL is a dry-run fallback only",
     )
     parser.add_argument(
         "--tenant-id",
