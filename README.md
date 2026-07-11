@@ -236,10 +236,15 @@ UAM_MEMORY_LLM_PROVIDER=openai-compatible
 UAM_MEMORY_LLM_MODEL=provider/model-id
 UAM_MEMORY_LLM_BASE_URL=https://model-gateway.example.com/v1
 UAM_MEMORY_LLM_API_KEY=gateway-specific-key
-UAM_MEMORY_LLM_CONTEXT_TOKENS=131072
+UAM_MEMORY_LLM_CONTEXT_TOKENS=32768
 UAM_MEMORY_LLM_MAX_TOKENS=1600
 UAM_MEMORY_LLM_EXTRA_BODY_JSON={}
 ```
+
+`UAM_MEMORY_LLM_CONTEXT_TOKENS` относится только к внутреннему curator. Он не
+равен бюджету контекста агента: curator получает ограниченные evidence-first
+фрагменты и должен обрабатывать длинные источники по частям, а не одним
+128k-prompt.
 
 `BASE_URL`, `MODEL`, `API_KEY`, and optional `EXTRA_BODY_JSON` belong to the
 selected deployment. They may identify a direct hosted endpoint, an
