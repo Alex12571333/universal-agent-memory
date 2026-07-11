@@ -21,7 +21,7 @@ from memory_plane.adapters.embeddings import (
 from memory_plane.adapters.in_memory import InMemoryMemoryStore
 from memory_plane.adapters.qdrant import QdrantCandidateSource
 from memory_plane.config.secrets import read_secret_env
-from memory_plane.contracts.dto import RecallQuery, RetainCommand
+from memory_plane.contracts.dto import RecallQuery, RetainCommand, SupersedeMemoryCommand
 from memory_plane.domain.models import MemoryLayer, MemoryScope, Provenance
 from memory_plane.services.embedding import EmbeddingService
 from memory_plane.services.retention import RetentionService
@@ -130,6 +130,8 @@ def main() -> int:
 
     ids_by_key: dict[str, UUID] = {}
     for key, text in MEMORIES.items():
+        if key == "current-audit-retention":
+            continue
         result = retention.retain(
             RetainCommand(
                 tenant_id=TENANT,
@@ -148,6 +150,18 @@ def main() -> int:
         ids_by_key[key] = result.item.id
         embeddings.process_memory_retained(TENANT, result.item.id)
 
+    replacement = retention.supersede(
+        SupersedeMemoryCommand(
+            tenant_id=TENANT,
+            item_id=ids_by_key["superseded-audit-retention"],
+            replacement_text=MEMORIES["current-audit-retention"],
+            expected_revision=1,
+            idempotency_key="real-eval:current-audit-retention",
+        )
+    )
+    ids_by_key["current-audit-retention"] = replacement.item.id
+    embeddings.process_memory_retained(TENANT, replacement.item.id)
+
     failures: list[str] = []
     print(f"endpoint={args.base_url} model={client.model_name} dimension={client.dimension}")
     for scenario in SCENARIOS:
@@ -162,15 +176,19 @@ def main() -> int:
         top = recall.candidates[0]
         expected_ids = {ids_by_key[key] for key in scenario.expected}
         ok = top.item.id in expected_ids
+        top_key = next((key for key, value in ids_by_key.items() if value == top.item.id), "other")
         status = "PASS" if ok else "FAIL"
         print(
             f"{status} {scenario.name}: expected={'|'.join(scenario.expected)} "
-            f"top={top.item.labels[-1]} score={top.final_score:.4f} "
+            f"top={top_key} score={top.final_score:.4f} "
             f"semantic={top.semantic:.4f} source={top.source}"
         )
         for candidate in recall.candidates:
+            candidate_key = next(
+                (key for key, value in ids_by_key.items() if value == candidate.item.id), "other"
+            )
             print(
-                f"  - {candidate.item.labels[-1]} final={candidate.final_score:.4f} "
+                f"  - {candidate_key} final={candidate.final_score:.4f} "
                 f"semantic={candidate.semantic:.4f} lexical={candidate.lexical:.4f}"
             )
         if not ok:
