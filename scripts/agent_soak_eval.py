@@ -17,25 +17,80 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Mapping, Protocol
 from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 from uuid import UUID, uuid4
-
-from memory_plane.build_info import require_status_build_identity
-from memory_plane.config.secrets import read_secret_env
 
 DEFAULT_TENANT = UUID("00000000-0000-0000-0000-000000000001")
 OPENCLAW_WORKSPACE = UUID("00000000-0000-0000-0000-000000000014")
 HERMES_WORKSPACE = UUID("00000000-0000-0000-0000-000000000015")
 OPENCLAW_AGENT = UUID("00000000-0000-0000-0000-0000000000c1")
 HERMES_AGENT = UUID("00000000-0000-0000-0000-0000000000e5")
+
+_SOURCE_COMMIT_PATTERN = re.compile(r"[0-9a-fA-F]{40}")
+_IMAGE_DIGEST_PATTERN = re.compile(r"sha256:[0-9a-fA-F]{64}")
+_PLACEHOLDER_BUILD_VALUES = frozenset(
+    {"", "none", "null", "unknown", "unset", "not-set", "replace-me"}
+)
+
+
+def read_secret_env(name: str) -> str | None:
+    """Read a direct or file-mounted secret without importing the server package.
+
+    The evaluator is intentionally copied to agent hosts for release evidence;
+    it must therefore remain executable with a stock Python installation.
+    """
+    value = os.getenv(name)
+    if value:
+        return value
+    file_name = os.getenv(f"{name}_FILE")
+    if not file_name:
+        return None
+    secret = Path(file_name).read_text(encoding="utf-8").strip()
+    return secret or None
+
+
+def require_status_build_identity(payload: object) -> dict[str, str]:
+    """Validate the runtime identity embedded in a system-status response."""
+    if not isinstance(payload, Mapping):
+        raise ValueError("system status is missing or is not an object")
+    build = payload.get("build")
+    if not isinstance(build, Mapping):
+        raise ValueError("build identity is missing or is not an object")
+    fields = ("version", "source_commit", "image_digest", "deployment_id", "build_time")
+    identity = {field: str(build.get(field, "")).strip() for field in fields}
+    missing = [
+        field
+        for field, value in identity.items()
+        if value.casefold() in _PLACEHOLDER_BUILD_VALUES
+    ]
+    if missing:
+        raise ValueError(f"build identity has missing/placeholder fields: {', '.join(missing)}")
+    if _SOURCE_COMMIT_PATTERN.fullmatch(identity["source_commit"]) is None:
+        raise ValueError("build identity source_commit must be a 40-character git SHA")
+    if _IMAGE_DIGEST_PATTERN.fullmatch(identity["image_digest"]) is None:
+        raise ValueError("build identity image_digest must be sha256:<64 hex characters>")
+    try:
+        build_time = datetime.fromisoformat(identity["build_time"].replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError("build identity build_time must be an ISO-8601 timestamp") from exc
+    if build_time.tzinfo is None:
+        raise ValueError("build identity build_time must include a timezone")
+    status_version = str(payload.get("version", "")).strip()
+    if status_version != identity["version"]:
+        raise ValueError(
+            "system status version does not match build identity "
+            f"({status_version!r} != {identity['version']!r})"
+        )
+    return identity
 
 
 class JsonClient(Protocol):
