@@ -151,6 +151,7 @@ class PostgresMemoryLedger:
         if not dsn.strip():
             raise ValueError("PostgreSQL DSN must not be empty")
         self.dsn = dsn
+        self._pool: Any | None = None
         self._text_encryption_mode = os.getenv("UAM_MEMORY_TEXT_ENCRYPTION", "off").lower()
         self._text_encryption_key = read_secret_env("UAM_MEMORY_TEXT_ENCRYPTION_KEY") or ""
         self._text_encryption_scopes = _parse_text_encryption_scopes(
@@ -1727,22 +1728,36 @@ class PostgresMemoryLedger:
 
     @contextmanager
     def _connection(self) -> Iterator[Any]:
-        """Open a short-lived transaction with dictionary-shaped rows."""
+        """Lease a bounded pooled transaction with dictionary-shaped rows."""
         try:
-            import psycopg
             from psycopg.rows import dict_row
+            from psycopg_pool import ConnectionPool
         except ImportError as error:
             raise RuntimeError(
                 'PostgreSQL support is not installed; run pip install -e ".[postgres]"'
             ) from error
 
-        with psycopg.connect(self.dsn, row_factory=dict_row) as connection:
+        if self._pool is None:
+            self._pool = ConnectionPool(
+                self.dsn,
+                min_size=max(1, int(os.getenv("UAM_POSTGRES_POOL_MIN_SIZE", "1"))),
+                max_size=max(1, int(os.getenv("UAM_POSTGRES_POOL_MAX_SIZE", "10"))),
+                timeout=float(os.getenv("UAM_POSTGRES_POOL_TIMEOUT_SECONDS", "30")),
+                kwargs={"row_factory": dict_row},
+            )
+        with self._pool.connection() as connection:
             if self._text_encryption_key:
                 connection.execute(
-                    "select set_config('app.memory_text_encryption_key', %s, false)",
+                    "select set_config('app.memory_text_encryption_key', %s, true)",
                     (self._text_encryption_key,),
                 )
             yield connection
+
+    def close(self) -> None:
+        """Release pooled database connections during orderly process shutdown."""
+        if self._pool is not None:
+            self._pool.close()
+            self._pool = None
 
     @property
     def _text_encryption_enabled(self) -> bool:
