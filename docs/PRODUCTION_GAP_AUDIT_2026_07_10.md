@@ -170,11 +170,11 @@ static readiness script are green.
 1. Only embedding jobs have a deployed worker even though retain events request
    embedding, dedupe, graph and reflection work. Graph/reflection maintenance is
    not an automatic production pipeline and graph is not a recall source.
-2. Outbox retry now uses capped exponential backoff before an event is
-   dead-lettered. JetStream worker delivery is also bounded with exponential
-   NAK delays and terminal messages remain in the durable source stream for
-   inspection; a separate replay/DLQ operator workflow, stream
-   size/age limits, authentication, TLS or replay workflow.
+2. Outbox retry uses capped exponential backoff before an event is
+   dead-lettered. JetStream delivery is bounded with exponential NAK delays,
+   durable DLQ records and an operator-selected replay command. Stream
+   size/age limits and authenticated NATS remain to be installed for a long
+   running appliance.
 3. PostgreSQL opens a new connection per operation. The deployment has one API
    process and single-node PostgreSQL/Qdrant/NATS volumes, with no HA or safe
    horizontal-scaling design.
@@ -212,10 +212,9 @@ static readiness script are green.
 14. `index_stale` is not computed from outbox/index state or exposed as an API
     invariant, so agents cannot distinguish complete recall from a lagging
     vector index.
-15. Worker logs are unstructured and worker-specific Prometheus metrics are not
-    served by the worker. API readiness exposes canonical/vector retrieval
-    state, but NATS/worker state and build/deployment identity are not yet an
-    operational readiness gate.
+15. Worker-specific Prometheus metrics are served privately by the embedding
+    worker. Structured worker logs plus NATS/worker state in readiness are not
+    yet an operational readiness gate.
 
 ### P2 — deployment hardening and supply chain
 

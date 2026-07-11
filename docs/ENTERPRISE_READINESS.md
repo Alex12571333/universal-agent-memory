@@ -13,9 +13,8 @@ remaining hard requirements.
 - [x] PostgreSQL is the source of truth.
 - [x] Migrations are forward-only and run before API startup.
 - [x] Production compose exposes only API/UI to the host.
-- [x] TLS reverse-proxy deployment example exists for non-local access.
-- [x] Deployment preflight runner writes JSON evidence for public HTTPS,
-      security headers and direct backend exposure checks.
+- [x] Local-appliance deployment keeps data services inside Docker and exposes
+      only the API/UI port to the trusted local network.
 - [x] API key auth can protect API, docs, metrics, and UI.
 - [x] Scoped API keys gate operator, agent, read, and write route classes.
 - [x] React UI exchanges an operator key for an HttpOnly signed session, applies
@@ -129,9 +128,8 @@ remaining hard requirements.
       through evidence-linked proposal/review with atomic acceptance.
 - [ ] Complete authenticated browser UI flow and model-endpoint egress/SSRF
       controls with secret-safe durable settings.
-- [ ] Run deployment preflight against the target TLS/VPN boundary, verify
-      direct backend `6798` is not externally reachable, and preserve the
-      generated report.
+- [ ] Verify the target bind address permits access only from the local host or
+      trusted LAN, and preserve the deployment configuration output.
 - [ ] Run secret-files preflight against the target environment, verify
       production secrets are mounted through `*_FILE` paths instead of raw env
       values, and preserve the generated report.

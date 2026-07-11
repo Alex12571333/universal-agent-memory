@@ -402,7 +402,6 @@ substitute for the production gates in the gap audit.
 - [docs/PRODUCTION_GAP_AUDIT_2026_07_10.md](docs/PRODUCTION_GAP_AUDIT_2026_07_10.md) — honest production gaps.
 - [docs/OPERATIONS_RUNBOOK.md](docs/OPERATIONS_RUNBOOK.md) — production operations.
 - [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md) — Prometheus/Grafana monitoring.
-- [docs/TLS_REVERSE_PROXY.md](docs/TLS_REVERSE_PROXY.md) — HTTPS/reverse proxy deployment.
 - [docs/ENTERPRISE_READINESS.md](docs/ENTERPRISE_READINESS.md) — readiness checklist.
 - [docs/RELEASE_EVIDENCE.md](docs/RELEASE_EVIDENCE.md) — release evidence manifest.
 - [docs/GITHUB_BRANCH_PROTECTION.md](docs/GITHUB_BRANCH_PROTECTION.md) — PR-only release gate.
