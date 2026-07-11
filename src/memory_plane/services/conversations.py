@@ -8,13 +8,13 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
 from uuid import UUID
 
-from memory_plane.contracts.dto import RetainCommand, RetainResult
+from memory_plane.contracts.dto import RetainResult
 from memory_plane.domain.conversation import (
     ConversationMessage,
     ConversationRetentionPolicy,
     ConversationTurn,
 )
-from memory_plane.domain.models import MemoryLayer, MemoryScope, Provenance
+from memory_plane.domain.models import MemoryLayer
 from memory_plane.services.privacy import PrivacyGuard
 from memory_plane.services.proposals import (
     MemoryProposalService,
@@ -114,7 +114,7 @@ class CurateConversationTurnCommand:
 
 @dataclass(frozen=True, slots=True)
 class CurateConversationTurnResult:
-    """Curation output, proposal-first when a review gateway is configured."""
+    """Curation output; candidates are always reviewable proposals."""
 
     retained: RetainResult | None = None
     proposal: SubmitMemoryProposalResult | None = None
@@ -215,7 +215,7 @@ class ConversationService:
 
 
 class ConversationCurator:
-    """Deterministically turn raw transcript turns into curated memory items."""
+    """Turn raw transcript turns into evidence-linked, non-recallable proposals."""
 
     def __init__(
         self,
@@ -224,84 +224,48 @@ class ConversationCurator:
         memory_llm: MemoryReasoner | None = None,
         proposals: MemoryProposalService | None = None,
     ) -> None:
-        """Bind raw transcript reads to the canonical memory write path."""
+        """Bind raw transcript reads to the mandatory proposal/review boundary."""
+        if proposals is None:
+            raise ValueError("ConversationCurator requires MemoryProposalService")
         self._ledger = ledger
         self._retention = retention
         self._memory_llm = memory_llm
         self._proposals = proposals
 
     def curate_turn(self, command: CurateConversationTurnCommand) -> CurateConversationTurnResult:
-        """Create a reviewable proposal, or legacy durable memory if no gateway exists."""
+        """Create a reviewable proposal; LLM output never writes durable memory."""
         turn = self._ledger.get_turn(command.tenant_id, command.turn_id)
         if turn is None:
             raise KeyError("conversation turn not found")
         if turn.retention_policy == ConversationRetentionPolicy.RAW_ONLY:
             raise ValueError("conversation turn retention policy is raw_only")
         text, llm_metadata = self._summary_text(turn)
-        if self._proposals is not None:
-            proposal = self._proposals.submit(
-                SubmitMemoryProposalCommand(
-                    tenant_id=turn.tenant_id,
-                    workspace_id=turn.workspace_id,
-                    agent_id=turn.agent_id,
-                    thread_id=turn.thread_id,
-                    namespace=turn.namespace,
-                    requester="conversation-curator",
-                    proposal=text,
-                    evidence=_trim_text(_conversation_text(turn), 6000),
-                    confidence=command.confidence,
-                    importance=command.importance,
-                    metadata={
-                        **llm_metadata,
-                        "source_turn_id": str(turn.id),
-                        "curation_boundary": "proposal_required",
-                    },
-                    idempotency_key=(
-                        command.idempotency_key or f"curate-conversation-turn:{turn.id}"
-                    ),
-                )
-            )
-            if turn.retention_policy == ConversationRetentionPolicy.CURATED_ONLY:
-                if not self._ledger.purge_turn_content(turn.tenant_id, turn.id):
-                    raise RuntimeError("curation proposal was saved but raw content purge failed")
-            return CurateConversationTurnResult(proposal=proposal)
-        labels = tuple(
-            dict.fromkeys(
-                (
-                    "conversation",
-                    "curated",
-                    turn.namespace,
-                    *command.labels,
-                )
-            )
-        )
-        result = self._retention.retain(
-            RetainCommand(
+        proposal = self._proposals.submit(
+            SubmitMemoryProposalCommand(
                 tenant_id=turn.tenant_id,
                 workspace_id=turn.workspace_id,
                 agent_id=turn.agent_id,
                 thread_id=turn.thread_id,
-                layer=command.layer,
-                scope=MemoryScope.THREAD,
-                kind=command.kind,
-                text=text,
-                labels=labels,
-                provenance=Provenance(
-                    source_kind="conversation_ledger",
-                    origin_uri=f"conversation://{turn.id}",
-                    quote=_trim_text(text, 1800),
-                    extraction_version="conversation-curator-v1",
-                ),
-                importance=command.importance,
+                namespace=turn.namespace,
+                requester="conversation-curator",
+                proposal=text,
+                evidence=_curation_evidence(turn),
                 confidence=command.confidence,
-                metadata=llm_metadata,
+                importance=command.importance,
+                metadata={
+                    **llm_metadata,
+                    "source_turn_id": str(turn.id),
+                    "source_observed_at": turn.created_at.isoformat(),
+                    "curation_boundary": "proposal_required",
+                    "claim_status": "unverified",
+                },
                 idempotency_key=(command.idempotency_key or f"curate-conversation-turn:{turn.id}"),
             )
         )
         if turn.retention_policy == ConversationRetentionPolicy.CURATED_ONLY:
             if not self._ledger.purge_turn_content(turn.tenant_id, turn.id):
-                raise RuntimeError("curated memory was saved but raw content purge failed")
-        return CurateConversationTurnResult(retained=result)
+                raise RuntimeError("curation proposal was saved but raw content purge failed")
+        return CurateConversationTurnResult(proposal=proposal)
 
     def _summary_text(self, turn: ConversationTurn) -> tuple[str, dict[str, Any]]:
         memory_llm = self._memory_llm
@@ -327,7 +291,10 @@ class ConversationCurator:
                         "content": (
                             "You are Memory Curator for Obelisk Memory. "
                             "Extract only durable, evidence-backed information. "
-                            "Do not invent facts. Return JSON object only."
+                            "Do not invent facts. Preserve temporal qualifiers such as "
+                            "'formerly', 'now', and dates. If the turn contains a "
+                            "preference change, describe the transition rather than a "
+                            "timeless preference. Return JSON object only."
                         ),
                     },
                     {
@@ -412,6 +379,20 @@ def _conversation_text(turn: ConversationTurn) -> str:
         name = f" ({message.name})" if message.name else ""
         lines.append(f"- {message.role}{name}: {message.content}")
     return "\n".join(lines)
+
+
+def _curation_evidence(turn: ConversationTurn) -> str:
+    """Render timestamped source excerpts for a human proposal reviewer."""
+    lines = [
+        f"source_turn_id: {turn.id}",
+        f"observed_at: {turn.created_at.isoformat()}",
+        f"namespace: {turn.namespace}",
+        "source_excerpts:",
+    ]
+    for message in turn.messages:
+        name = f" ({message.name})" if message.name else ""
+        lines.append(f"- {message.role}{name}: {_trim_text(message.content, 1200)}")
+    return _trim_text("\n".join(lines), 6000)
 
 
 def _curation_payload_to_text(payload: dict[str, Any]) -> str:
