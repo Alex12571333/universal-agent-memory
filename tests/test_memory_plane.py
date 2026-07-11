@@ -60,12 +60,13 @@ class MemoryPlaneTest(unittest.TestCase):
         layer: MemoryLayer = MemoryLayer.SEMANTIC,
         key: str | None = None,
         tenant=None,
+        workspace=None,
         status: MemoryStatus = MemoryStatus.ACTIVE,
     ):
         return self.container.retention.retain(
             RetainCommand(
                 tenant_id=tenant or self.tenant,
-                workspace_id=self.workspace,
+                workspace_id=workspace or self.workspace,
                 agent_id=self.agent,
                 layer=layer,
                 scope=MemoryScope.WORKSPACE,
@@ -85,6 +86,14 @@ class MemoryPlaneTest(unittest.TestCase):
         self.assertFalse(second.created)
         self.assertEqual(first.item.id, second.item.id)
         self.assertEqual(1, len(self.container.store.events))
+
+    def test_idempotency_key_is_isolated_by_workspace(self) -> None:
+        first = self.retain("Workspace one", key="same-client-key")
+        second = self.retain("Workspace two", key="same-client-key", workspace=uuid4())
+
+        self.assertTrue(first.created)
+        self.assertTrue(second.created)
+        self.assertNotEqual(first.item.id, second.item.id)
 
     def test_supersede_memory_uses_optimistic_revision(self) -> None:
         first = self.retain("Alpha release is July 15")
