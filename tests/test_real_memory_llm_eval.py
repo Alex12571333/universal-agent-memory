@@ -23,6 +23,10 @@ def _load_script(name: str):
 real_memory_llm_eval = _load_script("real_memory_llm_eval")
 
 
+def test_real_memory_llm_eval_uses_compact_context_window_default() -> None:
+    assert real_memory_llm_eval.DEFAULT_CONTEXT_WINDOW_TOKENS == 8192
+
+
 class FakeMemoryLLMClient:
     def __init__(self, *, bad_proposal: bool = False) -> None:
         self.config = MemoryLLMConfig(
