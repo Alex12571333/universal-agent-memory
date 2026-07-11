@@ -73,6 +73,7 @@ def test_conversation_curator_uses_memory_llm_when_available() -> None:
         store,
         RetentionService(store),
         memory_llm=reasoner,
+        proposals=MemoryProposalService(store, RetentionService(store)),
     ).curate_turn(
         CurateConversationTurnCommand(
             tenant_id=tenant_id,
@@ -80,12 +81,15 @@ def test_conversation_curator_uses_memory_llm_when_available() -> None:
         )
     )
 
-    assert result.retained is not None
-    retained = result.retained
-    assert retained.item.metadata["curator_engine"] == "memory_llm"
-    assert retained.item.metadata["llm_confidence"] == 0.92
-    assert "Пользователь явно просит" in retained.item.text
-    assert "Интерфейс должен быть на русском" in retained.item.text
+    assert result.proposal is not None
+    proposal = result.proposal.proposal
+    assert proposal.metadata["curator_engine"] == "memory_llm"
+    assert proposal.metadata["llm_confidence"] == 0.92
+    assert proposal.metadata["claim_status"] == "unverified"
+    assert proposal.metadata["source_observed_at"] == turn.turn.created_at.isoformat()
+    assert "Пользователь явно просит" in proposal.proposal
+    assert "Интерфейс должен быть на русском" in proposal.proposal
+    assert f"source_turn_id: {turn.turn.id}" in proposal.evidence
     assert reasoner.calls[0]["max_tokens"] == 1800
 
 
@@ -107,6 +111,7 @@ def test_conversation_curator_falls_back_when_memory_llm_fails() -> None:
         store,
         RetentionService(store),
         memory_llm=FailingReasoner(),
+        proposals=MemoryProposalService(store, RetentionService(store)),
     ).curate_turn(
         CurateConversationTurnCommand(
             tenant_id=tenant_id,
@@ -114,11 +119,22 @@ def test_conversation_curator_falls_back_when_memory_llm_fails() -> None:
         )
     )
 
-    assert result.retained is not None
-    retained = result.retained
-    assert retained.item.metadata["curator_engine"] == "deterministic_fallback"
-    assert retained.item.metadata["llm_error"] == "RuntimeError"
-    assert "Conversation turn summary" in retained.item.text
+    assert result.proposal is not None
+    proposal = result.proposal.proposal
+    assert proposal.metadata["curator_engine"] == "deterministic_fallback"
+    assert proposal.metadata["llm_error"] == "RuntimeError"
+    assert "Conversation turn summary" in proposal.proposal
+
+
+def test_conversation_curator_rejects_missing_proposal_boundary() -> None:
+    store = InMemoryMemoryStore()
+
+    try:
+        ConversationCurator(store, RetentionService(store))
+    except ValueError as error:
+        assert "requires MemoryProposalService" in str(error)
+    else:
+        raise AssertionError("curator must reject a direct durable-memory fallback")
 
 
 def test_memory_gateway_classifies_auto_proposal_with_memory_llm() -> None:
