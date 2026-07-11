@@ -24,6 +24,7 @@ REPORT_FORMAT = "obelisk-conversation-pipeline-v1"
 DEFAULT_TENANT = UUID("00000000-0000-0000-0000-000000000001")
 DEFAULT_WORKSPACE = UUID("00000000-0000-0000-0000-000000000002")
 DEFAULT_THREAD = UUID("00000000-0000-0000-0000-000000000042")
+DEFAULT_AGENT = UUID("00000000-0000-0000-0000-000000000043")
 
 
 class JsonClient(Protocol):
@@ -93,6 +94,7 @@ class PipelineConfig:
     tenant_id: UUID = DEFAULT_TENANT
     workspace_id: UUID = DEFAULT_WORKSPACE
     thread_id: UUID = DEFAULT_THREAD
+    agent_id: UUID = DEFAULT_AGENT
     namespace: str = "release-conversation"
     timeout_seconds: int = 30
     run_id: str = field(default_factory=lambda: uuid4().hex[:12])
@@ -136,6 +138,33 @@ def run_eval(client: JsonClient, config: PipelineConfig) -> PipelineReport:
     memory_id: str | None = None
 
     try:
+        provisioned = client.request(
+            "POST",
+            "/v1/identities/provision",
+            {
+                "tenant_id": str(config.tenant_id),
+                "workspace_id": str(config.workspace_id),
+                "agent_id": str(config.agent_id),
+                "agent_name": "Obelisk conversation release evaluator",
+                "agent_role": "release-eval",
+                "agent_config": {"namespace": config.namespace},
+                "thread_id": str(config.thread_id),
+            },
+        )
+        checks.append(
+            CheckResult(
+                "agent-thread-provisioned",
+                str(provisioned.get("thread", {}).get("id")) == str(config.thread_id),
+                f"agent_id={config.agent_id} thread_id={config.thread_id}",
+            )
+        )
+    except Exception as exc:  # noqa: BLE001
+        checks.append(
+            CheckResult("agent-thread-provisioned", False, f"{type(exc).__name__}: {exc}")
+        )
+        return _report(config, checks, build, turn_id, memory_id)
+
+    try:
         turn = client.request(
             "POST",
             "/v1/conversations/turns",
@@ -143,6 +172,7 @@ def run_eval(client: JsonClient, config: PipelineConfig) -> PipelineReport:
                 "tenant_id": str(config.tenant_id),
                 "workspace_id": str(config.workspace_id),
                 "thread_id": str(config.thread_id),
+                "agent_id": str(config.agent_id),
                 "namespace": config.namespace,
                 "source_kind": "release-eval",
                 "messages": [
@@ -381,6 +411,7 @@ def main() -> int:
     parser.add_argument("--tenant-id", type=UUID, default=DEFAULT_TENANT)
     parser.add_argument("--workspace-id", type=UUID, default=DEFAULT_WORKSPACE)
     parser.add_argument("--thread-id", type=UUID, default=DEFAULT_THREAD)
+    parser.add_argument("--agent-id", type=UUID, default=DEFAULT_AGENT)
     parser.add_argument("--namespace", default="release-conversation")
     parser.add_argument("--json-report", type=Path, default=Path("ops/conversation-pipeline.json"))
     parser.add_argument("--timeout-seconds", type=int, default=30)
@@ -392,6 +423,7 @@ def main() -> int:
         tenant_id=args.tenant_id,
         workspace_id=args.workspace_id,
         thread_id=args.thread_id,
+        agent_id=args.agent_id,
         namespace=args.namespace,
         timeout_seconds=args.timeout_seconds,
     )
