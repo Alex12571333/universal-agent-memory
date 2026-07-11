@@ -361,8 +361,9 @@ Required gates:
 
 ## Highest-priority next work
 
-1. Prove the implemented application-role provisioning on a fresh strict
-   production boot, including login and password rotation.
+1. Preserve fresh-production smoke evidence for each release. The repository
+   runner now proves isolated startup and application-role login with generated
+   credentials; target password-rotation evidence is still required.
 2. Prove agent/thread provisioning on PostgreSQL and wire the operator bootstrap
    into OpenClaw/Hermes installation; then add real checkpoint concurrency
    coverage.
