@@ -183,8 +183,9 @@ def run_checks(*, static_only: bool) -> list[Check]:
             Check(
                 "prod-compose:nats-health",
                 "healthz" in prod_compose
-                and 'command: ["-js", "-sd", "/data", "-m", "8222"]' in prod_compose,
-                "NATS JetStream has monitoring healthcheck",
+                and "nats-server -js -sd /data -m 8222" in prod_compose
+                and "nats_auth_token" in prod_compose,
+                "NATS JetStream has monitoring healthcheck and secret-backed auth",
             ),
             Check(
                 "prod-compose:secret-files",

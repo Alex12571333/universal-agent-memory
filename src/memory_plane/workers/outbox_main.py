@@ -10,6 +10,7 @@ from uuid import UUID
 from memory_plane.adapters.nats import NatsJetStreamSink
 from memory_plane.adapters.postgres import PostgresMemoryLedger
 from memory_plane.config.database import read_database_dsn
+from memory_plane.config.secrets import read_secret_env
 from memory_plane.services.outbox import OutboxRelay
 
 
@@ -26,6 +27,7 @@ async def run() -> None:
         nats_url,
         max_bytes=int(os.getenv("UAM_NATS_STREAM_MAX_BYTES", "536870912")),
         max_age_seconds=int(os.getenv("UAM_NATS_STREAM_MAX_AGE_SECONDS", "604800")),
+        auth_token=read_secret_env("UAM_NATS_AUTH_TOKEN"),
     )
     await sink.connect()
     relay = OutboxRelay(
