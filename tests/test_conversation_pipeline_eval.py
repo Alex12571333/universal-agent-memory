@@ -51,6 +51,9 @@ class FakeConversationClient:
         del expect_status, auth
         if method == "GET" and path == "/v1/system/status":
             return {"status": "ok", "version": "0.1.0", "build": self.build_identity}
+        if method == "POST" and path == "/v1/identities/provision":
+            assert body is not None
+            return {"thread": {"id": body["thread_id"]}}
         if method == "POST" and path == "/v1/conversations/turns":
             assert body is not None
             self.marker = str(body["messages"][0]["content"]).split("проверку ")[1].split(":")[0]
@@ -102,6 +105,7 @@ def test_conversation_pipeline_eval_passes_full_pipeline() -> None:
     assert report.build == BUILD_IDENTITY
     assert {check.name for check in report.checks} == {
         "build-identity",
+        "agent-thread-provisioned",
         "raw-turn-stored",
         "raw-turn-listed",
         "raw-turn-not-recalled",
