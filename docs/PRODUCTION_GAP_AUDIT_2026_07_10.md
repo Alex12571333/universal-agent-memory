@@ -93,7 +93,7 @@ static readiness script are green.
    not describe `UAM_MEMORY_TEXT_ENCRYPTION_SCOPES=all` as full-database
    encryption.
 
-6. **Fail-soft recall is implemented; target outage evidence remains required.**
+6. **Fail-soft recall is implemented; broader reliability evidence remains required.**
    PostgreSQL is the required canonical candidate source. Qdrant connection and
    query failures are isolated per source, recorded without endpoint/credential
    text, and recall falls back to PostgreSQL lexical results. `/health` remains
@@ -103,8 +103,10 @@ static readiness script are green.
    so JetStream retry semantics remain intact. Unit/API tests cover optional,
    required and recovery transitions. A local PostgreSQL 17 runtime test passed
    both API fallback and worker fail-fast scenarios against an intentionally
-   unreachable Qdrant endpoint; target container outage/recovery evidence is
-   still needed.
+   unreachable Qdrant endpoint. A controlled appliance Qdrant stop/restart on
+   2026-07-12 then confirmed canonical PostgreSQL recall during `degraded`
+   readiness and recovery to `ready` after a real hybrid recall. Multi-replica
+   failure evidence remains part of the broader reliability gate.
 
 7. **Workspace-safe reindex needs target concurrency evidence.**
    `EmbeddingService.reindex_all()` now computes and validates every embedding
