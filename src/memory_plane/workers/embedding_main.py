@@ -59,6 +59,9 @@ async def run() -> None:
         durable="EMBEDDING_WORKER",
         subject="memory.events.>",
         stream="MEMORY_EVENTS",
+        max_deliveries=int(os.getenv("UAM_NATS_MAX_DELIVERIES", "8")),
+        retry_base_seconds=int(os.getenv("UAM_NATS_RETRY_BASE_SECONDS", "2")),
+        retry_max_seconds=int(os.getenv("UAM_NATS_RETRY_MAX_SECONDS", "60")),
     )
 
     await worker.connect()
