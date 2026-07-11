@@ -8,6 +8,15 @@ from uuid import UUID
 
 
 @dataclass(frozen=True, slots=True)
+class WorkspaceIdentity:
+    """One workspace pinned to its tenant boundary."""
+
+    id: UUID
+    tenant_id: UUID
+    name: str
+
+
+@dataclass(frozen=True, slots=True)
 class AgentIdentity:
     """One agent identity pinned to exactly one tenant/workspace boundary."""
 

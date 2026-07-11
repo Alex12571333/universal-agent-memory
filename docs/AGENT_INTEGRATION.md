@@ -4,10 +4,25 @@ Obelisk Memory is designed to be embedded into an agent runtime, not
 used as a sidecar chat tool. The intended integration point is the agent
 lifecycle.
 
-Stable agent/thread identities must be registered once by an operator before an
-adapter starts retaining durable PostgreSQL records. Agent-scoped keys cannot
-create arbitrary identities. Production also requires a server-enforced
-tenant/workspace/agent binding for each agent principal.
+Stable workspace and agent/thread identities must be registered once by an
+operator before an adapter starts retaining durable PostgreSQL records.
+Agent-scoped keys cannot create arbitrary identities. Production also requires
+a server-enforced tenant/workspace/agent binding for each agent principal.
+
+For an additional workspace (for example an isolated agent or a release soak),
+register its stable UUID first. The tenant must already exist; this endpoint
+cannot create arbitrary tenants.
+
+```bash
+curl -X POST "$UAM_URL/v1/workspaces/provision" \
+  -H "Authorization: Bearer $UAM_OPERATOR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tenant_id":"00000000-0000-0000-0000-000000000001",
+    "workspace_id":"00000000-0000-0000-0000-000000000014",
+    "workspace_name":"OpenClaw release soak"
+  }'
+```
 
 ```bash
 curl -X POST "$UAM_URL/v1/identities/provision" \

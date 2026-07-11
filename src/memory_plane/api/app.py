@@ -71,7 +71,7 @@ from memory_plane.services.conversations import (
     AppendConversationTurnCommand,
     CurateConversationTurnCommand,
 )
-from memory_plane.services.identities import ProvisionIdentityCommand
+from memory_plane.services.identities import ProvisionIdentityCommand, ProvisionWorkspaceCommand
 from memory_plane.services.metrics import render_prometheus
 from memory_plane.services.proposals import (
     ReviewMemoryProposalCommand,
@@ -182,6 +182,14 @@ class IdentityProvisionBody(BaseModel):
     agent_config: dict[str, Any] = Field(default_factory=dict)
     thread_id: UUID | None = None
     thread_status: Literal["active", "closed", "archived"] = "active"
+
+
+class WorkspaceProvisionBody(BaseModel):
+    """Operator request to provision a workspace before agent registration."""
+
+    tenant_id: UUID = DEFAULT_SERVER_ID
+    workspace_id: UUID
+    workspace_name: str = Field(min_length=1, max_length=160)
 
 
 class ConversationTurnBody(BaseModel):
@@ -863,6 +871,8 @@ def _required_scope_for_request(path: str, method: str) -> str:
         return "operator"
     if path.startswith("/v1/identities"):
         return "operator"
+    if path == "/v1/workspaces/provision":
+        return "operator"
     if path.startswith("/v1/graph"):
         return "operator"
     if path.startswith("/v1/workspaces/"):
@@ -1493,6 +1503,40 @@ def create_app(
                 else None,
                 "status": thread.status,
             },
+        }
+
+    @app.post("/v1/workspaces/provision")
+    def provision_workspace(
+        body: WorkspaceProvisionBody,
+        request: Request,
+    ) -> dict[str, Any]:
+        """Provision an operator-owned workspace before registering its agents."""
+        try:
+            workspace = services.identities.provision_workspace(
+                ProvisionWorkspaceCommand(
+                    tenant_id=body.tenant_id,
+                    workspace_id=body.workspace_id,
+                    workspace_name=body.workspace_name,
+                )
+            )
+        except ValueError as exc:
+            status_code = 409 if "already belongs" in str(exc) else 400
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        record_audit(
+            request,
+            tenant_id=workspace.tenant_id,
+            workspace_id=workspace.id,
+            action="workspace.provision",
+            resource_type="workspace_identity",
+            resource_id=str(workspace.id),
+            metadata={"workspace_name": workspace.name},
+        )
+        return {
+            "workspace": {
+                "id": str(workspace.id),
+                "tenant_id": str(workspace.tenant_id),
+                "name": workspace.name,
+            }
         }
 
     @app.post("/v1/keys/{key_id}/revoke")

@@ -339,6 +339,50 @@ def test_identity_provisioning_is_operator_only_idempotent_and_scope_safe(monkey
     assert collision.status_code == 409
 
 
+def test_workspace_provisioning_is_operator_only_idempotent_and_scope_safe(monkeypatch) -> None:
+    monkeypatch.setenv(
+        "UAM_API_KEYS",
+        "agent:agent-secret:agent,operator:operator-secret:operator",
+    )
+    client = TestClient(create_app(build_in_memory_container()))
+    workspace_id = uuid4()
+    body = {
+        "workspace_id": str(workspace_id),
+        "workspace_name": "Isolated agent soak",
+    }
+
+    denied = client.post(
+        "/v1/workspaces/provision",
+        json=body,
+        headers={"Authorization": "Bearer agent-secret"},
+    )
+    created = client.post(
+        "/v1/workspaces/provision",
+        json=body,
+        headers={"Authorization": "Bearer operator-secret"},
+    )
+    updated = client.post(
+        "/v1/workspaces/provision",
+        json={**body, "workspace_name": "Isolated agent soak updated"},
+        headers={"Authorization": "Bearer operator-secret"},
+    )
+    collision = client.post(
+        "/v1/workspaces/provision",
+        json={
+            **body,
+            "tenant_id": str(uuid4()),
+        },
+        headers={"Authorization": "Bearer operator-secret"},
+    )
+
+    assert denied.status_code == 403
+    assert created.status_code == 200
+    assert created.json()["workspace"]["id"] == str(workspace_id)
+    assert updated.status_code == 200
+    assert updated.json()["workspace"]["name"] == "Isolated agent soak updated"
+    assert collision.status_code == 409
+
+
 def test_bound_agent_keys_enforce_identity_private_memory_and_thread_ownership(
     monkeypatch,
 ) -> None:

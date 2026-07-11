@@ -25,7 +25,7 @@ from memory_plane.domain.conversation import (
     ConversationTurn,
 )
 from memory_plane.domain.graph import MemoryEdge, MemoryEdgeType
-from memory_plane.domain.identity import AgentIdentity, ThreadIdentity
+from memory_plane.domain.identity import AgentIdentity, ThreadIdentity, WorkspaceIdentity
 from memory_plane.domain.models import (
     MemoryItem,
     MemoryLayer,
@@ -239,6 +239,35 @@ class PostgresMemoryLedger:
                 """,
                 (project_id, server_id, project_name),
             )
+
+    def provision_workspace(self, workspace: WorkspaceIdentity) -> WorkspaceIdentity:
+        """Create/update an existing tenant's workspace without changing ownership."""
+        with self._connection() as connection:
+            self._set_tenant(connection, workspace.tenant_id)
+            tenant = connection.execute(
+                "select id from tenants where id = %s",
+                (workspace.tenant_id,),
+            ).fetchone()
+            if tenant is None:
+                raise ValueError("tenant scope is not provisioned")
+            try:
+                row = connection.execute(
+                    """
+                    insert into workspaces (id, tenant_id, name)
+                    values (%s, %s, %s)
+                    on conflict (id) do update set name = excluded.name
+                    where workspaces.tenant_id = excluded.tenant_id
+                    returning id, tenant_id, name
+                    """,
+                    (workspace.id, workspace.tenant_id, workspace.name),
+                ).fetchone()
+            except Exception as exc:
+                if _is_unique_violation(exc):
+                    raise ValueError("workspace_name already belongs to this tenant") from exc
+                raise
+            if row is None:
+                raise ValueError("workspace_id already belongs to another tenant")
+            return WorkspaceIdentity(id=row["id"], tenant_id=row["tenant_id"], name=row["name"])
 
     def provision_agent_thread(
         self,

@@ -12,7 +12,7 @@ from memory_plane.domain.api_key import ApiKeyRecord
 from memory_plane.domain.audit import AuditEvent
 from memory_plane.domain.conflict import ConflictReviewDecision
 from memory_plane.domain.graph import MemoryEdge, MemoryEdgeType
-from memory_plane.domain.identity import AgentIdentity, ThreadIdentity
+from memory_plane.domain.identity import AgentIdentity, ThreadIdentity, WorkspaceIdentity
 from memory_plane.domain.models import MemoryItem, MemoryLayer, Observation
 
 
@@ -65,6 +65,10 @@ class MemoryLedger(Protocol):
 
 class IdentityRegistry(Protocol):
     """Atomic stable identity registry for agents and their threads."""
+
+    def provision_workspace(self, workspace: WorkspaceIdentity) -> WorkspaceIdentity:
+        """Create/update a workspace without allowing a cross-tenant move."""
+        ...
 
     def provision_agent_thread(
         self,

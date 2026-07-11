@@ -20,7 +20,7 @@ from memory_plane.domain.conversation import (
     ConversationTurn,
 )
 from memory_plane.domain.graph import MemoryEdge, MemoryEdgeType
-from memory_plane.domain.identity import AgentIdentity, ThreadIdentity
+from memory_plane.domain.identity import AgentIdentity, ThreadIdentity, WorkspaceIdentity
 from memory_plane.domain.models import (
     MemoryItem,
     MemoryLayer,
@@ -55,6 +55,7 @@ class InMemoryMemoryStore:
         self._proposal_idempotency: dict[tuple[UUID, str], UUID] = {}
         self._audit_events: dict[UUID, AuditEvent] = {}
         self._api_keys: dict[UUID, ApiKeyRecord] = {}
+        self._workspaces: dict[UUID, WorkspaceIdentity] = {}
         self._agents: dict[UUID, AgentIdentity] = {}
         self._threads: dict[UUID, ThreadIdentity] = {}
         self.events: list[IntegrationEvent] = []
@@ -102,6 +103,15 @@ class InMemoryMemoryStore:
                 )
                 self._threads[thread_id] = thread
             return agent, thread
+
+    def provision_workspace(self, workspace: WorkspaceIdentity) -> WorkspaceIdentity:
+        """Create/update an in-memory workspace without changing tenant ownership."""
+        with self._lock:
+            existing = self._workspaces.get(workspace.id)
+            if existing is not None and existing.tenant_id != workspace.tenant_id:
+                raise ValueError("workspace_id already belongs to another tenant")
+            self._workspaces[workspace.id] = workspace
+            return workspace
 
     def thread_belongs_to_agent(
         self,

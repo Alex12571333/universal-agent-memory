@@ -28,7 +28,7 @@ from typing import Any, Protocol
 from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
-from uuid import UUID, uuid4
+from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 DEFAULT_TENANT = UUID("00000000-0000-0000-0000-000000000001")
 OPENCLAW_WORKSPACE = UUID("00000000-0000-0000-0000-000000000014")
@@ -170,6 +170,7 @@ class SoakConfig:
     rounds: int = 3
     parallel: int = 2
     timeout_seconds: int = 30
+    provision_identities: bool = False
     run_id: str = field(default_factory=lambda: uuid4().hex[:12])
 
 
@@ -222,6 +223,8 @@ def run_soak(config: SoakConfig, client: JsonClient | None = None) -> SoakReport
     checks.append(build_check)
     if config.api_key:
         checks.append(_check("auth-required", lambda: _check_auth_required(api)))
+    if config.provision_identities:
+        checks.append(_check("operator-bootstrap", lambda: _bootstrap_agent_scopes(api, config)))
 
     max_workers = max(1, config.parallel)
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
@@ -252,6 +255,38 @@ def run_soak(config: SoakConfig, client: JsonClient | None = None) -> SoakReport
         parallel=config.parallel,
         checks=tuple(checks),
     )
+
+
+def _bootstrap_agent_scopes(api: JsonClient, config: SoakConfig) -> None:
+    """Create the isolated workspaces and agents used by this explicit soak run.
+
+    This is intentionally opt-in: only an operator-scoped key may provision
+    durable identities, and ordinary agent keys must never gain bootstrap power.
+    """
+    for agent in AGENTS:
+        api.request(
+            "POST",
+            "/v1/workspaces/provision",
+            {
+                "tenant_id": str(config.tenant_id),
+                "workspace_id": str(agent.workspace_id),
+                "workspace_name": f"agent-soak-{agent.name}",
+            },
+        )
+        thread_id = uuid5(NAMESPACE_URL, f"obelisk-agent-soak:{agent.name}:thread")
+        api.request(
+            "POST",
+            "/v1/identities/provision",
+            {
+                "tenant_id": str(config.tenant_id),
+                "workspace_id": str(agent.workspace_id),
+                "agent_id": str(agent.agent_id),
+                "agent_name": f"Obelisk soak {agent.name}",
+                "agent_role": f"{agent.name}-soak",
+                "agent_config": {"namespace": f"agent-soak/{agent.name}"},
+                "thread_id": str(thread_id),
+            },
+        )
 
 
 def _run_agent_round(
@@ -478,6 +513,11 @@ def main() -> int:
     parser.add_argument("--rounds", type=int, default=3)
     parser.add_argument("--parallel", type=int, default=2)
     parser.add_argument("--timeout-seconds", type=int, default=30)
+    parser.add_argument(
+        "--provision-identities",
+        action="store_true",
+        help="Require an operator key and provision the isolated soak workspaces/agents first.",
+    )
     parser.add_argument("--run-id", default=os.getenv("UAM_AGENT_SOAK_RUN_ID") or uuid4().hex[:12])
     parser.add_argument("--json-report", type=Path)
     parser.add_argument("--print-curl", action="store_true")
@@ -499,6 +539,7 @@ def main() -> int:
         rounds=args.rounds,
         parallel=args.parallel,
         timeout_seconds=args.timeout_seconds,
+        provision_identities=args.provision_identities,
         run_id=args.run_id,
     )
     report = run_soak(config)
