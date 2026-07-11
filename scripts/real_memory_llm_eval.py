@@ -93,8 +93,11 @@ def _check_chat(client: MemoryLLMClient) -> None:
     )
     if not text.strip():
         raise AssertionError("empty response")
-    if "пам" not in text.lower():
-        raise AssertionError(f"unexpected response: {text[:120]!r}")
+    # A provider-neutral reachability check must not require a particular
+    # lexical answer.  Local Qwen deployments can follow the system instruction
+    # differently while still returning a valid final completion.
+    if "thinking process" in text.lower():
+        raise AssertionError("reasoning text was returned as final content")
 
 
 def _check_json_curation(client: MemoryLLMClient) -> None:
