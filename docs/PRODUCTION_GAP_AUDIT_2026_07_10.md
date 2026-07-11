@@ -209,9 +209,9 @@ static readiness script are green.
     configured; otherwise the UI reports a desired config that disappears on
     restart. Provider keys are intentionally not persisted, so an operator
     must supply them via environment or a secret manager after restart.
-14. `index_stale` is not computed from outbox/index state or exposed as an API
-    invariant, so agents cannot distinguish complete recall from a lagging
-    vector index.
+14. Recall exposes a conservative `index_stale` flag when canonical outbox work
+    is pending or freshness cannot be checked. Workspace-level vector lag and
+    exact affected-memory counts still need a durable index-state ledger.
 15. Worker-specific Prometheus metrics are served privately by the embedding
     worker. Structured worker logs plus NATS/worker state in readiness are not
     yet an operational readiness gate.
