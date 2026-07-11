@@ -35,6 +35,7 @@ class NatsPullWorker:
         dead_letter_subject: str = "memory.dead_letters.embedding",
         dead_letter_max_bytes: int = DEFAULT_DLQ_MAX_BYTES,
         dead_letter_max_age_seconds: int = DEFAULT_DLQ_MAX_AGE_SECONDS,
+        auth_token: str | None = None,
     ) -> None:
         if not durable.strip():
             raise ValueError("durable consumer name must not be empty")
@@ -56,6 +57,7 @@ class NatsPullWorker:
         self._dead_letter_subject = dead_letter_subject
         self._dead_letter_max_bytes = dead_letter_max_bytes
         self._dead_letter_max_age_seconds = dead_letter_max_age_seconds
+        self._auth_token = auth_token
         self._client: Any = None
         self._subscription: Any = None
         self._jetstream: Any = None
@@ -67,7 +69,7 @@ class NatsPullWorker:
             from nats.js.errors import NotFoundError
         except ImportError as error:
             raise RuntimeError('NATS support is not installed; use ".[nats]"') from error
-        self._client = await nats.connect(self._url)
+        self._client = await nats.connect(self._url, token=self._auth_token)
         self._jetstream = self._client.jetstream()
         try:
             existing = await self._jetstream.stream_info(self._dead_letter_stream)

@@ -126,9 +126,12 @@ services:
 
   nats:
     image: nats:2.10-alpine
-    command: ["-js", "-sd", "/data", "-m", "8222"]
+    command:
+      ["sh", "-ec", "exec nats-server -js -sd /data -m 8222 --auth \"$(cat /run/secrets/nats_auth_token)\""]
     volumes:
       - nats_data:/data
+    secrets:
+      - nats_auth_token
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8222/healthz >/dev/null"]
@@ -148,8 +151,10 @@ services:
       UAM_DATABASE_PASSWORD_FILE: /run/secrets/app_db_password
       UAM_SERVER_ID: ${UAM_SERVER_ID}
       UAM_NATS_URL: nats://nats:4222
+      UAM_NATS_AUTH_TOKEN_FILE: /run/secrets/nats_auth_token
     secrets:
       - app_db_password
+      - nats_auth_token
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -170,6 +175,7 @@ services:
       UAM_SERVER_ID: ${UAM_SERVER_ID}
       UAM_PROJECT_ID: ${UAM_PROJECT_ID}
       UAM_NATS_URL: nats://nats:4222
+      UAM_NATS_AUTH_TOKEN_FILE: /run/secrets/nats_auth_token
       UAM_QDRANT_URL: http://qdrant:6333
       UAM_QDRANT_COLLECTION: ${UAM_QDRANT_COLLECTION:-memory_items}
       UAM_QDRANT_PAYLOAD_TEXT: ${UAM_QDRANT_PAYLOAD_TEXT:-false}
@@ -187,6 +193,7 @@ services:
       UAM_WORKER_METRICS_PORT: ${UAM_WORKER_METRICS_PORT:-9091}
     secrets:
       - app_db_password
+      - nats_auth_token
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -209,8 +216,10 @@ services:
       UAM_SERVER_ID: ${UAM_SERVER_ID}
       UAM_PROJECT_ID: ${UAM_PROJECT_ID}
       UAM_NATS_URL: nats://nats:4222
+      UAM_NATS_AUTH_TOKEN_FILE: /run/secrets/nats_auth_token
     secrets:
       - app_db_password
+      - nats_auth_token
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -267,3 +276,5 @@ secrets:
     file: ${UAM_UI_SESSION_SIGNING_KEY_FILE:?UAM_UI_SESSION_SIGNING_KEY_FILE must point to a host secret file}
   backup_encryption_key:
     file: ${UAM_BACKUP_ENCRYPTION_KEY_FILE:?UAM_BACKUP_ENCRYPTION_KEY_FILE must point to a host secret file}
+  nats_auth_token:
+    file: ${UAM_NATS_AUTH_TOKEN_FILE:?UAM_NATS_AUTH_TOKEN_FILE must point to a host secret file}

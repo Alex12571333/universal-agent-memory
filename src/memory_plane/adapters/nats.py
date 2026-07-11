@@ -23,6 +23,7 @@ class NatsJetStreamSink:
         subject_prefix: str = "memory.events",
         max_bytes: int = DEFAULT_STREAM_MAX_BYTES,
         max_age_seconds: int = DEFAULT_STREAM_MAX_AGE_SECONDS,
+        auth_token: str | None = None,
     ) -> None:
         if not url.strip():
             raise ValueError("NATS URL must not be empty")
@@ -33,6 +34,7 @@ class NatsJetStreamSink:
         self._subject_prefix = subject_prefix.rstrip(".")
         self._max_bytes = max_bytes
         self._max_age_seconds = max_age_seconds
+        self._auth_token = auth_token
         self._client: Any = None
         self._jetstream: Any = None
 
@@ -44,7 +46,7 @@ class NatsJetStreamSink:
         except ImportError as error:
             raise RuntimeError('NATS support is not installed; use ".[nats]"') from error
 
-        self._client = await nats.connect(self._url)
+        self._client = await nats.connect(self._url, token=self._auth_token)
         self._jetstream = self._client.jetstream()
         try:
             existing = await self._jetstream.stream_info(self._stream)

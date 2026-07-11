@@ -10,6 +10,7 @@ from uuid import UUID
 
 from memory_plane.bootstrap import build_postgres_container
 from memory_plane.config.database import read_database_dsn
+from memory_plane.config.secrets import read_secret_env
 from memory_plane.contracts.events import IntegrationEvent
 from memory_plane.services.consumer import IdempotentEventConsumer
 from memory_plane.workers.logging import log_event
@@ -89,6 +90,7 @@ async def run() -> None:
         dead_letter_max_age_seconds=int(
             os.getenv("UAM_NATS_DLQ_MAX_AGE_SECONDS", "1209600")
         ),
+        auth_token=read_secret_env("UAM_NATS_AUTH_TOKEN"),
     )
 
     await worker.connect()
