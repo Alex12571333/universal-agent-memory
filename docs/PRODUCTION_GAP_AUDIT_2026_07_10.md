@@ -11,7 +11,7 @@ under failure.
 | Area | Current state | Production verdict |
 |---|---|---|
 | Architecture | PostgreSQL source of truth, Qdrant index, outbox, NATS workers, vault, API, UI | Good foundation |
-| Docker | Dev/prod compose plus Caddy TLS proxy example exist; prod hides internal infra ports; database secrets use dedicated mounts; deployment preflight writes boundary evidence | Fresh role provisioning is implemented but still needs clean target-boot evidence and a verified TLS boundary |
+| Docker | Local self-hosted compose keeps infra ports internal in production topology; database secrets use dedicated mounts; deployment preflight writes boundary evidence | Fresh role provisioning still needs clean target-boot evidence |
 | API auth | Bearer keys, route capabilities, strict principal bindings, env validation and non-secret key registry exist; `/health` is public | Identity isolation is implemented and locally proven; target-deployment evidence remains required |
 | Audit trail | `audit_events`, export/signing and retention tools exist | Coverage is incomplete and most audit writes are not atomic with the operation they describe |
 | Browser/API hardening | Security headers are enforced by middleware and tests | Baseline present |
@@ -255,9 +255,9 @@ leaking secrets, or letting agents poison each other.
 Required gates:
 
 1. **Security gate**
-   - TLS or VPN/reverse proxy in front of any non-local deployment. The
-     repository ships a Caddy example and `scripts/deployment_preflight.py`;
-     production evidence requires the deployed host to expose HTTPS/proxy only,
+   - A local-only or trusted-LAN network boundary around the API. The
+     repository ships `scripts/deployment_preflight.py`; a domain, VPN, or
+     reverse proxy is not a requirement for the self-hosted local appliance,
      not a public backend `6798`.
    - Long random master key plus scoped per-agent/operator keys.
    - Key rotation record: owner, scope, created time, last used, revoked time.

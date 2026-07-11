@@ -15,7 +15,8 @@ contract:
 - `openclaw.plugin.json` supplies the manifest required by current OpenClaw
   releases;
 - `index.js` exports a default plugin entry object with `register(api)`;
-- hooks are registered with OpenClaw `api.registerHook(...)`.
+- hooks use current OpenClaw `api.on(...)`; a compatibility fallback supports
+  older installs exposing `api.registerHook(...)`.
 
 Implemented behavior:
 
@@ -58,12 +59,30 @@ UAM_AGENT_ID=00000000-0000-0000-0000-000000000003
 
 Without those values, the plugin derives stable local UUIDs.
 
-## CLI bridge
+## CLI execution
 
-Some OpenClaw releases expose registered hooks in `openclaw hooks list`, but
-their embedded `openclaw agent` CLI runner does not dispatch them. For this
-execution path use the supplied native bridge instead of calling
-`openclaw agent` directly:
+The native plugin is the primary integration. Current OpenClaw CLI releases
+wait for lifecycle hook promises during a one-shot `openclaw agent` run, so the
+same recall/retain path works for gateway and CLI execution.
+
+Verified command after installation:
+
+```bash
+openclaw agent \
+  --session-key agent:main:memory-check \
+  --message "Проверь память Obelisk" \
+  --json
+```
+
+The memory server should record `POST /v1/memory/recall` and a successful
+`POST /v1/memory/retain`. A skill is intentionally not used for this: skills
+only add instructions to a prompt and cannot guarantee before/after-turn memory
+lifecycle work.
+
+`obelisk_openclaw_cli.py` remains an explicit fail-soft compatibility bridge for
+an older local CLI that does not dispatch plugin hooks. Use it only after
+`openclaw hooks list` or a live HTTP check shows that the installed CLI bypasses
+the native plugin:
 
 ```bash
 python3 agent-integrations/openclaw/obelisk_openclaw_cli.py \
