@@ -2047,6 +2047,7 @@ def create_app(
                 for row in result.candidates
             ],
             "sources_used": result.sources_used,
+            "index_stale": result.index_stale,
             "context": {
                 "operation": package.operation,
                 "used_tokens": package.used_tokens,
