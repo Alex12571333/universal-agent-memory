@@ -206,6 +206,29 @@ counts (when a source DSN is supplied), and forced tenant RLS policies, then
 removes the temporary resources. Use `--keep` only when you need manual
 forensic inspection.
 
+### Recovery semantic verification
+
+Schema and row parity are insufficient: after restoring PostgreSQL, start an
+isolated empty Qdrant instance on the same temporary recovery network and run
+the probe from the Obelisk image against the restored database:
+
+```bash
+python scripts/restore_reindex_probe.py \
+  --tenant-id "$UAM_SERVER_ID" \
+  --workspace-id "$UAM_PROJECT_ID" \
+  --qdrant-url http://recovery-qdrant:6333 \
+  --collection "recovery_probe_<timestamp>" \
+  --report ./evidence/restored-reindex-probe.json
+```
+
+The collection name must be new and must not equal `UAM_QDRANT_COLLECTION`.
+The probe rebuilds vectors solely from the restored ledger and passes only when
+the point count matches and `qdrant_hybrid` returns the source memory with a
+non-zero semantic score. Bind that report to the backup/restore report with
+`scripts/restore_recovery_evidence.py`, passing the probe report as both the
+reindex and semantic inputs. Preserve the generated `restore-recovery.json` in
+the signed release evidence bundle.
+
 ## Scheduled backup job
 
 For unattended operations, run the scheduler-ready backup wrapper from cron,
