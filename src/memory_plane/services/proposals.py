@@ -344,6 +344,21 @@ class MemoryProposalService:
         stored = self._repository.save_proposal_review(reviewed)
         return ReviewMemoryProposalResult(proposal=stored, retained=retained)
 
+    def auto_accept(self, proposal: MemoryProposal) -> ReviewMemoryProposalResult | None:
+        """Accept only high-evidence, non-temporal operational claims automatically."""
+        reason = _auto_accept_reason(proposal)
+        if reason is None:
+            return None
+        return self.accept(
+            ReviewMemoryProposalCommand(
+                tenant_id=proposal.tenant_id,
+                proposal_id=proposal.id,
+                reviewer="obelisk-auto-policy",
+                reason=reason,
+                idempotency_key=f"auto-accept-proposal:{proposal.id}",
+            )
+        )
+
     def reject(self, command: ReviewMemoryProposalCommand) -> ReviewMemoryProposalResult:
         """Reject a proposal without creating durable memory."""
         proposal = self._load_for_review(command)
@@ -462,6 +477,38 @@ def _parse_target(value: Any) -> MemoryProposalTarget | None:
     if target == MemoryProposalTarget.AUTO:
         return None
     return target
+
+
+def _auto_accept_reason(proposal: MemoryProposal) -> str | None:
+    """Return an audit reason only for evidence that is safe to automate."""
+    allowed = {
+        MemoryProposalTarget.PREFERENCE,
+        MemoryProposalTarget.DECISION,
+        MemoryProposalTarget.TASK,
+        MemoryProposalTarget.PROCEDURE,
+    }
+    temporal_markers = (
+        "раньше",
+        "сейчас",
+        "переш",
+        "измен",
+        "before",
+        "formerly",
+        "now ",
+        "changed",
+        "switched",
+    )
+    text = f"{proposal.proposal}\n{proposal.evidence}".lower()
+    if proposal.target not in allowed:
+        return None
+    if proposal.confidence < 0.9 or not proposal.evidence.strip():
+        return None
+    if proposal.metadata.get("curator_engine") == "deterministic_fallback":
+        return None
+    has_temporal_marker = any(marker in text for marker in temporal_markers)
+    if "source_turn_id:" not in proposal.evidence or has_temporal_marker:
+        return None
+    return "auto-accepted: high-confidence evidence-linked non-temporal operational claim"
 
 
 def _safe_float(value: Any, fallback: float) -> float:

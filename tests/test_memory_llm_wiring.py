@@ -137,6 +137,33 @@ def test_conversation_curator_rejects_missing_proposal_boundary() -> None:
         raise AssertionError("curator must reject a direct durable-memory fallback")
 
 
+def test_auto_policy_accepts_only_high_confidence_evidence_linked_preference() -> None:
+    store = InMemoryMemoryStore()
+    service = MemoryProposalService(store, RetentionService(store))
+    submitted = service.submit(
+        SubmitMemoryProposalCommand(
+            tenant_id=uuid4(),
+            workspace_id=uuid4(),
+            namespace="openclaw",
+            requester="conversation-curator",
+            target=MemoryProposalTarget.PREFERENCE,
+            proposal="Пользователь предпочитает краткие ответы.",
+            evidence=(
+                "source_turn_id: 00000000-0000-0000-0000-000000000001\n"
+                "- user: Предпочитаю кратко."
+            ),
+            confidence=0.95,
+            metadata={"curator_engine": "memory_llm"},
+        )
+    )
+
+    accepted = service.auto_accept(submitted.proposal)
+
+    assert accepted is not None
+    assert accepted.proposal.status.value == "accepted"
+    assert accepted.proposal.reviewer == "obelisk-auto-policy"
+
+
 def test_memory_gateway_classifies_auto_proposal_with_memory_llm() -> None:
     store = InMemoryMemoryStore()
     reasoner = FakeReasoner(

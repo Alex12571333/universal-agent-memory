@@ -109,6 +109,7 @@ class CurateConversationTurnCommand:
     labels: tuple[str, ...] = ()
     importance: float = 0.4
     confidence: float = 0.65
+    auto_accept: bool = True
     idempotency_key: str | None = None
 
 
@@ -262,6 +263,10 @@ class ConversationCurator:
                 idempotency_key=(command.idempotency_key or f"curate-conversation-turn:{turn.id}"),
             )
         )
+        if command.auto_accept:
+            automatic = self._proposals.auto_accept(proposal.proposal)
+            if automatic is not None:
+                return CurateConversationTurnResult(retained=automatic.retained)
         if turn.retention_policy == ConversationRetentionPolicy.CURATED_ONLY:
             if not self._ledger.purge_turn_content(turn.tenant_id, turn.id):
                 raise RuntimeError("curation proposal was saved but raw content purge failed")
