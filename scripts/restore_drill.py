@@ -25,6 +25,29 @@ REQUIRED_TABLES = (
     "api_key_registry",
 )
 
+RLS_TABLES = (
+    "workspaces",
+    "agents",
+    "threads",
+    "memory_items",
+    "memory_provenance",
+    "memory_edges",
+    "observations",
+    "observation_evidence",
+    "idempotency_keys",
+    "outbox_events",
+    "checkpoints",
+    "processed_events",
+    "conflict_reviews",
+    "conversation_turns",
+    "conversation_messages",
+    "conversation_idempotency_keys",
+    "memory_proposals",
+    "memory_proposal_idempotency_keys",
+    "audit_events",
+    "api_key_registry",
+)
+
 
 def main() -> int:
     """Run a non-destructive restore drill against an isolated Docker volume."""
@@ -130,6 +153,7 @@ def main() -> int:
             ]
         )
         _verify_schema(container, dsn)
+        _verify_rls(container, dsn)
         if args.source_database_url:
             _verify_row_parity(args.source_database_url, container, dsn)
         print(f"restore_drill=PASS container={container} volume={volume}")
@@ -233,6 +257,60 @@ def _verify_row_parity(source_dsn: str, container: str, restored_dsn: str) -> No
             f"restore drill row parity failed: source={source_counts} restored={restored_counts}"
         )
     print("restore_drill_row_parity=PASS")
+
+
+def _verify_rls(container: str, dsn: str) -> None:
+    """Reject a restore that weakens tenant isolation at the database layer."""
+    required_values = ",".join(f"('{table}')" for table in RLS_TABLES)
+    sql = f"""
+    with required(name) as (values {required_values}),
+    missing_table_protection as (
+      select required.name
+      from required
+      left join pg_class relation
+        on relation.relname = required.name
+       and relation.relnamespace = 'public'::regnamespace
+      where relation.oid is null
+         or coalesce(relation.relrowsecurity, false) is false
+         or coalesce(relation.relforcerowsecurity, false) is false
+    ),
+    missing_policy as (
+      select required.name
+      from required
+      where not exists (
+        select 1
+        from pg_policies
+        where schemaname = 'public'
+          and tablename = required.name
+          and policyname = 'tenant_isolation'
+      )
+    )
+    select name from missing_table_protection
+    union
+    select name from missing_policy
+    order by name;
+    """
+    result = _run(
+        [
+            "docker",
+            "exec",
+            container,
+            "psql",
+            "--no-psqlrc",
+            "--set",
+            "ON_ERROR_STOP=1",
+            "--tuples-only",
+            "--no-align",
+            f"--dbname={dsn}",
+            "--command",
+            sql,
+        ],
+        capture_output=True,
+    )
+    missing = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    if missing:
+        raise RuntimeError(f"restore drill RLS verification failed: {', '.join(missing)}")
+    print("restore_drill_rls=PASS")
 
 
 def _parse_counts(output: str) -> dict[str, int]:

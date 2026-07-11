@@ -191,8 +191,10 @@ python scripts/restore_drill.py ./backups/obelisk-memory-<timestamp>.dump.enc
 ```
 
 The drill creates a temporary PostgreSQL Docker container and volume, restores
-the dump inside it, verifies required production tables, then removes the
-temporary resources. Use `--keep` only when you need manual forensic inspection.
+the dump inside it, verifies required production tables, source/restore row
+counts (when a source DSN is supplied), and forced tenant RLS policies, then
+removes the temporary resources. Use `--keep` only when you need manual
+forensic inspection.
 
 ## Scheduled backup job
 

@@ -516,8 +516,10 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 "restore-drill:script",
                 "docker" in read("scripts/restore_drill.py")
                 and "pg_restore" in read("scripts/restore_drill.py")
-                and "REQUIRED_TABLES" in read("scripts/restore_drill.py"),
-                "restore drill restores into isolated PostgreSQL and checks schema presence",
+                and "REQUIRED_TABLES" in read("scripts/restore_drill.py")
+                and "RLS_TABLES" in read("scripts/restore_drill.py")
+                and "_verify_rls" in read("scripts/restore_drill.py"),
+                "restore drill checks schema and forced tenant RLS after isolated restore",
             ),
             Check(
                 "tests:restore-drill",

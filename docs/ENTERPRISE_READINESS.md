@@ -61,9 +61,9 @@ remaining hard requirements.
 - [x] Privacy guard redacts common secrets and high-risk PII.
 - [x] Backup script exists.
 - [x] Restore-drill script restores into an isolated PostgreSQL container,
-      verifies schema presence and source/restore row-count parity.
-- [ ] Verify decryption, RLS, active-head recall and required Qdrant reindex
-      after restore.
+      verifies schema presence, tenant RLS policies and source/restore row-count
+      parity.
+- [ ] Verify active-head recall and required Qdrant reindex after restore.
 - [x] Scheduler-ready backup runner writes JSON reports and can alert on
       failures.
 - [x] Ops schedule preflight runner writes JSON evidence for installed backup,
