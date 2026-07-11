@@ -666,7 +666,7 @@ def test_api_key_is_disabled_when_not_configured(monkeypatch) -> None:
     assert response.status_code == 200
 
 
-def test_recall_default_context_budget_is_128k() -> None:
+def test_recall_default_context_budget_is_compact_8k() -> None:
     client = TestClient(create_app(build_in_memory_container()))
 
     response = client.post(
@@ -675,10 +675,10 @@ def test_recall_default_context_budget_is_128k() -> None:
     )
 
     assert response.status_code == 200
-    assert response.json()["context"]["budget_tokens"] == 131072
+    assert response.json()["context"]["budget_tokens"] == 8192
 
 
-def test_recall_128k_context_can_include_more_than_100_items() -> None:
+def test_recall_8k_context_can_include_more_than_100_small_items() -> None:
     client = TestClient(create_app(build_in_memory_container()))
     for index in range(120):
         retained = client.post(
@@ -687,8 +687,8 @@ def test_recall_128k_context_can_include_more_than_100_items() -> None:
                 "layer": "semantic",
                 "scope": "workspace",
                 "kind": "fact",
-                "text": f"Bulk 128k context memory {index} shared keyword zephyr.",
-                "idempotency_key": f"api-bulk-128k:{index}",
+                "text": f"Bulk compact context memory {index} shared keyword zephyr.",
+                "idempotency_key": f"api-bulk-8k:{index}",
             },
         )
         assert retained.status_code == 201
@@ -699,7 +699,7 @@ def test_recall_128k_context_can_include_more_than_100_items() -> None:
     )
 
     assert response.status_code == 200
-    assert response.json()["context"]["budget_tokens"] == 131072
+    assert response.json()["context"]["budget_tokens"] == 8192
     assert len(response.json()["context"]["trace_ids"]) == 120
 
 

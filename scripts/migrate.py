@@ -112,10 +112,19 @@ def provision_application_role(
 
     connection.execute(sql.SQL("grant usage on schema public to {}").format(identifier))
     connection.execute(
+        sql.SQL("grant select, insert on all tables in schema public to {}").format(identifier)
+    )
+    connection.execute(
+        sql.SQL("revoke update, delete on all tables in schema public from {}").format(identifier)
+    )
+    connection.execute(
         sql.SQL(
-            "grant select, insert, update, delete on all tables in schema public to {}"
+            "grant update on outbox_events, processed_events, api_key_registry, "
+            "conversation_turns, conversation_messages, memory_proposals, agents, "
+            "threads, conflict_reviews to {}"
         ).format(identifier)
     )
+    connection.execute(sql.SQL("grant delete on checkpoints to {}").format(identifier))
     connection.execute(
         sql.SQL("grant usage, select on all sequences in schema public to {}").format(
             identifier
@@ -124,7 +133,7 @@ def provision_application_role(
     connection.execute(
         sql.SQL(
             "alter default privileges in schema public "
-            "grant select, insert, update, delete on tables to {}"
+            "grant select, insert on tables to {}"
         ).format(identifier)
     )
     connection.execute(

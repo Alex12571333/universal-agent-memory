@@ -31,6 +31,14 @@ _CURATOR_SYSTEM_PROMPT = (
     "timeless preference. Return JSON object only."
 )
 
+# A small, bounded curation window keeps the maintenance model fast and makes
+# its evidence reviewable.  Long turns are reduced hierarchically below: a
+# reducer only receives prior JSON summaries, never a whole raw transcript.
+_CURATOR_CHUNK_CHARS = 6_000
+_CURATOR_REDUCE_BATCH_SIZE = 4
+_CURATOR_CHUNK_MAX_TOKENS = 700
+_CURATOR_REDUCE_MAX_TOKENS = 900
+
 
 class ConversationLedger(Protocol):
     """Storage boundary for immutable transcript turns."""
@@ -372,13 +380,14 @@ def _conversation_text(turn: ConversationTurn) -> str:
     return "\n".join(lines)
 
 
-def _conversation_chunks(turn: ConversationTurn, *, limit: int = 10_000) -> tuple[str, ...]:
+def _conversation_chunks(
+    turn: ConversationTurn, *, limit: int = _CURATOR_CHUNK_CHARS
+) -> tuple[str, ...]:
     """Split a long transcript into bounded prompts without discarding the tail."""
     text = _conversation_text(turn)
     if len(text) <= limit:
         return (text,)
-    chunks = [text[index : index + limit] for index in range(0, len(text), limit)]
-    return tuple(chunks[:12])
+    return tuple(text[index : index + limit] for index in range(0, len(text), limit))
 
 
 def _curate_chunk(memory_llm: MemoryReasoner, chunk: str) -> dict[str, Any]:
@@ -397,12 +406,25 @@ def _curate_chunk(memory_llm: MemoryReasoner, chunk: str) -> dict[str, Any]:
             },
         ],
         temperature=0.0,
-        max_tokens=900,
+        max_tokens=_CURATOR_CHUNK_MAX_TOKENS,
     )
 
 
 def _reduce_curation(memory_llm: MemoryReasoner, payloads: list[dict[str, Any]]) -> dict[str, Any]:
-    """Merge bounded fragment summaries; the reducer never receives raw transcript text."""
+    """Hierarchically merge bounded summaries without reopening raw transcripts."""
+    pending = list(payloads)
+    while len(pending) > 1:
+        pending = [
+            _reduce_curation_batch(memory_llm, pending[index : index + _CURATOR_REDUCE_BATCH_SIZE])
+            for index in range(0, len(pending), _CURATOR_REDUCE_BATCH_SIZE)
+        ]
+    return pending[0]
+
+
+def _reduce_curation_batch(
+    memory_llm: MemoryReasoner, payloads: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """Merge at most four small JSON payloads into one evidence-bound payload."""
     return memory_llm.chat_json(
         [
             {"role": "system", "content": _CURATOR_SYSTEM_PROMPT},
@@ -417,7 +439,7 @@ def _reduce_curation(memory_llm: MemoryReasoner, payloads: list[dict[str, Any]])
             },
         ],
         temperature=0.0,
-        max_tokens=1800,
+        max_tokens=_CURATOR_REDUCE_MAX_TOKENS,
     )
 
 

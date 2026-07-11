@@ -361,7 +361,7 @@
 
 | Класс / Функция | Назначение | Гарантия |
 |---|---|---|
-| `MemoryLLMConfig.from_env()` | Env → OpenAI-compatible memory LLM config | Provider-neutral local default; 128k context budget |
+| `MemoryLLMConfig.from_env()` | Env → OpenAI-compatible memory LLM config | Provider-neutral compact 8k curation window |
 | `MemoryLLMConfig.public_dict()` | Safe status payload | Does not expose API key |
 | `MemoryLLMClient.chat(messages)` | Calls OpenAI-compatible `/chat/completions` | Returns assistant text or raises `MemoryLLMError` |
 | `MemoryLLMClient.chat_json(messages)` | Requests JSON object output for memory workers | Strips fenced JSON and rejects non-object JSON |

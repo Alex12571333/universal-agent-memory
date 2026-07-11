@@ -23,9 +23,9 @@ def test_memory_llm_defaults_to_openai_compatible_endpoint(monkeypatch) -> None:
     assert config.model_name == "memory-model"
     assert config.base_url == "http://localhost:8000/v1"
     assert config.temperature == 0.1
-    assert config.context_window_tokens == 32768
+    assert config.context_window_tokens == 8192
     assert config.extra_body is None
-    assert config.max_tokens == 1600
+    assert config.max_tokens == 1200
 
 
 def test_memory_llm_does_not_forward_generic_openai_key(monkeypatch) -> None:
@@ -36,7 +36,7 @@ def test_memory_llm_does_not_forward_generic_openai_key(monkeypatch) -> None:
 
     assert config.api_key is None
     assert config.public_dict()["api_key_configured"] is False
-    assert config.public_dict()["context_window_tokens"] == 32768
+    assert config.public_dict()["context_window_tokens"] == 8192
 
 
 def test_memory_llm_explicit_openai_profile_uses_hosted_defaults_and_key(
