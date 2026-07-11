@@ -11,6 +11,7 @@ from memory_plane.bootstrap import build_postgres_container
 from memory_plane.config.database import read_database_dsn
 from memory_plane.contracts.events import IntegrationEvent
 from memory_plane.services.consumer import IdempotentEventConsumer
+from memory_plane.workers.logging import log_event
 from memory_plane.workers.nats_consumer import NatsPullWorker
 
 
@@ -32,6 +33,12 @@ async def run() -> None:
                 event.tenant_id,
                 event.workspace_id,
             )
+            log_event(
+                "reflection_completed",
+                worker="maintenance",
+                tenant_id=event.tenant_id,
+                workspace_id=event.workspace_id,
+            )
 
     consumer = IdempotentEventConsumer(
         container.store,  # type: ignore[arg-type]
@@ -52,11 +59,16 @@ async def run() -> None:
         dead_letter_subject=os.getenv("UAM_NATS_DLQ_SUBJECT", "memory.dead_letters.maintenance"),
     )
     await worker.connect()
+    log_event("worker_started", worker="maintenance")
     try:
         while True:
-            if await worker.run_once(batch_size=10, timeout=0.5) == 0:
+            acked = await worker.run_once(batch_size=10, timeout=0.5)
+            if acked:
+                log_event("worker_batch_completed", worker="maintenance", acknowledged=acked)
+            if acked == 0:
                 await asyncio.sleep(0.5)
     finally:
+        log_event("worker_stopped", worker="maintenance")
         await worker.close()
 
 
