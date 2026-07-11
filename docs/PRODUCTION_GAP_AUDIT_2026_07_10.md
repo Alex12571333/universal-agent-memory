@@ -128,8 +128,10 @@ static readiness script are green.
    read. First saves now use the same compare-and-swap path with expected head
    zero, preventing the unique-violation race. Unit coverage and an optional
    two-writer PostgreSQL integration test exist; that test passed on the
-   isolated PostgreSQL 17 clean boot. The real target run remains a required
-   release artifact.
+   isolated PostgreSQL 17 clean boot and again against the live local runtime
+   role on 2026-07-12 (one first writer saved, one received a stale conflict).
+   Multi-replica and crash-during-write evidence remain required before a
+   broader release claim.
 
 9. **Browser session auth needs target evidence.**
    `/ui` can render its login shell without exposing operator data. The React
