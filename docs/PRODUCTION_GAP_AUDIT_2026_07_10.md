@@ -171,8 +171,9 @@ static readiness script are green.
    embedding, dedupe, graph and reflection work. Graph/reflection maintenance is
    not an automatic production pipeline and graph is not a recall source.
 2. Outbox retry now uses capped exponential backoff before an event is
-   dead-lettered, but NATS poison messages still have no bounded delivery/DLQ
-   policy, stream
+   dead-lettered. JetStream worker delivery is also bounded with exponential
+   NAK delays and terminal messages remain in the durable source stream for
+   inspection; a separate replay/DLQ operator workflow, stream
    size/age limits, authentication, TLS or replay workflow.
 3. PostgreSQL opens a new connection per operation. The deployment has one API
    process and single-node PostgreSQL/Qdrant/NATS volumes, with no HA or safe
