@@ -2063,6 +2063,18 @@ def _write_release_evidence_bundle(tmp_path: Path) -> Path:
         },
     )
     _write_json(
+        tmp_path / "restore-recovery.json",
+        {
+            "format": "obelisk-restore-recovery-evidence-v1",
+            "ok": True,
+            "checks": {
+                "restore_drill": True,
+                "reindex": True,
+                "semantic_recall": True,
+            },
+        },
+    )
+    _write_json(
         tmp_path / "ui-walkthrough.json",
         {
             "format": "obelisk-ui-walkthrough-v1",
@@ -2111,6 +2123,7 @@ def _release_artifact_paths() -> dict[str, str]:
         "memory_llm": "memory-llm.json",
         "load_smoke": "load-smoke.json",
         "metrics_health": "metrics-health.json",
+        "restore_recovery": "restore-recovery.json",
         "ops_schedule": "ops-schedule.json",
         "observability": "observability.json",
         "release_notes": "release-notes.json",

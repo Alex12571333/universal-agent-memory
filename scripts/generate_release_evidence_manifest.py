@@ -31,6 +31,7 @@ DEFAULT_ARTIFACT_PATHS = {
     "observability": "ops/observability-preflight.json",
     "release_notes": "ops/release-notes.json",
     "scheduled_backup": "backups/latest-backup-report.json",
+    "restore_recovery": "ops/restore-recovery.json",
     "audit_retention": "ops/audit-retention.json",
     "deployment_preflight": "ops/deployment-preflight.json",
     "secret_files": "ops/secret-files.json",
