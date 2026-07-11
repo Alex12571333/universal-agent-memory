@@ -63,6 +63,7 @@ def validate_env(
         _check_secret(values, "POSTGRES_PASSWORD", min_length=32),
         _check_secret(values, "UAM_APP_DB_PASSWORD", min_length=32),
         _check_secret(values, "MINIO_ROOT_PASSWORD", min_length=32),
+        _check_secret(values, "UAM_NATS_AUTH_TOKEN", min_length=32),
         _check_scoped_api_keys(values),
         _check_secret(values, "UAM_UI_SESSION_SIGNING_KEY", min_length=32),
         _check_ui_session_policy(values),
