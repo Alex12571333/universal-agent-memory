@@ -42,6 +42,7 @@ restore_drill = _load_script("restore_drill")
 check_branch_protection = _load_script("check_branch_protection")
 export_audit = _load_script("export_audit")
 audit_retention = _load_script("audit_retention")
+maintenance_retention = _load_script("maintenance_retention")
 
 
 def test_audit_retention_prefers_operator_database_over_runtime_role(
@@ -51,6 +52,33 @@ def test_audit_retention_prefers_operator_database_over_runtime_role(
     monkeypatch.setenv("UAM_ADMIN_DATABASE_URL", "postgresql://memory_admin:admin@db/memory")
 
     assert audit_retention._retention_database_dsn() == "postgresql://memory_admin:admin@db/memory"
+
+
+def test_maintenance_retention_never_selects_pending_outbox() -> None:
+    class Result:
+        def fetchone(self):
+            return (7,)
+
+    class Connection:
+        def __init__(self):
+            self.calls = []
+
+        def execute(self, statement, params):
+            self.calls.append((statement, params))
+            return Result()
+
+    connection = Connection()
+    count = maintenance_retention._purge(
+        connection,
+        "outbox_events",
+        "coalesce(published_at, dead_lettered_at)",
+        datetime.now(UTC),
+        100,
+        False,
+    )
+
+    assert count == 7
+    assert "published_at is not null or dead_lettered_at is not null" in connection.calls[0][0]
 scheduled_backup = _load_script("scheduled_backup")
 deployment_preflight = _load_script("deployment_preflight")
 observability_preflight = _load_script("observability_preflight")
