@@ -19,7 +19,7 @@ under failure.
 | Conversation capture | Raw ledger, proposal-first curation, `curated_only` purge, bounded staging TTL, stable identities and live pipeline runner exist | The purge schedule and installed agent hooks still require target evidence |
 | Embeddings | Provider-neutral endpoints, async worker, fail-soft recall, scoped sync and immutable collection identity exist | Target outage/migration evidence remains required |
 | Memory LLM | Provider-neutral OpenAI-compatible contract, deterministic fallback, proposal-first curation and live runner exist | Target failure/concurrency evidence and quality evaluation remain required; generated content never becomes recallable until an operator accepts its proposal |
-| OpenClaw/Hermes | Native adapter scaffolds, tests and live soak runner exist | Needs saved soak evidence from the deployed runtime versions |
+| OpenClaw/Hermes | Native adapters and a standalone live soak evaluator | Short target-side OpenClaw/Hermes lifecycle and API-contract soak passed on 2026-07-11; multi-hour soak evidence remains required |
 | UI | React dashboard supports signed HttpOnly operator sessions, CSRF, memory/vault editing, conflict decisions, exact-origin model probe policy and a JSON walkthrough runner | Target HTTPS session/egress evidence and secret-manager integration evidence remain required |
 | Testing | Unit/API tests, live PostgreSQL/Qdrant isolation/failure tests, benchmark scripts, web build and load runner exist | Target chaos/security evidence is still missing |
 | Release process | PR flow, release reports and a signed content-addressed evidence manifest exist | OCI build provenance, SBOM, scanning and image signing are still required |
@@ -46,13 +46,17 @@ static readiness script are green.
    The same proof must still be executed and preserved on the target Docker
    runtime before this gate is closed.
 
-2. **Identity provisioning and binding exist, but installer bootstrap needs target proof.**
+2. **Identity provisioning and binding exist, but installer bootstrap needs longer target proof.**
    An operator-only, audited and idempotent endpoint now provisions an agent and
    optional owned thread atomically, refuses cross-scope ID reuse, and has API,
-   service and optional PostgreSQL retain coverage. Agent keys intentionally
-   cannot self-provision arbitrary identities. Native OpenClaw/Hermes installers
-   still need an operator bootstrap step and saved evidence from the deployed
-   runtime versions before safe automatic first-use registration is claimed.
+   service and optional PostgreSQL retain coverage. Operator-only workspace
+   provisioning now creates the required scope before agent registration,
+   without broadening the runtime database ACL. A real `.14` target evaluator
+   successfully provisioned isolated OpenClaw/Hermes soak identities then
+   completed retain/retry/recall and cross-workspace exclusion. Agent keys
+   intentionally cannot self-provision arbitrary identities. Native installers
+   still need longer-running evidence before safe automatic first-use
+   registration is claimed.
 
 3. **Identity-bound authorization needs target evidence.**
    Production configuration can now require each `agent` principal to map to a
