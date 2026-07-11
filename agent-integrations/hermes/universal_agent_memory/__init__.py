@@ -58,7 +58,8 @@ class UniversalAgentMemoryProvider(MemoryProvider):
         self._tenant_id = _uuid_env("UAM_TENANT_ID", "tenant:default")
         self._workspace_id = _uuid_env("UAM_WORKSPACE_ID", f"workspace:{os.getcwd()}")
         self._agent_id = _uuid_env("UAM_AGENT_ID", f"agent:hermes:{os.getenv('USER', 'hermes')}")
-        self._thread_id = _stable_uuid("thread:hermes")
+        self._configured_thread_id = os.getenv("UAM_THREAD_ID", "").strip()
+        self._thread_id = _uuid_env("UAM_THREAD_ID", "thread:hermes")
         self._top_k = int(os.getenv("UAM_MEMORY_RECALL_TOP_K", "8"))
         self._context_budget_tokens = int(os.getenv("UAM_CONTEXT_BUDGET_TOKENS", "131072"))
         self._labels: tuple[str, ...] = ("hermes",)
@@ -75,7 +76,8 @@ class UniversalAgentMemoryProvider(MemoryProvider):
         identity = str(
             kwargs.get("agent_identity") or kwargs.get("user_id") or os.getenv("USER", "hermes")
         )
-        self._thread_id = _stable_uuid(f"thread:hermes:{platform}:{session_id}")
+        if not self._configured_thread_id:
+            self._thread_id = _stable_uuid(f"thread:hermes:{platform}:{session_id}")
         self._agent_id = _uuid_env("UAM_AGENT_ID", f"agent:hermes:{identity}")
         self._labels = tuple(
             item
