@@ -508,7 +508,17 @@ def _auto_accept_reason(proposal: MemoryProposal) -> str | None:
     has_temporal_marker = any(marker in text for marker in temporal_markers)
     if "source_turn_id:" not in proposal.evidence or has_temporal_marker:
         return None
-    return "auto-accepted: high-confidence evidence-linked non-temporal operational claim"
+    quotes = proposal.metadata.get("evidence_quotes")
+    if not isinstance(quotes, list):
+        return None
+    verified_quotes = [
+        str(quote).strip()
+        for quote in quotes
+        if len(str(quote).strip()) >= 8 and str(quote).strip() in proposal.evidence
+    ]
+    if not verified_quotes:
+        return None
+    return "auto-accepted: high-confidence claim with source-verified evidence quote"
 
 
 def _safe_float(value: Any, fallback: float) -> float:
