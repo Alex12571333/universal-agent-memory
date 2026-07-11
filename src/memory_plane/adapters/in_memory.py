@@ -231,6 +231,10 @@ class InMemoryMemoryStore:
         workspace_id: UUID,
         *,
         layers: tuple[MemoryLayer, ...] = (),
+        status: MemoryStatus | None = None,
+        label: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> tuple[MemoryItem, ...]:
         """List workspace items in creation order with optional layer filtering."""
         rows = [
@@ -239,8 +243,11 @@ class InMemoryMemoryStore:
             if item.tenant_id == tenant_id
             and item.workspace_id == workspace_id
             and (not layers or item.layer in layers)
+            and (status is None or item.status == status)
+            and (not label or label in item.labels)
         ]
-        return tuple(sorted(rows, key=lambda item: item.created_at))
+        ordered = sorted(rows, key=lambda item: (item.created_at, item.id))
+        return tuple(ordered[max(0, offset) : None if limit is None else max(0, offset) + limit])
 
     def search(self, query: RecallQuery) -> tuple[Candidate, ...]:
         """Provide portable lexical candidates and strict metadata filtering."""

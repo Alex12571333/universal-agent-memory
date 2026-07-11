@@ -1229,6 +1229,32 @@ def test_memory_list_endpoint_and_operator_ui(tmp_path, monkeypatch) -> None:
     assert "/v1/workspaces/" in ui.text
 
 
+def test_memory_list_endpoint_uses_bounded_database_style_pagination() -> None:
+    client = TestClient(create_app(build_in_memory_container()))
+    for index in range(3):
+        response = client.post(
+            "/v1/memory/retain",
+            json={
+                "layer": "semantic",
+                "scope": "workspace",
+                "kind": "fact",
+                "text": f"paged memory {index}",
+                "idempotency_key": f"paged-memory-{index}",
+            },
+        )
+        assert response.status_code == 201
+
+    first = client.get(f"/v1/workspaces/{DEFAULT_PROJECT_ID}/memories?limit=2&offset=0")
+    second = client.get(f"/v1/workspaces/{DEFAULT_PROJECT_ID}/memories?limit=2&offset=2")
+
+    assert first.status_code == 200
+    assert first.json()["count"] == 2
+    assert first.json()["has_more"] is True
+    assert first.json()["next_offset"] == 2
+    assert second.json()["count"] == 1
+    assert second.json()["has_more"] is False
+
+
 def test_operator_ui_serves_react_dist_when_built(tmp_path, monkeypatch) -> None:
     dist = tmp_path / "dist"
     assets = dist / "assets"

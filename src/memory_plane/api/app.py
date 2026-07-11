@@ -2064,21 +2064,35 @@ def create_app(
         layer: MemoryLayer | None = None,
         status: MemoryStatus | None = None,
         label: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
     ) -> dict[str, Any]:
         """List memory rows for local operator review."""
         layers = (layer,) if layer is not None else ()
         lister = getattr(services.store, "list_for_workspace", None)
         if lister is None:
             raise HTTPException(status_code=503, detail="memory listing unavailable")
-        rows = lister(tenant_id, workspace_id, layers=layers)
-        if status:
-            rows = tuple(row for row in rows if row.status == status)
-        if label:
-            rows = tuple(row for row in rows if label in row.labels)
+        safe_limit = max(1, min(limit, 500))
+        safe_offset = max(0, offset)
+        rows = lister(
+            tenant_id,
+            workspace_id,
+            layers=layers,
+            status=status,
+            label=label,
+            limit=safe_limit + 1,
+            offset=safe_offset,
+        )
+        has_more = len(rows) > safe_limit
+        rows = rows[:safe_limit]
         return {
             "tenant_id": str(tenant_id),
             "workspace_id": str(workspace_id),
             "count": len(rows),
+            "limit": safe_limit,
+            "offset": safe_offset,
+            "has_more": has_more,
+            "next_offset": safe_offset + len(rows) if has_more else None,
             "memories": [
                 {
                     "id": str(row.id),
