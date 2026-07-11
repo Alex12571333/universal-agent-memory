@@ -152,14 +152,15 @@ static readiness script are green.
     egress-deny policy and target probe evidence remain required defense in
     depth.
 
-11. **Conversation staging needs installed scheduler evidence.**
+11. **Conversation staging needs longer-running scheduler evidence.**
     `raw_only` rejects curation, `raw_and_curated` preserves the source, and
     `curated_only` now purges message text immediately after successful
-    idempotent curation while retaining audit identity. However, `curated_only`
-    stores raw staging text until curation runs. Abandoned turns now receive a
-    bounded TTL and an operator-only batch purge endpoint, but deployment still
-    needs an installed schedule, alerting and target evidence that a backlog or
-    worker failure cannot retain staging transcripts indefinitely.
+   idempotent curation while retaining audit identity. However, `curated_only`
+   stores raw staging text until curation runs. Abandoned turns now receive a
+   bounded TTL and an operator-only batch purge endpoint. The local Mac
+   appliance now installs a daily `launchd` purge job and a real smoke run
+   completed with exit `0`; longer-running evidence is still needed to prove a
+   backlog or worker failure cannot retain staging transcripts indefinitely.
 
 12. **Proposal/LLM boundary needs target failure evidence.**
     `ConversationCurator` now emits an evidence-linked proposal and never makes

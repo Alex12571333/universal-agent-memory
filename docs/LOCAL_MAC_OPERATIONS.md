@@ -16,6 +16,9 @@ UAM_MAINTENANCE_DATABASE_URL=postgresql://...
 UAM_BACKUP_ENCRYPTION_KEY_FILE=/Users/<user>/.config/obelisk-memory/backup_encryption_key
 UAM_API_KEY_FILE=/Users/<user>/.config/obelisk-memory/operator_api_key
 UAM_METRICS_URL=http://127.0.0.1:6798/metrics
+UAM_INTERNAL_BASE_URL=http://127.0.0.1:6798
+UAM_SERVER_ID=00000000-0000-0000-0000-000000000001
+UAM_PROJECT_ID=00000000-0000-0000-0000-000000000002
 PATH=/usr/local/bin:/opt/homebrew/opt/libpq/bin:/opt/homebrew/bin:/usr/bin:/bin
 ```
 
@@ -26,14 +29,14 @@ python scripts/install_launchd_ops.py \
   --workspace "$PWD" \
   --env-file ~/.config/obelisk-memory/ops.env
 
-for job in backup maintenance metrics; do
+for job in conversation-retention backup maintenance metrics; do
   launchctl bootstrap "gui/$(id -u)" \
     "$HOME/Library/LaunchAgents/com.obelisk-memory.$job.plist"
 done
 ```
 
-Schedules are backup daily at 03:23, retention daily at 03:37, and metrics
-daily at 09:17. Generated wrappers and logs live under
+Schedules are conversation staging purge daily at 02:47, backup at 03:23,
+operational retention at 03:37, and metrics daily at 09:17. Generated wrappers and logs live under
 `~/Library/LaunchAgents/obelisk-memory/`; reports are under
 `OBELISK_EVIDENCE_DIR`. `launchctl print gui/$(id -u)/com.obelisk-memory.metrics`
 shows the last exit code. Keep backup artifacts on an encrypted external disk
