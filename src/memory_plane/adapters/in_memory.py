@@ -34,6 +34,11 @@ from memory_plane.domain.proposal import MemoryProposal, MemoryProposalStatus
 _WORD = re.compile(r"\w+", re.UNICODE)
 
 
+def _scope_idempotency_key(workspace_id: UUID, key: str | None) -> str | None:
+    """Prevent one tenant's independent workspaces from colliding on retries."""
+    return None if key is None else f"{workspace_id}:{key}"
+
+
 class InMemoryMemoryStore:
     """Thread-safe fake ledger, outbox, observation store and lexical source."""
 
@@ -118,6 +123,7 @@ class InMemoryMemoryStore:
         self, item: MemoryItem, idempotency_key: str | None = None
     ) -> tuple[MemoryItem, bool]:
         """Atomically append or return an idempotent prior result."""
+        idempotency_key = _scope_idempotency_key(item.workspace_id, idempotency_key)
         with self._lock:
             if idempotency_key:
                 key = (item.tenant_id, idempotency_key)
@@ -151,6 +157,7 @@ class InMemoryMemoryStore:
         idempotency_key: str | None = None,
     ) -> tuple[MemoryItem, bool]:
         """CAS append a replacement and enqueue its derived-work event."""
+        idempotency_key = _scope_idempotency_key(item.workspace_id, idempotency_key)
         if item.supersedes_id is None:
             raise ValueError("replacement item must declare supersedes_id")
         with self._lock:
@@ -276,6 +283,7 @@ class InMemoryMemoryStore:
         self, turn: ConversationTurn, idempotency_key: str | None = None
     ) -> tuple[ConversationTurn, bool]:
         """Atomically append a raw conversation turn."""
+        idempotency_key = _scope_idempotency_key(turn.workspace_id, idempotency_key)
         with self._lock:
             if idempotency_key:
                 key = (turn.tenant_id, idempotency_key)
@@ -378,6 +386,7 @@ class InMemoryMemoryStore:
         self, proposal: MemoryProposal, idempotency_key: str | None = None
     ) -> tuple[MemoryProposal, bool]:
         """Atomically append a memory proposal."""
+        idempotency_key = _scope_idempotency_key(proposal.workspace_id, idempotency_key)
         with self._lock:
             if idempotency_key:
                 key = (proposal.tenant_id, idempotency_key)
@@ -420,6 +429,7 @@ class InMemoryMemoryStore:
         idempotency_key: str,
     ) -> tuple[MemoryProposal, MemoryItem, bool]:
         """Atomically transition an open proposal and append its memory/event."""
+        idempotency_key = _scope_idempotency_key(item.workspace_id, idempotency_key)
         with self._lock:
             current = self.get_proposal(proposal.tenant_id, proposal.id)
             if current is None:

@@ -41,6 +41,11 @@ from memory_plane.domain.proposal import (
     MemoryProposalTarget,
 )
 
+
+def _scope_idempotency_key(workspace_id: UUID, key: str | None) -> str | None:
+    """Namespace retry keys so independent workspaces cannot collide."""
+    return None if key is None else f"{workspace_id}:{key}"
+
 _PGCRYPTO_TEXT_PREFIX = "enc:pgcrypto:v1:"
 
 _ITEM_COLUMNS = f"""
@@ -315,6 +320,7 @@ class PostgresMemoryLedger:
         idempotency_key: str | None = None,
     ) -> tuple[MemoryItem, bool]:
         """Atomically append memory, provenance, idempotency key and outbox event."""
+        idempotency_key = _scope_idempotency_key(item.workspace_id, idempotency_key)
         self._validate_event(item, event)
         with self._connection() as connection:
             self._set_tenant(connection, item.tenant_id)
@@ -352,6 +358,7 @@ class PostgresMemoryLedger:
         idempotency_key: str | None = None,
     ) -> tuple[MemoryItem, bool]:
         """CAS append a replacement and its outbox event in one transaction."""
+        idempotency_key = _scope_idempotency_key(item.workspace_id, idempotency_key)
         if item.supersedes_id is None:
             raise ValueError("replacement item must declare supersedes_id")
         self._validate_event(item, event)
@@ -938,6 +945,7 @@ class PostgresMemoryLedger:
         self, item: MemoryItem, idempotency_key: str | None = None
     ) -> tuple[MemoryItem, bool]:
         """Append without an event for maintenance and import workflows."""
+        idempotency_key = _scope_idempotency_key(item.workspace_id, idempotency_key)
         with self._connection() as connection:
             self._set_tenant(connection, item.tenant_id)
             if idempotency_key:
@@ -962,6 +970,7 @@ class PostgresMemoryLedger:
         self, turn: ConversationTurn, idempotency_key: str | None = None
     ) -> tuple[ConversationTurn, bool]:
         """Append one raw conversation turn and its ordered messages."""
+        idempotency_key = _scope_idempotency_key(turn.workspace_id, idempotency_key)
         with self._connection() as connection:
             self._set_tenant(connection, turn.tenant_id)
             if idempotency_key:
@@ -1135,6 +1144,7 @@ class PostgresMemoryLedger:
         self, proposal: MemoryProposal, idempotency_key: str | None = None
     ) -> tuple[MemoryProposal, bool]:
         """Append one memory proposal under the tenant boundary."""
+        idempotency_key = _scope_idempotency_key(proposal.workspace_id, idempotency_key)
         with self._connection() as connection:
             self._set_tenant(connection, proposal.tenant_id)
             if idempotency_key:
@@ -1224,6 +1234,8 @@ class PostgresMemoryLedger:
         """Atomically accept an open proposal with its memory and outbox event."""
         from psycopg.types.json import Jsonb
 
+        idempotency_key = _scope_idempotency_key(item.workspace_id, idempotency_key)
+        assert idempotency_key is not None
         self._validate_event(item, event)
         with self._connection() as connection:
             self._set_tenant(connection, proposal.tenant_id)
