@@ -1943,7 +1943,6 @@ class PostgresMemoryLedger:
             select id, revision
             from memory_items
             where id = %s and deleted_at is null
-            for update
             """,
             (item.supersedes_id,),
         ).fetchone()
