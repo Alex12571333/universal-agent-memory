@@ -248,6 +248,11 @@ The verifier requires:
 - scheduled backup report format `obelisk-scheduled-backup-report-v2`,
   `ok: true`, AES-256-GCM artifact, restore drill not skipped and audit export
   not skipped;
+- restore/recovery report format `obelisk-restore-recovery-evidence-v1`,
+  `ok: true`, successful restore, reindex, semantic recall and recovery-probe
+  checks. Its bound probe input must use
+  `obelisk-restored-reindex-probe-v1` with a non-empty embedding model and a
+  positive embedding dimension;
 - audit retention report format `obelisk-audit-retention-v1`, `ok: true`,
   signed pre-prune export and verified export;
 - deployment preflight report format `obelisk-deployment-preflight-v1`,
