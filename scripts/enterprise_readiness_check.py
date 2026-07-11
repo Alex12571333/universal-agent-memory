@@ -861,8 +861,10 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 "conversation:pipeline-runner",
                 "obelisk-conversation-pipeline-v1" in read("scripts/conversation_pipeline_eval.py")
                 and "raw-turn-not-recalled" in read("scripts/conversation_pipeline_eval.py")
-                and "curated-memory-recalled" in read("scripts/conversation_pipeline_eval.py"),
-                "conversation pipeline runner validates raw capture, curation and recall",
+                and "unaccepted-proposal-not-recalled"
+                in read("scripts/conversation_pipeline_eval.py")
+                and "accepted-memory-recalled" in read("scripts/conversation_pipeline_eval.py"),
+                "conversation pipeline runner validates proposal-first curation and recall",
             ),
             Check(
                 "conversation:curated-only-purge",
