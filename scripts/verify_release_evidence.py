@@ -1016,7 +1016,7 @@ def _verify_scheduled_backup(payload: dict[str, Any]) -> list[EvidenceCheck]:
 
 def _verify_restore_recovery(payload: dict[str, Any]) -> list[EvidenceCheck]:
     checks = payload.get("checks") if isinstance(payload.get("checks"), dict) else {}
-    required = {"restore_drill", "reindex", "semantic_recall"}
+    required = {"restore_drill", "reindex", "semantic_recall", "recovery_probe"}
     missing = sorted(name for name in required if checks.get(name) is not True)
     return [
         _format_check("restore_recovery", payload, "obelisk-restore-recovery-evidence-v1"),

@@ -644,10 +644,22 @@ def test_restore_recovery_evidence_fails_without_semantic_recall(
         encoding="utf-8",
     )
     reindex_path.write_text(
-        json.dumps({"ok": True, "indexed_points": 3, "verified_points": 3}),
+        json.dumps(
+            {
+                "format": "obelisk-restored-reindex-probe-v1",
+                "ok": True,
+                "embedding_model": "test-embed",
+                "embedding_dimension": 3,
+                "indexed_points": 3,
+                "verified_points": 3,
+            }
+        ),
         encoding="utf-8",
     )
-    semantic_path.write_text(json.dumps({"ok": True, "checks": []}), encoding="utf-8")
+    semantic_path.write_text(
+        json.dumps({"format": "obelisk-restored-reindex-probe-v1", "ok": True, "checks": []}),
+        encoding="utf-8",
+    )
     monkeypatch.setattr(
         "sys.argv",
         [
@@ -2079,6 +2091,7 @@ def _write_release_evidence_bundle(tmp_path: Path) -> Path:
                 "restore_drill": True,
                 "reindex": True,
                 "semantic_recall": True,
+                "recovery_probe": True,
             },
         },
     )
