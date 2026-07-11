@@ -1188,6 +1188,10 @@ def test_scheduled_backup_runs_backup_drill_audit_and_writes_report(
         capture_output: bool = True,
     ) -> subprocess.CompletedProcess[str]:
         commands.append(command)
+        if "export_audit.py" in command[1]:
+            audit_dir = Path(command[2])
+            audit_dir.mkdir(parents=True, exist_ok=True)
+            (audit_dir / "manifest.json").write_text('{"format":"test"}\n', encoding="utf-8")
         return subprocess.CompletedProcess(command, 0, stdout="ok\n", stderr="")
 
     report = tmp_path / "report.json"
@@ -1226,10 +1230,98 @@ def test_scheduled_backup_runs_backup_drill_audit_and_writes_report(
     assert payload["ok"] is True
     assert payload["backup_path"].endswith("obelisk-memory-20260710T120000Z.dump.enc")
     assert payload["backup_encryption"]["algorithm"] == "AES-256-GCM"
-    assert names == ["backup", "backup_encryption", "restore_drill", "audit_export"]
+    assert names == [
+        "backup",
+        "backup_encryption",
+        "restore_drill",
+        "audit_export",
+        "backup_bundle_manifest",
+    ]
+    assert payload["bundle_signed"] is False
+    bundle = json.loads(Path(payload["bundle_manifest_path"]).read_text(encoding="utf-8"))
+    assert bundle["format"] == "obelisk-backup-bundle-v1"
+    assert bundle["signature"] is None
+    assert len(bundle["files"]) == 2
     assert "backup.py" in commands[0][1]
     assert "restore_drill.py" in commands[1][1]
     assert "export_audit.py" in commands[2][1]
+
+
+def test_scheduled_backup_signs_encrypted_bundle_manifest(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    def fake_run(
+        command: list[str],
+        *,
+        check: bool = False,
+        text: bool = True,
+        capture_output: bool = True,
+    ) -> subprocess.CompletedProcess[str]:
+        if "export_audit.py" in command[1]:
+            audit_dir = Path(command[2])
+            audit_dir.mkdir(parents=True, exist_ok=True)
+            (audit_dir / "manifest.json").write_text('{"format":"test"}\n', encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0, stdout="ok\n", stderr="")
+
+    report = tmp_path / "report.json"
+    monkeypatch.setattr(scheduled_backup.subprocess, "run", fake_run)
+    monkeypatch.setattr(
+        scheduled_backup,
+        "encrypt_file",
+        lambda _source, target, _key: (
+            target.write_bytes(b"encrypted"),
+            {"algorithm": "AES-256-GCM", "key_fingerprint": "test", "plaintext_bytes": 5},
+        )[1],
+    )
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "scheduled_backup.py",
+            "--backup-dir",
+            str(tmp_path / "backups"),
+            "--audit-dir",
+            str(tmp_path / "audit"),
+            "--report",
+            str(report),
+            "--database-url",
+            "postgresql://example/db",
+            "--encryption-key",
+            BACKUP_ENCRYPTION_KEY,
+            "--signing-key",
+            "signing-key-for-tests",
+            "--signing-key-id",
+            "local-operator-2026",
+            "--require-signature",
+            "--timestamp",
+            "20260710T120000Z",
+        ],
+    )
+
+    assert scheduled_backup.main() == 0
+
+    payload = json.loads(report.read_text(encoding="utf-8"))
+    manifest = json.loads(Path(payload["bundle_manifest_path"]).read_text(encoding="utf-8"))
+    assert payload["bundle_signed"] is True
+    assert manifest["signature"]["algorithm"] == "hmac-sha256"
+    assert manifest["signature"]["key_id"] == "local-operator-2026"
+    assert manifest["signature"]["value"] == scheduled_backup._sign_bundle_manifest(
+        manifest,
+        "signing-key-for-tests",
+    )
+    assert scheduled_backup._verify_bundle_manifest(
+        Path(payload["bundle_manifest_path"]),
+        signing_key="signing-key-for-tests",
+        require_signature=True,
+    ) == (True, "signed")
+
+    Path(payload["backup_path"]).write_bytes(b"tampered")
+    verified, detail = scheduled_backup._verify_bundle_manifest(
+        Path(payload["bundle_manifest_path"]),
+        signing_key="signing-key-for-tests",
+        require_signature=True,
+    )
+    assert verified is False
+    assert "digest mismatch" in detail
 
 
 def test_scheduled_backup_alerts_on_failure(
