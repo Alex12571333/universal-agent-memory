@@ -130,8 +130,9 @@ def run_checks(*, static_only: bool) -> list[Check]:
             ),
             Check(
                 "readme:env-validation",
-                "scripts/validate_production_env.py" in readme and "--require-public-tls" in readme,
-                "README documents strict production env validation",
+                "scripts/validate_production_env.py" in readme
+                and "--require-real-embeddings" in readme,
+                "README documents strict local-appliance env validation",
             ),
             Check(
                 "readme:release-memory-llm-eval",
