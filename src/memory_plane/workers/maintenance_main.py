@@ -57,6 +57,10 @@ async def run() -> None:
         retry_max_seconds=int(os.getenv("UAM_NATS_RETRY_MAX_SECONDS", "60")),
         dead_letter_stream=os.getenv("UAM_NATS_DLQ_STREAM", "MEMORY_DLQ"),
         dead_letter_subject=os.getenv("UAM_NATS_DLQ_SUBJECT", "memory.dead_letters.maintenance"),
+        dead_letter_max_bytes=int(os.getenv("UAM_NATS_DLQ_MAX_BYTES", "134217728")),
+        dead_letter_max_age_seconds=int(
+            os.getenv("UAM_NATS_DLQ_MAX_AGE_SECONDS", "1209600")
+        ),
     )
     await worker.connect()
     log_event("worker_started", worker="maintenance")
