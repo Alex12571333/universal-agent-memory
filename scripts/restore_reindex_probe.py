@@ -33,6 +33,9 @@ def run_probe(
     dimension: int,
 ) -> dict[str, object]:
     """Rebuild one restored workspace and require a dense retrieval result."""
+    active_collection = os.getenv("UAM_QDRANT_COLLECTION", "memory_items")
+    if collection == active_collection:
+        raise ValueError("recovery probe collection must differ from the active Qdrant collection")
     container = build_postgres_container(
         dsn,
         server_id=tenant_id,

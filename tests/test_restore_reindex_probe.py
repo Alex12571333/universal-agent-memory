@@ -95,3 +95,22 @@ def test_restored_reindex_probe_rejects_lexical_only_result(monkeypatch) -> None
 
     assert report["ok"] is False
     assert report["checks"][1] == {"name": "semantic-recall", "ok": False}
+
+
+def test_restored_reindex_probe_rejects_active_collection(monkeypatch) -> None:
+    probe = _load_probe()
+    monkeypatch.setenv("UAM_QDRANT_COLLECTION", "memory_items")
+
+    try:
+        probe.run_probe(
+            dsn="postgresql://restored/memory",
+            tenant_id=uuid4(),
+            workspace_id=uuid4(),
+            qdrant_url="http://qdrant:6333",
+            collection="memory_items",
+            dimension=8,
+        )
+    except ValueError as exc:
+        assert "must differ" in str(exc)
+    else:
+        raise AssertionError("expected active collection rejection")
