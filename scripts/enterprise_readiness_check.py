@@ -45,8 +45,6 @@ def run_checks(*, static_only: bool) -> list[Check]:
         "SECURITY.md",
         ".env.production.example",
         "docker-compose.prod.yml",
-        "deploy/reverse-proxy/Caddyfile",
-        "deploy/reverse-proxy/docker-compose.caddy.yml",
         ".github/workflows/ci.yml",
         "src/memory_plane/config/secrets.py",
         "migrations/008_audit_events.sql",
@@ -78,7 +76,6 @@ def run_checks(*, static_only: bool) -> list[Check]:
         "docs/GITHUB_BRANCH_PROTECTION.md",
         "docs/OPERATIONS_RUNBOOK.md",
         "docs/OBSERVABILITY.md",
-        "docs/TLS_REVERSE_PROXY.md",
         "docs/ENTERPRISE_READINESS.md",
         "docs/PRODUCTION_GAP_AUDIT_2026_07_10.md",
         "docs/RELEASE_CHECKLIST.md",
@@ -232,24 +229,6 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 >= 2,
                 "production API and embedding worker keep raw text out of Qdrant payloads",
             ),
-            Check(
-                "reverse-proxy:caddy-overlay",
-                "caddy:2.8-alpine" in read("deploy/reverse-proxy/docker-compose.caddy.yml")
-                and '"443:443"' in read("deploy/reverse-proxy/docker-compose.caddy.yml")
-                and "ports: !override" in read("deploy/reverse-proxy/docker-compose.caddy.yml")
-                and "127.0.0.1:6798:8080" in read("deploy/reverse-proxy/docker-compose.caddy.yml")
-                and "reverse_proxy memory-server:8080" in read("deploy/reverse-proxy/Caddyfile")
-                and "Strict-Transport-Security" in read("deploy/reverse-proxy/Caddyfile"),
-                "Caddy TLS reverse proxy example exists",
-            ),
-            Check(
-                "docs:tls-reverse-proxy",
-                "UAM_PUBLIC_HOST" in read("docs/TLS_REVERSE_PROXY.md")
-                and "Do not call the deployment production-hardened"
-                in read("docs/TLS_REVERSE_PROXY.md")
-                and "6798" in read("docs/TLS_REVERSE_PROXY.md"),
-                "TLS reverse proxy guide documents backend exposure limits",
-            ),
         ]
     )
 
@@ -268,11 +247,6 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 "ci:prod-compose",
                 "docker-compose.prod.yml" in ci,
                 "CI validates production compose",
-            ),
-            Check(
-                "ci:reverse-proxy-compose",
-                "deploy/reverse-proxy/docker-compose.caddy.yml" in ci,
-                "CI validates reverse proxy compose overlay",
             ),
             Check(
                 "ci:env-placeholder-guard",

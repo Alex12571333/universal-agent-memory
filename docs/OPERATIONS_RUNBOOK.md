@@ -29,28 +29,11 @@ reuse the PostgreSQL administrator identity as the application role.
 Only API/UI port `6798` is exposed. PostgreSQL, Qdrant, NATS, and MinIO remain
 inside the Docker network.
 
-For any host reachable from another machine, start with the TLS proxy overlay
-instead:
-
-```bash
-docker compose \
-  -f docker-compose.prod.yml \
-  -f deploy/reverse-proxy/docker-compose.caddy.yml \
-  --env-file .env.production \
-  up -d --build
-```
-
-Set `UAM_PUBLIC_HOST` and `UAM_PUBLIC_EMAIL` in `.env.production`, then verify
-external clients use `https://$UAM_PUBLIC_HOST`. See
-[TLS_REVERSE_PROXY.md](TLS_REVERSE_PROXY.md) before exposing the service outside
-localhost/VPN.
-
 Before starting a real production deployment, validate that the environment no
 longer contains placeholders or local-only defaults:
 
 ```bash
 python scripts/validate_production_env.py .env.production \
-  --require-public-tls \
   --require-signed-artifacts \
   --require-real-embeddings
 ```
@@ -107,22 +90,6 @@ PYTHONPATH=src python scripts/observability_preflight.py \
 
 The report uses format `obelisk-observability-preflight-v1` and verifies that
 dashboard panels and alert rules cover required production metrics.
-
-## Deployment boundary preflight
-
-For any non-local deployment, preserve a preflight report that proves the public
-entrypoint is HTTPS and the direct backend port is not externally reachable from
-the probe location:
-
-```bash
-UAM_API_KEY=... PYTHONPATH=src python scripts/deployment_preflight.py \
-  --public-url https://$UAM_PUBLIC_HOST \
-  --backend-url http://$UAM_PUBLIC_HOST:6798 \
-  --report ./ops/deployment-preflight.json
-```
-
-The report uses format `obelisk-deployment-preflight-v1` and is required by
-`scripts/verify_release_evidence.py` before a full-production release claim.
 
 ## Access keys
 

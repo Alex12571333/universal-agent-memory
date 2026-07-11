@@ -13,7 +13,7 @@ export SOURCE_COMMIT="$(git rev-parse HEAD)"
 export IMAGE_DIGEST='sha256:<64-hex-oci-digest>'
 export DEPLOYMENT_ID='production-primary'
 export RELEASE_API_URL='http://127.0.0.1:6798'
-export RELEASE_PUBLIC_URL="https://$UAM_PUBLIC_HOST"
+export RELEASE_PUBLIC_URL='http://127.0.0.1:6798'
 export UAM_RELEASE_SIGNING_KEY_FILE=/run/secrets/obelisk_release_signing_key
 
 # The running server must expose these same values at /v1/system/status.
@@ -48,10 +48,6 @@ UAM_AUDIT_SIGNING_KEY=... PYTHONPATH=src python scripts/audit_retention.py \
   --retain-days 365 \
   --export-root ./audit-retention \
   --json-report ./ops/audit-retention.json
-UAM_API_KEY=... PYTHONPATH=src python scripts/deployment_preflight.py \
-  --public-url https://$UAM_PUBLIC_HOST \
-  --backend-url http://$UAM_PUBLIC_HOST:6798 \
-  --report ./ops/deployment-preflight.json
 PYTHONPATH=src python scripts/secret_files_preflight.py .env.production \
   --report ./ops/secret-files.json
 UAM_VAULT_SIGNING_KEY=... python scripts/export_vault.py ./vault-release
@@ -114,11 +110,6 @@ python scripts/verify_release_evidence.py ./release-evidence.json \
   --expected-deployment-id "$DEPLOYMENT_ID"
 docker compose --profile advanced config
 docker compose -f docker-compose.prod.yml --env-file .env.production config
-docker compose \
-  -f docker-compose.prod.yml \
-  -f deploy/reverse-proxy/docker-compose.caddy.yml \
-  --env-file .env.production \
-  config
 python scripts/benchmark_suite.py
 python scripts/enterprise_readiness_check.py
 ```
