@@ -192,9 +192,14 @@ static readiness script are green.
 7. Audit events are incomplete and separate from the transaction they describe.
    Denied requests, raw conversations, proposals, graph writes, reflect,
    reindex and checkpoints need complete status-aware audit coverage.
-8. The application role has update/delete privileges over canonical and audit
-   tables. Database-enforced append-only/tamper controls and migration checksums
-   are required.
+8. The application role is now granted `SELECT/INSERT` by default, with only
+   explicit operational mutations (outbox, idempotency, staging, proposal,
+   agent/thread, review and checkpoint retention) re-granted. It cannot update
+   or delete `memory_items` or `audit_events`; the server fails closed when
+   `UAM_ENFORCE_RUNTIME_DB_ACL=true` detects stale broad ACLs. The migration job
+   must still be rerun during every upgrade and a target privilege report must
+   be retained. Database-enforced immutable audit triggers and migration
+   checksums remain future hardening.
 9. Memory, conversation and proposal idempotency keys are namespaced by
    workspace inside each adapter. A future schema migration can make this
    namespace queryable for operations, but independent workspace retries no

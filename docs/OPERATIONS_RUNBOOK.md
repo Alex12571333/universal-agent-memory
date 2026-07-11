@@ -18,13 +18,23 @@ openssl rand -base64 48 > /srv/obelisk-secrets/postgres_password
 openssl rand -base64 48 > /srv/obelisk-secrets/app_db_password
 chmod 0600 /srv/obelisk-secrets/postgres_password /srv/obelisk-secrets/app_db_password
 # Set the two absolute host paths in .env.production before validation/start.
-docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+# Run the one-shot migration explicitly on every upgrade; `compose up` can reuse
+# an already-exited migration container and therefore skip ACL re-application.
+docker compose -f docker-compose.prod.yml --env-file .env.production up -d postgres
+docker compose -f docker-compose.prod.yml --env-file .env.production build
+docker compose -f docker-compose.prod.yml --env-file .env.production run --rm migrate
+docker compose -f docker-compose.prod.yml --env-file .env.production up -d
 ```
 
 The migration job creates or rotates `UAM_APP_DB_USER` with the mounted
 `UAM_APP_DB_PASSWORD_FILE` value and grants runtime privileges after schema
 migrations. It rejects reserved, malformed, or administrator role names. Never
 reuse the PostgreSQL administrator identity as the application role.
+
+`UAM_ENFORCE_RUNTIME_DB_ACL=true` is mandatory: API and workers refuse to
+start if the application login still has `UPDATE`/`DELETE` on canonical memory
+or audit tables. This catches an upgrade where the migration container was not
+rerun instead of silently serving with legacy broad grants.
 
 Only API/UI port `6798` is exposed. PostgreSQL, Qdrant, NATS, and MinIO remain
 inside the Docker network.

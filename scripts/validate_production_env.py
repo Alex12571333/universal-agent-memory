@@ -72,6 +72,7 @@ def validate_env(
         _check_uuid(values, "UAM_SERVER_ID"),
         _check_uuid(values, "UAM_PROJECT_ID"),
         _check_context_budget(values),
+        _check_runtime_db_acl(values),
         _check_privacy(values),
         _check_embedding_dim(values),
         _check_qdrant_collection(values),
@@ -240,6 +241,17 @@ def _check_context_budget(values: dict[str, str]) -> EnvCheck:
     if budget < 8192:
         return EnvCheck("UAM_CONTEXT_BUDGET_TOKENS", False, "too small for production recall")
     return EnvCheck("UAM_CONTEXT_BUDGET_TOKENS", True, str(budget))
+
+
+def _check_runtime_db_acl(values: dict[str, str]) -> EnvCheck:
+    value = values.get("UAM_ENFORCE_RUNTIME_DB_ACL", "").strip().lower()
+    if value != "true":
+        return EnvCheck(
+            "UAM_ENFORCE_RUNTIME_DB_ACL",
+            False,
+            "must be true so a stale broad application role cannot serve requests",
+        )
+    return EnvCheck("UAM_ENFORCE_RUNTIME_DB_ACL", True, "enabled")
 
 
 def _check_privacy(values: dict[str, str]) -> EnvCheck:

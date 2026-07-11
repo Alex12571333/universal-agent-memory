@@ -1,6 +1,6 @@
 # Production envelope report — 2026-07-10
 
-Passed: 144
+Passed: 145
 Failed: 0
 
 | Check | Status | Detail |
@@ -61,11 +61,12 @@ Failed: 0
 | `readme:openai-compatible-llm` | PASS | README documents provider-neutral memory LLM endpoint |
 | `prod-compose:only-api-published` | PASS | production compose publishes API/UI but not PostgreSQL |
 | `prod-compose:internal-qdrant` | PASS | Qdrant is internal in production |
-| `prod-compose:nats-health` | PASS | NATS JetStream has monitoring healthcheck |
+| `prod-compose:nats-health` | PASS | NATS JetStream has monitoring healthcheck and secret-backed auth |
 | `prod-compose:secret-files` | PASS | production compose includes dedicated database secret mounts and *_FILE paths |
 | `prod-compose:provider-neutral-embeddings` | PASS | production API and worker use provider-neutral embedding defaults |
 | `prod-compose:text-encryption` | PASS | production API and embedding worker receive canonical text encryption settings |
 | `prod-compose:qdrant-redacted-payload` | PASS | production API and embedding worker keep raw text out of Qdrant payloads |
+| `prod-compose:runtime-db-acl` | PASS | API and every database worker fail closed on stale broad runtime ACLs |
 | `ci:ruff` | PASS | CI runs ruff |
 | `ci:pytest` | PASS | CI runs pytest |
 | `ci:web-build` | PASS | CI builds web UI |

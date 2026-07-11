@@ -234,6 +234,11 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 >= 2,
                 "production API and embedding worker keep raw text out of Qdrant payloads",
             ),
+            Check(
+                "prod-compose:runtime-db-acl",
+                prod_compose.count('UAM_ENFORCE_RUNTIME_DB_ACL: "true"') >= 4,
+                "API and every database worker fail closed on stale broad runtime ACLs",
+            ),
         ]
     )
 
