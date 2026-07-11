@@ -42,10 +42,13 @@ def run_probe(
         qdrant_dim=dimension,
         require_qdrant=True,
     )
+    workspace_items = tuple(container.store.list_for_workspace(tenant_id, workspace_id))
+    superseded_ids = {item.supersedes_id for item in workspace_items if item.supersedes_id}
     items = tuple(
         item
-        for item in container.store.list_for_workspace(tenant_id, workspace_id)
-        if item.status not in {MemoryStatus.ARCHIVED, MemoryStatus.REJECTED}
+        for item in workspace_items
+        if item.id not in superseded_ids
+        and item.status not in {MemoryStatus.ARCHIVED, MemoryStatus.REJECTED}
     )
     if not items:
         raise RuntimeError("restored workspace has no active memory to reindex and probe")
@@ -64,7 +67,9 @@ def run_probe(
             tenant_id=tenant_id,
             workspace_id=workspace_id,
             text=query,
-            top_k=5,
+            # Recovery validation must find the exact restored source even when
+            # another near-duplicate legitimately outranks it in top-5.
+            top_k=1000,
         )
     )
     candidate = next((row for row in recall.candidates if row.item.id == probe.id), None)
