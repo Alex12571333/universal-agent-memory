@@ -15,6 +15,8 @@ from typing import Any
 from memory_plane.adapters.llm import MemoryLLMClient, MemoryLLMConfig
 from memory_plane.config.secrets import read_secret_env
 
+DEFAULT_CONTEXT_WINDOW_TOKENS = 8192
+
 
 @dataclass(frozen=True, slots=True)
 class LLMCheck:
@@ -190,6 +192,14 @@ def main() -> int:
         default=float(os.getenv("UAM_MEMORY_LLM_TIMEOUT_SECONDS", "60")),
     )
     parser.add_argument(
+        "--context-window-tokens",
+        type=int,
+        default=int(
+            os.getenv("UAM_MEMORY_LLM_CONTEXT_WINDOW_TOKENS", DEFAULT_CONTEXT_WINDOW_TOKENS)
+        ),
+        help="Bounded context available to the maintenance model (default: 8192).",
+    )
+    parser.add_argument(
         "--extra-body-json",
         default=os.getenv("UAM_MEMORY_LLM_EXTRA_BODY_JSON", "{}"),
     )
@@ -202,6 +212,8 @@ def main() -> int:
         parser.error(f"--extra-body-json must be valid JSON: {exc}")
     if not isinstance(extra_body, dict):
         parser.error("--extra-body-json must be a JSON object")
+    if args.context_window_tokens < 512:
+        parser.error("--context-window-tokens must be at least 512")
 
     client = MemoryLLMClient(
         MemoryLLMConfig(
@@ -211,7 +223,7 @@ def main() -> int:
             api_key=args.api_key,
             timeout_seconds=args.timeout_seconds,
             temperature=0.0,
-            context_window_tokens=131072,
+            context_window_tokens=args.context_window_tokens,
             max_tokens=1600,
             extra_body=extra_body or None,
         )
