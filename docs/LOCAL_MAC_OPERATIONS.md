@@ -16,7 +16,7 @@ UAM_MAINTENANCE_DATABASE_URL=postgresql://...
 UAM_BACKUP_ENCRYPTION_KEY_FILE=/Users/<user>/.config/obelisk-memory/backup_encryption_key
 UAM_API_KEY_FILE=/Users/<user>/.config/obelisk-memory/operator_api_key
 UAM_METRICS_URL=http://127.0.0.1:6798/metrics
-PATH=/opt/homebrew/opt/libpq/bin:/opt/homebrew/bin:/usr/bin:/bin
+PATH=/usr/local/bin:/opt/homebrew/opt/libpq/bin:/opt/homebrew/bin:/usr/bin:/bin
 ```
 
 Install the jobs:
@@ -38,3 +38,10 @@ daily at 09:17. Generated wrappers and logs live under
 `OBELISK_EVIDENCE_DIR`. `launchctl print gui/$(id -u)/com.obelisk-memory.metrics`
 shows the last exit code. Keep backup artifacts on an encrypted external disk
 or another operator-controlled durable local volume.
+
+On 2026-07-12 the three jobs were installed and manually smoke-tested on the
+reference local appliance: metrics and maintenance exited `0`, and the backup
+job completed PostgreSQL dump, AES-256-GCM encryption, isolated restore drill
+and audit export with exit `0`. On macOS Docker Desktop commonly installs
+`docker` under `/usr/local/bin`, hence that directory is required in the job
+`PATH` alongside Homebrew `libpq`.
