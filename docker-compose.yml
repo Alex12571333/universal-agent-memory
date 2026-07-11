@@ -161,6 +161,23 @@ services:
         condition: service_started
     restart: unless-stopped
 
+  maintenance-worker:
+    profiles: ["advanced"]
+    build:
+      context: .
+    command: ["python", "-m", "memory_plane.workers.maintenance_main"]
+    environment:
+      UAM_DATABASE_URL: postgresql://memory_app:memory@postgres:5432/memory
+      UAM_SERVER_ID: 00000000-0000-0000-0000-000000000001
+      UAM_PROJECT_ID: 00000000-0000-0000-0000-000000000002
+      UAM_NATS_URL: nats://nats:4222
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      nats:
+        condition: service_healthy
+    restart: unless-stopped
+
   backup:
     profiles: ["ops"]
     build:
