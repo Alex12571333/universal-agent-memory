@@ -147,7 +147,11 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 and "ops/ui-walkthrough.json" in release_evidence,
                 "README delegates live UI walkthrough evidence to release documentation",
             ),
-            Check("readme:128k", "131072" in readme, "128k context budget documented"),
+            Check(
+                "readme:agent-context-budget",
+                "UAM_CONTEXT_BUDGET_TOKENS" in readme,
+                "agent recall context budget documented independently of curator window",
+            ),
             Check(
                 "readme:openai-compatible-llm",
                 "OpenAI-compatible means the wire protocol, not the company" in readme

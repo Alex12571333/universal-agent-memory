@@ -71,7 +71,7 @@ class MemoryLLMConfig:
     api_key: str | None = None
     timeout_seconds: float = 60.0
     temperature: float = 0.1
-    context_window_tokens: int = 131072
+    context_window_tokens: int = 32768
     max_tokens: int = 1600
     extra_body: dict[str, Any] | None = None
 
@@ -143,7 +143,7 @@ class MemoryLLMConfig:
             api_key=api_key,
             timeout_seconds=float(os.getenv("UAM_MEMORY_LLM_TIMEOUT_SECONDS", "60")),
             temperature=float(os.getenv("UAM_MEMORY_LLM_TEMPERATURE", "0.1")),
-            context_window_tokens=int(os.getenv("UAM_MEMORY_LLM_CONTEXT_TOKENS", "131072")),
+            context_window_tokens=int(os.getenv("UAM_MEMORY_LLM_CONTEXT_TOKENS", "32768")),
             max_tokens=int(os.getenv("UAM_MEMORY_LLM_MAX_TOKENS", "1600")),
             extra_body=_parse_extra_body(os.getenv("UAM_MEMORY_LLM_EXTRA_BODY_JSON", "")),
         )
