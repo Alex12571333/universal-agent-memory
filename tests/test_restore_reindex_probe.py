@@ -24,6 +24,7 @@ def test_restored_reindex_probe_requires_dense_recall(monkeypatch) -> None:
         id=memory_id,
         text="restored semantic memory for recovery",
         status=MemoryStatus.ACTIVE,
+        supersedes_id=None,
     )
     candidate = SimpleNamespace(item=item, semantic=0.91)
     container = SimpleNamespace(
@@ -65,6 +66,7 @@ def test_restored_reindex_probe_rejects_lexical_only_result(monkeypatch) -> None
         id=memory_id,
         text="restored semantic memory",
         status=MemoryStatus.ACTIVE,
+        supersedes_id=None,
     )
     container = SimpleNamespace(
         store=SimpleNamespace(list_for_workspace=lambda *_args: (item,)),
