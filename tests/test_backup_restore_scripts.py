@@ -42,6 +42,15 @@ restore_drill = _load_script("restore_drill")
 check_branch_protection = _load_script("check_branch_protection")
 export_audit = _load_script("export_audit")
 audit_retention = _load_script("audit_retention")
+
+
+def test_audit_retention_prefers_operator_database_over_runtime_role(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("UAM_DATABASE_URL", "postgresql://memory_app:app@db/memory")
+    monkeypatch.setenv("UAM_ADMIN_DATABASE_URL", "postgresql://memory_admin:admin@db/memory")
+
+    assert audit_retention._retention_database_dsn() == "postgresql://memory_admin:admin@db/memory"
 scheduled_backup = _load_script("scheduled_backup")
 deployment_preflight = _load_script("deployment_preflight")
 observability_preflight = _load_script("observability_preflight")
