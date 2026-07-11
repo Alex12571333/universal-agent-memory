@@ -32,9 +32,33 @@ budget is configured as `8192` tokens, rather than injecting a 128k context.
 Long source documents are chunked before embedding by the server; agent
 recall receives only the bounded, selected context.
 
+## Full target-side soak
+
+After the adapter checks, a full `obelisk-agent-soak-v1` evaluator was copied
+and run directly on `.14` using an operator key supplied only through standard
+input. The evaluator first used the operator-only workspace and identity
+bootstrap routes to create two isolated test scopes, then ran three rounds at
+parallelism four.
+
+The report was generated at `2026-07-11T14:59:19Z` and passed all 23 checks:
+health, authenticated build identity, unauthenticated-write rejection,
+operator bootstrap, retain/idempotent retry/recall for both OpenClaw and
+Hermes, and cross-workspace leakage exclusion. It exercised build
+`e61cbe9c097fb75bd4262ad9628db805185c5419`, image
+`sha256:d102b4edca28a212bd05a13881b86b9763e5c9e5b7fe6312c6ef9d9e285681ad`,
+deployment `local-lan-20260711`.
+
+During that validation, the first implementation of workspace provisioning
+was found to require PostgreSQL `UPDATE` because of `ON CONFLICT DO UPDATE`.
+That would have weakened the runtime database ACL. It was replaced with
+idempotent insert-or-return semantics, verified by CI and by the passing
+target-side soak. Workspace names therefore remain immutable through the
+runtime role; an attempted cross-tenant UUID reuse is rejected.
+
 ## Remaining production gates
 
 This is a functional target validation, not a release certificate. The
 remaining operations gates are: a scheduled retention job, a target-side
 restore-and-semantic-reindex drill with retained evidence, alert delivery
-verification, and a multi-hour/multi-agent soak run.
+verification, and a multi-hour/multi-agent soak run. The successful test here
+is a short functional soak, not a substitute for the multi-hour gate.
