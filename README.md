@@ -246,6 +246,10 @@ UAM_MEMORY_LLM_EXTRA_BODY_JSON={}
 фрагменты и должен обрабатывать длинные источники по частям, а не одним
 128k-prompt.
 
+The separate agent recall budget remains configurable with
+`UAM_CONTEXT_BUDGET_TOKENS` (default `131072`); it is not sent wholesale to
+the curator.
+
 `BASE_URL`, `MODEL`, `API_KEY`, and optional `EXTRA_BODY_JSON` belong to the
 selected deployment. They may identify a direct hosted endpoint, an
 OpenRouter/LiteLLM route, a vLLM or llama.cpp server, or an internal gateway.
