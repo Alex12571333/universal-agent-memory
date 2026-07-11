@@ -43,6 +43,13 @@ def _wrapper(workspace: Path, env_file: Path, task: str) -> str:
             '--metrics-url "${UAM_METRICS_URL:-http://127.0.0.1:6798/metrics}" '
             '--report "$OBELISK_EVIDENCE_DIR/metrics-health.json"'
         ),
+        "conversation-retention": (
+            '"$OBELISK_PYTHON" scripts/purge_expired_conversations.py '
+            '--base-url "${UAM_INTERNAL_BASE_URL:-http://127.0.0.1:6798}" '
+            '--api-key "$(< \"$UAM_API_KEY_FILE\")" '
+            '--tenant-id "$UAM_SERVER_ID" --workspace-id "$UAM_PROJECT_ID" '
+            '> "$OBELISK_EVIDENCE_DIR/conversation-retention.json"'
+        ),
     }
     return "\n".join(
         (
@@ -64,7 +71,12 @@ def install(*, workspace: Path, env_file: Path, launch_agents: Path) -> list[Pat
     """Write wrappers and plists; return all generated plist paths."""
     install_dir = launch_agents / "obelisk-memory"
     install_dir.mkdir(parents=True, exist_ok=True)
-    schedule = {"backup": (3, 23), "maintenance": (3, 37), "metrics": (9, 17)}
+    schedule = {
+        "conversation-retention": (2, 47),
+        "backup": (3, 23),
+        "maintenance": (3, 37),
+        "metrics": (9, 17),
+    }
     result: list[Path] = []
     for task, (hour, minute) in schedule.items():
         wrapper = install_dir / f"{task}.zsh"
