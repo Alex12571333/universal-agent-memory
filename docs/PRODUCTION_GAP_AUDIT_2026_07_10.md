@@ -194,8 +194,10 @@ static readiness script are green.
 8. The application role has update/delete privileges over canonical and audit
    tables. Database-enforced append-only/tamper controls and migration checksums
    are required.
-9. Idempotency keys are tenant-wide rather than workspace/operation scoped;
-   identical keys can collide across independent agent workflows.
+9. Memory, conversation and proposal idempotency keys are namespaced by
+   workspace inside each adapter. A future schema migration can make this
+   namespace queryable for operations, but independent workspace retries no
+   longer collide.
 10. Published outbox events, processed-event IDs, raw conversations, proposals,
     idempotency records and checkpoint revisions do not have an installed data
     lifecycle policy.
