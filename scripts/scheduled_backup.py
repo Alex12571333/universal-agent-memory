@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
+import hmac
 import json
 import os
 import subprocess
@@ -21,6 +23,7 @@ from memory_plane.config.database import read_database_dsn
 from memory_plane.config.secrets import read_secret_env
 
 ROOT = Path(__file__).resolve().parents[1]
+BUNDLE_FORMAT = "obelisk-backup-bundle-v1"
 
 
 def main() -> int:
@@ -67,6 +70,21 @@ def main() -> int:
         help="URL-safe base64 AES-256 backup key; defaults to UAM_BACKUP_ENCRYPTION_KEY[_FILE]",
     )
     parser.add_argument(
+        "--signing-key",
+        default=read_secret_env("UAM_BACKUP_SIGNING_KEY"),
+        help="Optional HMAC key for a signed encrypted-backup bundle manifest",
+    )
+    parser.add_argument(
+        "--signing-key-id",
+        default=os.getenv("UAM_BACKUP_SIGNING_KEY_ID", ""),
+        help="Non-secret identifier for --signing-key",
+    )
+    parser.add_argument(
+        "--require-signature",
+        action="store_true",
+        help="Fail the job unless an encrypted-backup bundle manifest is signed",
+    )
+    parser.add_argument(
         "--skip-audit-export",
         action="store_true",
         help="Skip audit bundle export",
@@ -85,6 +103,10 @@ def main() -> int:
         parser.error("database URL is required")
     if not args.encryption_key:
         parser.error("UAM_BACKUP_ENCRYPTION_KEY or --encryption-key is required")
+    if args.require_signature and not args.signing_key:
+        parser.error("--require-signature needs UAM_BACKUP_SIGNING_KEY or --signing-key")
+    if args.signing_key and not args.signing_key_id.strip():
+        parser.error("--signing-key requires --signing-key-id or UAM_BACKUP_SIGNING_KEY_ID")
     try:
         encryption_key = parse_key(args.encryption_key)
     except BackupEncryptionError as exc:
@@ -96,6 +118,7 @@ def main() -> int:
     report_path = Path(args.report)
     backup_path = backup_dir / f"obelisk-memory-{timestamp}.dump.enc"
     audit_path = audit_root / timestamp
+    bundle_manifest_path = backup_dir / f"obelisk-memory-{timestamp}.bundle.json"
     started = time.time()
     steps: list[dict[str, Any]] = []
 
@@ -155,6 +178,21 @@ def main() -> int:
             )
         else:
             steps.append(_skipped_step("audit_export", "skipped by operator"))
+        if steps and all(step.get("ok") is True for step in steps):
+            success &= _write_bundle_manifest_step(
+                steps,
+                backup_path=backup_path,
+                audit_path=None if args.skip_audit_export else audit_path,
+                target=bundle_manifest_path,
+                timestamp=timestamp,
+                signing_key=args.signing_key,
+                signing_key_id=args.signing_key_id,
+                require_signature=args.require_signature,
+            )
+        else:
+            steps.append(
+                _skipped_step("backup_bundle_manifest", "a prerequisite backup step failed")
+            )
     except Exception as exc:  # pragma: no cover - defensive safety net
         success = False
         steps.append(
@@ -183,6 +221,8 @@ def main() -> int:
             "key_fingerprint": key_fingerprint(encryption_key),
         },
         "audit_export_path": None if args.skip_audit_export else str(audit_path),
+        "bundle_manifest_path": str(bundle_manifest_path),
+        "bundle_signed": bool(args.signing_key),
         "restore_drill_required": not args.skip_restore_drill,
         "steps": steps,
     }
@@ -245,6 +285,152 @@ def _encrypt_step(steps: list[dict[str, Any]], source: Path, target: Path, key: 
         }
     )
     return True
+
+
+def _write_bundle_manifest_step(
+    steps: list[dict[str, Any]],
+    *,
+    backup_path: Path,
+    audit_path: Path | None,
+    target: Path,
+    timestamp: str,
+    signing_key: str | None,
+    signing_key_id: str,
+    require_signature: bool,
+) -> bool:
+    """Hash the encrypted backup and optional audit bundle into one manifest."""
+    started = time.time()
+    try:
+        entries = [_bundle_file_entry(backup_path)]
+        if audit_path is not None:
+            audit_manifest = audit_path / "manifest.json"
+            if not audit_manifest.is_file():
+                raise FileNotFoundError(f"audit manifest not found: {audit_manifest}")
+            entries.append(_bundle_file_entry(audit_manifest))
+        manifest: dict[str, Any] = {
+            "format": BUNDLE_FORMAT,
+            "created_at": datetime.now(UTC).isoformat(),
+            "timestamp": timestamp,
+            "files": entries,
+            "signature": None,
+        }
+        if signing_key:
+            signature = _sign_bundle_manifest(manifest, signing_key)
+            manifest["signature"] = {
+                "algorithm": "hmac-sha256",
+                "key_id": signing_key_id.strip(),
+                "value": signature,
+            }
+        elif require_signature:
+            raise ValueError("backup bundle signature is required")
+        target.write_text(
+            json.dumps(manifest, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        verified, detail = _verify_bundle_manifest(
+            target,
+            signing_key=signing_key,
+            require_signature=require_signature,
+        )
+        if not verified:
+            raise ValueError(f"backup bundle verification failed: {detail}")
+        steps.append(
+            {
+                "name": "backup_bundle_manifest",
+                "ok": True,
+                "returncode": 0,
+                "duration_seconds": round(time.time() - started, 3),
+                "stdout": json.dumps(
+                    {
+                        "path": str(target),
+                        "signed": bool(signing_key),
+                        "file_count": len(entries),
+                        "verified": verified,
+                    },
+                    sort_keys=True,
+                ),
+                "stderr": "",
+            }
+        )
+        return True
+    except Exception as exc:
+        steps.append(
+            {
+                "name": "backup_bundle_manifest",
+                "ok": False,
+                "returncode": None,
+                "duration_seconds": round(time.time() - started, 3),
+                "stdout": "",
+                "stderr": str(exc),
+            }
+        )
+        return False
+
+
+def _bundle_file_entry(path: Path) -> dict[str, Any]:
+    payload = path.read_bytes()
+    return {
+        "path": str(path),
+        "bytes": len(payload),
+        "sha256": hashlib.sha256(payload).hexdigest(),
+    }
+
+
+def _sign_bundle_manifest(manifest: dict[str, Any], signing_key: str) -> str:
+    unsigned = dict(manifest)
+    unsigned["signature"] = None
+    payload = json.dumps(
+        unsigned,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode()
+    return hmac.new(signing_key.encode(), payload, hashlib.sha256).hexdigest()
+
+
+def _verify_bundle_manifest(
+    path: Path,
+    *,
+    signing_key: str | None,
+    require_signature: bool,
+) -> tuple[bool, str]:
+    """Verify bundle shape, file hashes, and optional HMAC before hand-off."""
+    try:
+        manifest = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return False, f"cannot read manifest: {exc}"
+    if not isinstance(manifest, dict) or manifest.get("format") != BUNDLE_FORMAT:
+        return False, "unexpected backup bundle manifest format"
+    files = manifest.get("files")
+    if not isinstance(files, list) or not files:
+        return False, "bundle manifest has no files"
+    for entry in files:
+        if not isinstance(entry, dict):
+            return False, "bundle manifest contains invalid file entry"
+        raw_path = entry.get("path")
+        expected = entry.get("sha256")
+        if not isinstance(raw_path, str) or not isinstance(expected, str):
+            return False, "bundle manifest file entry is incomplete"
+        try:
+            actual = hashlib.sha256(Path(raw_path).read_bytes()).hexdigest()
+        except OSError as exc:
+            return False, f"cannot read bundle file {raw_path}: {exc}"
+        if not hmac.compare_digest(actual, expected):
+            return False, f"digest mismatch for bundle file {raw_path}"
+    signature = manifest.get("signature")
+    if signature is None:
+        return (False, "bundle manifest is unsigned") if require_signature else (True, "unsigned")
+    if not isinstance(signature, dict) or signature.get("algorithm") != "hmac-sha256":
+        return False, "unsupported bundle signature"
+    if not signing_key:
+        return False, "signing key is required to verify bundle signature"
+    expected_signature = signature.get("value")
+    if not isinstance(expected_signature, str):
+        return False, "bundle signature is missing"
+    actual_signature = _sign_bundle_manifest(manifest, signing_key)
+    if not hmac.compare_digest(actual_signature, expected_signature):
+        return False, "bundle signature mismatch"
+    return True, "signed"
 
 
 def _skipped_step(name: str, reason: str) -> dict[str, Any]:

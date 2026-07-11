@@ -14,6 +14,8 @@ OBELISK_AUDIT_DIR=/Users/<user>/.local/share/obelisk-memory/audit
 UAM_BACKUP_DATABASE_URL=postgresql://... 
 UAM_MAINTENANCE_DATABASE_URL=postgresql://...
 UAM_BACKUP_ENCRYPTION_KEY_FILE=/Users/<user>/.config/obelisk-memory/backup_encryption_key
+UAM_BACKUP_SIGNING_KEY_FILE=/Users/<user>/.config/obelisk-memory/backup_signing_key
+UAM_BACKUP_SIGNING_KEY_ID=local-backup-key-2026
 UAM_API_KEY_FILE=/Users/<user>/.config/obelisk-memory/operator_api_key
 UAM_METRICS_URL=http://127.0.0.1:6798/metrics
 UAM_INTERNAL_BASE_URL=http://127.0.0.1:6798
@@ -48,3 +50,9 @@ job completed PostgreSQL dump, AES-256-GCM encryption, isolated restore drill
 and audit export with exit `0`. On macOS Docker Desktop commonly installs
 `docker` under `/usr/local/bin`, hence that directory is required in the job
 `PATH` alongside Homebrew `libpq`.
+
+For a production backup job, create a **separate** random signing key (do not
+reuse the encryption key) and set the two `UAM_BACKUP_SIGNING_*` entries above.
+The scheduled runner then writes and immediately verifies a signed
+`*.bundle.json` manifest containing SHA-256 values for the encrypted dump and
+the audit manifest. A restore must be rejected when this verification fails.

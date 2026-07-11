@@ -189,8 +189,11 @@ static readiness script are green.
    AES-256-GCM and verifies decryption through the restore drill. A local LAN
    target drill on 2026-07-12 passed source/restore row-count parity, forced
    tenant RLS, a separate restored-ledger reindex of 35 active records and
-   `qdrant_hybrid` semantic recall in a fresh Qdrant collection. Artifacts are
-   not yet signed or scheduled/retained as a release bundle.
+   `qdrant_hybrid` semantic recall in a fresh Qdrant collection. The scheduled
+   runner now emits and immediately verifies an optional signed bundle manifest
+   over the encrypted dump and audit manifest. The target still needs a
+   separately held signing key, retained signed artifacts and a multi-run
+   schedule report.
 5. Worker embedding metrics are now exposed privately at
    `embedding-worker:9091/metrics`; release evidence must demonstrate that the
    monitoring target scrapes this endpoint and its alerts are routed.
