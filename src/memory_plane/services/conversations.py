@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -22,6 +23,13 @@ from memory_plane.services.proposals import (
     SubmitMemoryProposalResult,
 )
 from memory_plane.services.retention import RetentionService
+
+_CURATOR_SYSTEM_PROMPT = (
+    "You are Memory Curator for Obelisk Memory. Extract only durable, evidence-backed "
+    "information. Do not invent facts. Preserve temporal qualifiers such as 'formerly', "
+    "'now', and dates. If a preference changes, describe the transition rather than a "
+    "timeless preference. Return JSON object only."
+)
 
 
 class ConversationLedger(Protocol):
@@ -289,33 +297,9 @@ class ConversationCurator:
         memory_llm: MemoryReasoner,
     ) -> tuple[str, dict[str, Any]] | None:
         try:
-            payload = memory_llm.chat_json(
-                [
-                    {
-                        "role": "system",
-                        "content": (
-                            "You are Memory Curator for Obelisk Memory. "
-                            "Extract only durable, evidence-backed information. "
-                            "Do not invent facts. Preserve temporal qualifiers such as "
-                            "'formerly', 'now', and dates. If the turn contains a "
-                            "preference change, describe the transition rather than a "
-                            "timeless preference. Return JSON object only."
-                        ),
-                    },
-                    {
-                        "role": "user",
-                        "content": _trim_text(
-                            "Curate this raw conversation turn into compact "
-                            "memory. Return keys summary, durable_facts, "
-                            "decisions, preferences, open_tasks, confidence.\n\n"
-                            f"{_conversation_text(turn)}",
-                            24000,
-                        ),
-                    },
-                ],
-                temperature=0.0,
-                max_tokens=1800,
-            )
+            chunks = _conversation_chunks(turn)
+            payloads = [_curate_chunk(memory_llm, chunk) for chunk in chunks]
+            payload = payloads[0] if len(payloads) == 1 else _reduce_curation(memory_llm, payloads)
         except Exception as exc:  # noqa: BLE001 - fail-soft memory maintenance
             return (
                 self._deterministic_summary_text(turn),
@@ -331,8 +315,9 @@ class ConversationCurator:
             return None
         return text, {
             "curator_engine": "memory_llm",
-            "curator_version": "conversation-curator-llm-v1",
+            "curator_version": "conversation-curator-llm-v2",
             "llm_confidence": _safe_float(payload.get("confidence")),
+            "curator_chunks": len(chunks),
         }
 
     @staticmethod
@@ -384,6 +369,52 @@ def _conversation_text(turn: ConversationTurn) -> str:
         name = f" ({message.name})" if message.name else ""
         lines.append(f"- {message.role}{name}: {message.content}")
     return "\n".join(lines)
+
+
+def _conversation_chunks(turn: ConversationTurn, *, limit: int = 10_000) -> tuple[str, ...]:
+    """Split a long transcript into bounded prompts without discarding the tail."""
+    text = _conversation_text(turn)
+    if len(text) <= limit:
+        return (text,)
+    chunks = [text[index : index + limit] for index in range(0, len(text), limit)]
+    return tuple(chunks[:12])
+
+
+def _curate_chunk(memory_llm: MemoryReasoner, chunk: str) -> dict[str, Any]:
+    return memory_llm.chat_json(
+        [
+            {"role": "system", "content": _CURATOR_SYSTEM_PROMPT},
+            {
+                "role": "user",
+                "content": (
+                    "Curate this transcript fragment into compact memory. Return keys "
+                    "summary, durable_facts, decisions, preferences, open_tasks, confidence.\n\n"
+                    + chunk
+                ),
+            },
+        ],
+        temperature=0.0,
+        max_tokens=900,
+    )
+
+
+def _reduce_curation(memory_llm: MemoryReasoner, payloads: list[dict[str, Any]]) -> dict[str, Any]:
+    """Merge bounded fragment summaries; the reducer never receives raw transcript text."""
+    return memory_llm.chat_json(
+        [
+            {"role": "system", "content": _CURATOR_SYSTEM_PROMPT},
+            {
+                "role": "user",
+                "content": (
+                    "Merge these fragment curations. Keep only evidence-backed durable facts, "
+                    "preserve temporal changes, and return the same JSON keys.\n\n"
+                    + json.dumps(payloads, ensure_ascii=False)
+                ),
+            },
+        ],
+        temperature=0.0,
+        max_tokens=1800,
+    )
 
 
 def _curation_evidence(turn: ConversationTurn) -> str:
