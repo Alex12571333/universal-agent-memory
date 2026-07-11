@@ -10,7 +10,7 @@ import tempfile
 import time
 from datetime import UTC, datetime
 from pathlib import Path
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -23,6 +23,7 @@ def main() -> int:
     parser.add_argument("--keep", action="store_true")
     args = parser.parse_args()
     project = f"obelisk-smoke-{secrets.token_hex(4)}"
+    api_key = "smoke_" + secrets.token_urlsafe(32)
     report: dict[str, object] = {
         "format": "obelisk-fresh-production-smoke-v1",
         "ok": False,
@@ -44,7 +45,7 @@ def main() -> int:
                 "nats_auth_token",
             )
         }
-        env_file.write_text(_env(paths), encoding="utf-8")
+        env_file.write_text(_env(paths, api_key), encoding="utf-8")
         override.write_text(
             f"services:\n  memory-server:\n    ports: !override ['127.0.0.1:{args.port}:8080']\n",
             encoding="utf-8",
@@ -80,6 +81,7 @@ def main() -> int:
                     "select 1",
                 ]
             )
+            _retain_and_recall(args.port, api_key)
             report["ok"] = True
             print(json.dumps(report))
             return 0
@@ -101,7 +103,7 @@ def _secret(directory: Path, name: str) -> Path:
     return path
 
 
-def _env(paths: dict[str, Path]) -> str:
+def _env(paths: dict[str, Path], api_key: str) -> str:
     return "\n".join(
         [
             "POSTGRES_DB=memory",
@@ -116,7 +118,7 @@ def _env(paths: dict[str, Path]) -> str:
             "UAM_IMAGE_DIGEST=sha256:" + "0" * 64,
             "UAM_DEPLOYMENT_ID=fresh-smoke",
             "UAM_BUILD_TIME=2026-07-11T00:00:00Z",
-            "UAM_API_KEY=smoke_" + secrets.token_urlsafe(32),
+            "UAM_API_KEY=" + api_key,
             "UAM_API_KEYS=openclaw:smoke_openclaw_abcdefghijklmnopqrstuvwxyz:agent,hermes:smoke_hermes_abcdefghijklmnopqrstuvwxyz:agent,operator:smoke_operator_abcdefghijklmnopqrstuvwxyz:operator",
             "UAM_REQUIRE_IDENTITY_BINDINGS=false",
             "UAM_EMBEDDING_PROVIDER=fake",
@@ -150,6 +152,37 @@ def _wait_ready(port: int, timeout: int) -> None:
         except OSError:
             time.sleep(1)
     raise RuntimeError("fresh production smoke did not become ready")
+
+
+def _retain_and_recall(port: int, api_key: str) -> None:
+    """Prove API writes and reads work through the generated application role."""
+    base = f"http://127.0.0.1:{port}/v1/memory"
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    retain = Request(
+        base + "/retain",
+        data=json.dumps(
+            {
+                "layer": "semantic",
+                "scope": "workspace",
+                "kind": "smoke_fact",
+                "text": "fresh production smoke marker",
+            }
+        ).encode(),
+        headers=headers,
+        method="POST",
+    )
+    with urlopen(retain, timeout=10):
+        pass
+    recall = Request(
+        base + "/recall",
+        data=json.dumps({"query": "fresh production smoke marker"}).encode(),
+        headers=headers,
+        method="POST",
+    )
+    with urlopen(recall, timeout=10) as response:
+        payload = json.loads(response.read())
+    if not any("fresh production smoke marker" in row["text"] for row in payload["results"]):
+        raise RuntimeError("fresh production smoke marker was not recallable")
 
 
 def _run(command: list[str], *, check: bool = True) -> None:
