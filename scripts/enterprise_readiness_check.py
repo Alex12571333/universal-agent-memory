@@ -371,9 +371,12 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 "operator-held signing keys are documented",
             ),
             Check(
-                "env:public-host",
-                "UAM_PUBLIC_HOST=" in env and "UAM_PUBLIC_EMAIL=" in env,
-                "public TLS endpoint env is documented",
+                "env:local-appliance",
+                "UAM_SERVER_ID=" in env
+                and "UAM_PROJECT_ID=" in env
+                and "UAM_PUBLIC_HOST=" not in env
+                and "UAM_PUBLIC_EMAIL=" not in env,
+                "local-appliance deployment does not require a public endpoint",
             ),
         ]
     )
@@ -417,11 +420,10 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 and "embedding_failures_total" in read("src/memory_plane/services/embedding.py")
                 and "embedding_last_duration_seconds"
                 in read("src/memory_plane/services/embedding.py")
-                and "UAM_METRICS_ALERT_WEBHOOK" in read("scripts/check_metrics_health.py"),
-                (
-                    "static metrics contracts cover outbox and embedding counters; "
-                    "worker export remains a runtime gap"
-                ),
+                and "UAM_METRICS_ALERT_WEBHOOK" in read("scripts/check_metrics_health.py")
+                and "UAM_WORKER_METRICS_PORT" in prod_compose
+                and "embedding-worker:9091" in read("docs/OBSERVABILITY.md"),
+                "embedding worker exports a private Prometheus endpoint",
             ),
             Check(
                 "ops:observability-artifacts",

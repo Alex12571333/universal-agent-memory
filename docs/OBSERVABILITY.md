@@ -19,8 +19,18 @@ scrape_configs:
       credentials_file: /run/secrets/uam_operator_metrics_key
 ```
 
-For non-local deployments, scrape through the private network or VPN side of the
-reverse proxy. Do not expose `/metrics` publicly.
+The embedding worker exports its own private scrape endpoint. This is required:
+API-process embedding counters do not describe asynchronous embedding work.
+
+```yaml
+  - job_name: obelisk-embedding-worker
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["embedding-worker:9091"]
+```
+
+Both endpoints remain inside the Docker network in the local deployment; no
+public port, domain, VPN or reverse proxy is required.
 
 ## Dashboard and alerts
 
@@ -33,7 +43,7 @@ The dashboard covers:
 
 - outbox backlog, dead letters and oldest-event lag;
 - active processed-event leases;
-- embedding and reindex throughput/failures;
+- worker embedding throughput/failures and API reindex throughput/failures;
 - embedding/reindex latency;
 - degraded retrieval sources and cumulative source failures;
 - memory, audit and API-key ledger growth.
