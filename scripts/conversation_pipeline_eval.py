@@ -132,6 +132,7 @@ def run_eval(client: JsonClient, config: PipelineConfig) -> PipelineReport:
     checks: list[CheckResult] = [build_check]
     marker = f"conversation-pipeline-{config.run_id}"
     turn_id: str | None = None
+    proposal_id: str | None = None
     memory_id: str | None = None
 
     try:
@@ -223,17 +224,20 @@ def run_eval(client: JsonClient, config: PipelineConfig) -> PipelineReport:
             },
             expect_status=201,
         )
-        memory_id = str(curated["id"])
+        proposal_id = str(curated["id"])
         checks.append(
             CheckResult(
-                "curation-created-memory",
-                bool(curated.get("created")) and bool(memory_id),
-                f"memory_id={memory_id} created={curated.get('created')}",
+                "curation-created-proposal",
+                bool(curated.get("created"))
+                and bool(proposal_id)
+                and curated.get("status") == "open"
+                and curated.get("metadata", {}).get("claim_status") == "unverified",
+                f"proposal_id={proposal_id} status={curated.get('status')!r}",
             )
         )
     except Exception as exc:  # noqa: BLE001
         checks.append(
-            CheckResult("curation-created-memory", False, f"{type(exc).__name__}: {exc}")
+            CheckResult("curation-created-proposal", False, f"{type(exc).__name__}: {exc}")
         )
         return _report(config, checks, build, turn_id, memory_id)
 
@@ -252,14 +256,70 @@ def run_eval(client: JsonClient, config: PipelineConfig) -> PipelineReport:
         recalled_ids = [str(item.get("id")) for item in recalled.get("results", [])]
         checks.append(
             CheckResult(
-                "curated-memory-recalled",
+                "unaccepted-proposal-not-recalled",
+                marker not in json.dumps(recalled, ensure_ascii=False),
+                f"results={len(recalled_ids)} proposal_id={proposal_id}",
+            )
+        )
+    except Exception as exc:  # noqa: BLE001
+        checks.append(
+            CheckResult("unaccepted-proposal-not-recalled", False, f"{type(exc).__name__}: {exc}")
+        )
+
+    try:
+        accepted = client.request(
+            "POST",
+            f"/v1/memory/proposals/{proposal_id}/accept",
+            {
+                "tenant_id": str(config.tenant_id),
+                "reviewer": "release-eval-operator",
+                "reason": "explicit release-eval acceptance",
+                "idempotency_key": f"conversation-pipeline-accept:{config.run_id}",
+            },
+            expect_status=201,
+        )
+        memory = accepted.get("memory") if isinstance(accepted, dict) else None
+        memory_id = str(memory.get("id")) if isinstance(memory, dict) else None
+        checks.append(
+            CheckResult(
+                "operator-accepted-proposal-created-memory",
+                bool(memory_id) and accepted.get("proposal", {}).get("status") == "accepted",
+                f"memory_id={memory_id}",
+            )
+        )
+    except Exception as exc:  # noqa: BLE001
+        checks.append(
+            CheckResult(
+                "operator-accepted-proposal-created-memory",
+                False,
+                f"{type(exc).__name__}: {exc}",
+            )
+        )
+        return _report(config, checks, build, turn_id, memory_id)
+
+    try:
+        recalled = client.request(
+            "POST",
+            "/v1/memory/recall",
+            {
+                "tenant_id": str(config.tenant_id),
+                "workspace_id": str(config.workspace_id),
+                "thread_id": str(config.thread_id),
+                "query": marker,
+                "top_k": 20,
+            },
+        )
+        recalled_ids = [str(item.get("id")) for item in recalled.get("results", [])]
+        checks.append(
+            CheckResult(
+                "accepted-memory-recalled",
                 memory_id in recalled_ids,
                 f"results={len(recalled_ids)} memory_id={memory_id}",
             )
         )
     except Exception as exc:  # noqa: BLE001
         checks.append(
-            CheckResult("curated-memory-recalled", False, f"{type(exc).__name__}: {exc}")
+            CheckResult("accepted-memory-recalled", False, f"{type(exc).__name__}: {exc}")
         )
 
     return _report(config, checks, build, turn_id, memory_id)

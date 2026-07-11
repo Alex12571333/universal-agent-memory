@@ -125,7 +125,7 @@ class CurateConversationTurnCommand:
     labels: tuple[str, ...] = ()
     importance: float = 0.4
     confidence: float = 0.65
-    auto_accept: bool = True
+    auto_accept: bool = False
     idempotency_key: str | None = None
 
 
