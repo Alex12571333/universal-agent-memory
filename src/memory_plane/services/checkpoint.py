@@ -76,10 +76,10 @@ class CheckpointService:
         return self._store.get_revision(tenant_id, thread_id, revision)
 
     def list_for_workspace(
-        self, tenant_id: UUID, workspace_id: UUID
+        self, tenant_id: UUID, workspace_id: UUID, *, limit: int | None = None, offset: int = 0
     ) -> tuple[Checkpoint, ...]:
         """List head checkpoints for all threads in a workspace."""
-        return self._store.list_for_workspace(tenant_id, workspace_id)
+        return self._store.list_for_workspace(tenant_id, workspace_id, limit=limit, offset=offset)
 
     def compact(
         self, *, tenant_id: UUID, thread_id: UUID, keep_last: int = 3

@@ -810,7 +810,7 @@ class InMemoryObservationRepository:
         return self._store.save(observation)
 
     def list_for_workspace(
-        self, tenant_id: UUID, workspace_id: UUID
+        self, tenant_id: UUID, workspace_id: UUID, *, limit: int | None = None, offset: int = 0
     ) -> tuple[Observation, ...]:
         """Delegate tenant-safe observation listing."""
         return self._store.list_observations(tenant_id, workspace_id)
@@ -919,7 +919,7 @@ class InMemoryCheckpointStore:
             return None
 
     def list_for_workspace(
-        self, tenant_id: UUID, workspace_id: UUID
+        self, tenant_id: UUID, workspace_id: UUID, *, limit: int | None = None, offset: int = 0
     ) -> tuple[Checkpoint, ...]:
         """List head checkpoints for all threads in a workspace."""
         with self._lock:
@@ -930,9 +930,10 @@ class InMemoryCheckpointStore:
                         existing = heads.get(r.thread_id)
                         if existing is None or r.revision > existing.revision:
                             heads[r.thread_id] = r
-            return tuple(
-                v for v in sorted(heads.values(), key=lambda c: c.created_at)
-            )
+            ordered = sorted(heads.values(), key=lambda c: (c.created_at, c.id))
+            start = max(0, offset)
+            stop = None if limit is None else start + limit
+            return tuple(ordered[start:stop])
 
     def compact(
         self, tenant_id: UUID, thread_id: UUID, *, keep_last: int = 3

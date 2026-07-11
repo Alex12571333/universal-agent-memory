@@ -2268,7 +2268,7 @@ class PostgresObservationRepository:
         return self._store.save(observation)
 
     def list_for_workspace(
-        self, tenant_id: UUID, workspace_id: UUID
+        self, tenant_id: UUID, workspace_id: UUID, *, limit: int | None = None, offset: int = 0
     ) -> tuple[Observation, ...]:
         return self._store.list_observations(tenant_id, workspace_id)
 
@@ -2439,21 +2439,26 @@ class PostgresCheckpointStore:
         return None if row is None else self._to_checkpoint(row)
 
     def list_for_workspace(
-        self, tenant_id: UUID, workspace_id: UUID
+        self, tenant_id: UUID, workspace_id: UUID, *, limit: int | None = None, offset: int = 0
     ) -> tuple[Checkpoint, ...]:
         """List head checkpoints for every thread in a workspace."""
         with self._ledger._connection() as connection:
             self._ledger._set_tenant(connection, tenant_id)
             rows = connection.execute(
                 """
-                select distinct on (thread_id)
+                with heads as (
+                  select distinct on (thread_id)
                        id, tenant_id, workspace_id, thread_id,
                        revision, state, created_at
-                from checkpoints
-                where workspace_id = %s
-                order by thread_id, revision desc
+                  from checkpoints
+                  where workspace_id = %s
+                  order by thread_id, revision desc
+                )
+                select * from heads
+                order by created_at, id
+                limit %s offset %s
                 """,
-                (workspace_id,),
+                (workspace_id, limit if limit is not None else 2147483647, max(0, offset)),
             ).fetchall()
         return tuple(self._to_checkpoint(row) for row in rows)
 

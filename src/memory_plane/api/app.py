@@ -2427,6 +2427,28 @@ def create_app(
         heads = services.checkpoint.list_for_workspace(tenant_id, workspace_id)
         return [_checkpoint_response(cp) for cp in heads]
 
+    @app.get("/v1/checkpoints/page")
+    def list_checkpoints_page(
+        workspace_id: UUID = DEFAULT_PROJECT_ID,
+        tenant_id: UUID = DEFAULT_SERVER_ID,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        """Page checkpoint heads without breaking the legacy list endpoint."""
+        safe_limit, safe_offset = max(1, min(limit, 500)), max(0, offset)
+        heads = services.checkpoint.list_for_workspace(
+            tenant_id, workspace_id, limit=safe_limit + 1, offset=safe_offset
+        )
+        has_more = len(heads) > safe_limit
+        rows = heads[:safe_limit]
+        return {
+            "checkpoints": [_checkpoint_response(cp) for cp in rows],
+            "limit": safe_limit,
+            "offset": safe_offset,
+            "has_more": has_more,
+            "next_offset": safe_offset + len(rows) if has_more else None,
+        }
+
     @app.get("/v1/checkpoints/{thread_id}")
     def restore_checkpoint(
         thread_id: UUID,
