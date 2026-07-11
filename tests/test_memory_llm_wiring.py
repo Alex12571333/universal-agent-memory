@@ -90,7 +90,7 @@ def test_conversation_curator_uses_memory_llm_when_available() -> None:
     assert "Пользователь явно просит" in proposal.proposal
     assert "Интерфейс должен быть на русском" in proposal.proposal
     assert f"source_turn_id: {turn.turn.id}" in proposal.evidence
-    assert reasoner.calls[0]["max_tokens"] == 900
+    assert reasoner.calls[0]["max_tokens"] == 700
 
 
 def test_conversation_curator_chunks_long_transcript_then_reduces() -> None:
@@ -114,9 +114,9 @@ def test_conversation_curator_chunks_long_transcript_then_reduces() -> None:
     ).curate_turn(CurateConversationTurnCommand(tenant_id=tenant_id, turn_id=turn.turn.id))
 
     assert result.proposal is not None
-    assert len(reasoner.calls) == 4  # three chunks plus a bounded reducer call
-    assert [call["max_tokens"] for call in reasoner.calls] == [900, 900, 900, 1800]
-    assert "x" * 10_001 not in reasoner.calls[-1]["messages"][1]["content"]
+    assert len(reasoner.calls) == 5  # four chunks plus a bounded reducer call
+    assert [call["max_tokens"] for call in reasoner.calls] == [700, 700, 700, 700, 900]
+    assert "x" * 6_001 not in reasoner.calls[-1]["messages"][1]["content"]
 
 
 def test_conversation_curator_falls_back_when_memory_llm_fails() -> None:

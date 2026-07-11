@@ -126,17 +126,17 @@ def bench_config_contracts() -> tuple[str, dict[str, Any]]:
         "qdrant_ports": 'ports: ["6799:6333", "6800:6334"]' in compose,
         "minio_ports": 'ports: ["6900:9000", "6901:9001"]' in compose,
         "nats_ports": 'ports: ["6422:4222", "6822:8222"]' in compose,
-        "context_budget_env": "UAM_CONTEXT_BUDGET_TOKENS=131072" in env,
+        "context_budget_env": "UAM_CONTEXT_BUDGET_TOKENS=8192" in env,
         "context_per_layer_limit_env": "UAM_CONTEXT_PER_LAYER_LIMIT=1000" in env,
-        "llm_context_env": "UAM_MEMORY_LLM_CONTEXT_TOKENS=131072" in env,
+        "llm_context_env": "UAM_MEMORY_LLM_CONTEXT_TOKENS=8192" in env,
         "llm_provider_neutral": "UAM_MEMORY_LLM_PROVIDER=openai-compatible" in env,
         "llm_extra_body": "UAM_MEMORY_LLM_EXTRA_BODY_JSON={}" in env,
     }
     missing = [key for key, ok in checks.items() if not ok]
     assert_true(not missing, f"missing config checks: {missing}")
     config = MemoryLLMConfig.from_env()
-    assert_true(config.context_window_tokens == 131072, "memory LLM context is not 128k")
-    return "Docker/env contract uses 6798 host API port and 128k context.", {
+    assert_true(config.context_window_tokens == 8192, "memory LLM context is not compact 8k")
+    return "Docker/env contract uses 6798 host API port and compact 8k contexts.", {
         **checks,
         "llm_context_window_tokens": config.context_window_tokens,
         "llm_model": config.model_name,
@@ -152,20 +152,20 @@ def bench_api_memory_contract() -> tuple[str, dict[str, Any]]:
             "layer": "semantic",
             "scope": "workspace",
             "kind": "fact",
-            "text": "Benchmark memory says production context is 128k.",
-            "idempotency_key": "benchmark:128k-context",
+            "text": "Benchmark memory says production context is compact.",
+            "idempotency_key": "benchmark:8k-context",
         },
     )
     recalled = client.post(
         "/v1/memory/recall",
-        json={"query": "production context 128k"},
+        json={"query": "production compact context"},
     )
     assert_true(retained.status_code == 201, retained.text)
     assert_true(recalled.status_code == 200, recalled.text)
     payload = recalled.json()
-    assert_true(payload["context"]["budget_tokens"] == 131072, "recall budget is not 128k")
+    assert_true(payload["context"]["budget_tokens"] == 8192, "recall budget is not compact 8k")
     assert_true(payload["results"], "recall returned no memory")
-    return "In-process API retains, recalls and compiles 128k-budget context.", {
+    return "In-process API retains, recalls and compiles compact 8k context.", {
         "context_budget_tokens": payload["context"]["budget_tokens"],
         "result_count": len(payload["results"]),
         "used_tokens": payload["context"]["used_tokens"],
@@ -191,6 +191,7 @@ def bench_llm_wiring_contract() -> tuple[str, dict[str, Any]]:
             ),
         )
     )
+    curator_proposals = MemoryProposalService(store, retention)
     curated = ConversationCurator(
         store,
         retention,
@@ -201,6 +202,7 @@ def bench_llm_wiring_contract() -> tuple[str, dict[str, Any]]:
                 "confidence": 0.94,
             }
         ),
+        proposals=curator_proposals,
     ).curate_turn(CurateConversationTurnCommand(tenant_id=tenant_id, turn_id=turn.turn.id))
     proposal = MemoryProposalService(
         store,
@@ -224,13 +226,17 @@ def bench_llm_wiring_contract() -> tuple[str, dict[str, Any]]:
             evidence="Explicit request.",
         )
     )
-    assert_true(curated.item.metadata["curator_engine"] == "memory_llm", "curator skipped LLM")
+    assert_true(curated.proposal is not None, "curator did not create a proposal")
+    assert_true(
+        curated.proposal.proposal.metadata["curator_engine"] == "memory_llm",
+        "curator skipped LLM",
+    )
     assert_true(
         proposal.proposal.target == MemoryProposalTarget.PREFERENCE,
         "proposal was not classified",
     )
     return "Conversation curator and Memory Gateway use LLM reasoner contracts.", {
-        "curator_engine": curated.item.metadata["curator_engine"],
+        "curator_engine": curated.proposal.proposal.metadata["curator_engine"],
         "proposal_target": proposal.proposal.target.value,
         "proposal_confidence": proposal.proposal.confidence,
     }
@@ -288,16 +294,11 @@ def bench_in_memory_vector_recall() -> tuple[str, dict[str, Any]]:
     }
 
 
-def bench_long_context_compiler() -> tuple[str, dict[str, Any]]:
+def bench_compact_context_compiler() -> tuple[str, dict[str, Any]]:
     tenant_id = uuid4()
     workspace_id = uuid4()
     item_count = 120
-    text = (
-        "Long-context benchmark memory. "
-        "This synthetic note verifies that the compiler can pack a large "
-        "128k production context window without silently falling back to the "
-        "old small budget. "
-    ) * 18
+    text = "Compact-context benchmark memory. " * 12
     items = tuple(
         MemoryItem(
             tenant_id=tenant_id,
@@ -323,21 +324,21 @@ def bench_long_context_compiler() -> tuple[str, dict[str, Any]]:
     package = ContextCompiler().compile(
         recall,
         ContextRecipe(
-            operation="benchmark_long_context",
-            budget_tokens=131072,
+            operation="benchmark_compact_context",
+            budget_tokens=8192,
             layer_order=(MemoryLayer.SEMANTIC,),
             per_layer_limit={MemoryLayer.SEMANTIC: 1000},
         ),
     )
     rendered = package.render_markdown()
-    assert_true(package.budget_tokens == 131072, "long context budget changed")
-    assert_true(len(package.trace_ids) == item_count, "compiler did not include all items")
+    assert_true(package.budget_tokens == 8192, "compact context budget changed")
+    assert_true(0 < len(package.trace_ids) < item_count, "compiler did not enforce the budget")
     assert_true(
-        package.used_tokens > 60000,
-        "long context benchmark did not exceed small-context budgets",
+        package.used_tokens <= package.budget_tokens,
+        "context compiler exceeded its compact budget",
     )
-    assert_true(len(rendered) > 200000, "rendered long context is unexpectedly small")
-    return "ContextCompiler packs a large synthetic context under the 128k budget.", {
+    assert_true(len(rendered) > 1000, "rendered compact context is unexpectedly small")
+    return "ContextCompiler enforces a compact 8k context budget.", {
         "budget_tokens": package.budget_tokens,
         "used_tokens": package.used_tokens,
         "items_included": len(package.trace_ids),
@@ -354,16 +355,16 @@ def bench_agent_integration_defaults() -> tuple[str, dict[str, Any]]:
     docs = (ROOT / "agent-integrations/README.md").read_text()
     checks = {
         "shared_url_6798": 'url: str = "http://localhost:6798"' in shared,
-        "shared_budget_128k": "context_budget_tokens: int = 131072" in shared,
+        "shared_budget_8k": "context_budget_tokens: int = 8192" in shared,
         "hermes_url_6798": 'os.getenv("UAM_URL", "http://localhost:6798")' in hermes,
-        "hermes_budget_128k": 'os.getenv("UAM_CONTEXT_BUDGET_TOKENS", "131072")' in hermes,
+        "hermes_budget_8k": 'os.getenv("UAM_CONTEXT_BUDGET_TOKENS", "8192")' in hermes,
         "openclaw_url_6798": 'const DEFAULT_URL = "http://localhost:6798";' in openclaw,
-        "openclaw_budget_128k": "default: 131072" in openclaw,
-        "docs_budget_128k": "UAM_CONTEXT_BUDGET_TOKENS=131072" in docs,
+        "openclaw_budget_8k": "default: 8192" in openclaw,
+        "docs_budget_8k": "UAM_CONTEXT_BUDGET_TOKENS=8192" in docs,
     }
     missing = [key for key, ok in checks.items() if not ok]
     assert_true(not missing, f"agent integration default mismatch: {missing}")
-    return "OpenClaw/Hermes/native defaults use port 6798 and 128k context.", checks
+    return "OpenClaw/Hermes native defaults use port 6798 and compact 8k context.", checks
 
 
 def bench_web_contract() -> tuple[str, dict[str, Any]]:
@@ -476,8 +477,8 @@ def bench_live_memory_llm(base_url: str, model: str) -> tuple[str, dict[str, Any
     config = MemoryLLMConfig(
         model_name=model,
         base_url=base_url.rstrip("/"),
-        context_window_tokens=131072,
-        max_tokens=1600,
+        context_window_tokens=8192,
+        max_tokens=1200,
         temperature=0.0,
         timeout_seconds=90,
     )
@@ -489,7 +490,7 @@ def bench_live_memory_llm(base_url: str, model: str) -> tuple[str, dict[str, Any
                     "content": "Ответь одним коротким русским словом без объяснений: память",
                 }
             ],
-            max_tokens=1600,
+            max_tokens=1200,
             temperature=0.0,
         )
     except Exception as exc:  # noqa: BLE001 - optional live endpoint.
@@ -616,7 +617,7 @@ def main() -> int:
         ("api_memory_contract", bench_api_memory_contract),
         ("llm_wiring_contract", bench_llm_wiring_contract),
         ("in_memory_vector_recall", bench_in_memory_vector_recall),
-        ("long_context_compiler", bench_long_context_compiler),
+        ("compact_context_compiler", bench_compact_context_compiler),
         ("agent_integration_defaults", bench_agent_integration_defaults),
         ("web_contract", bench_web_contract),
     ]

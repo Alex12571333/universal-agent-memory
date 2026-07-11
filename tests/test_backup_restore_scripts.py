@@ -125,6 +125,12 @@ def test_application_role_provisioning_parameterizes_secret_and_identifier(
     assert connection.calls[1][1] == ("runtime_agent",)
     assert connection.calls[2][1] == ("p@ssword-value",)
     assert all("p@ssword-value" not in str(statement) for statement, _ in connection.calls)
+    statements = "\n".join(str(statement) for statement, _ in connection.calls).lower()
+    assert "grant select, insert on all tables" in statements
+    assert "revoke update, delete on all tables" in statements
+    assert "grant select, insert, update, delete on all tables" not in statements
+    assert "grant update on outbox_events" in statements
+    assert "grant delete on checkpoints" in statements
 
 
 @pytest.mark.parametrize(

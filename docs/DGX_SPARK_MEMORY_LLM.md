@@ -25,8 +25,8 @@ UAM_MEMORY_LLM_BASE_URL=https://memory-llm.internal.example/v1
 UAM_MEMORY_LLM_API_KEY_FILE=/run/secrets/memory_llm_gateway_key
 UAM_MEMORY_LLM_TIMEOUT_SECONDS=120
 UAM_MEMORY_LLM_TEMPERATURE=0.1
-UAM_MEMORY_LLM_CONTEXT_TOKENS=32768
-UAM_MEMORY_LLM_MAX_TOKENS=1600
+UAM_MEMORY_LLM_CONTEXT_TOKENS=8192
+UAM_MEMORY_LLM_MAX_TOKENS=1200
 ```
 
 The adapter appends `/chat/completions` to the configured base URL. The generic

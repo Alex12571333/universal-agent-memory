@@ -34,7 +34,7 @@ Repository capability baseline:
 | Vector search | Qdrant adapter + embedding worker + real embedding endpoint support |
 | Async pipeline | Transactional outbox, NATS JetStream relay, dead-letter path |
 | Memory reasoning | OpenAI-compatible chat endpoint, provider-neutral config, fail-soft fallback |
-| Context | 128k recall budget and `top_k` up to 1000 candidates |
+| Context | Compact 8k recall budget; retrieve many candidates, inject only ranked evidence |
 | Human vault | Markdown/Obsidian-style export, dry-run import, safe supersede |
 | UI | React/Vite operator dashboard served by Docker on `/ui` |
 | Agent integration | Native OpenClaw plugin and Hermes memory provider adapters |
@@ -236,18 +236,18 @@ UAM_MEMORY_LLM_PROVIDER=openai-compatible
 UAM_MEMORY_LLM_MODEL=provider/model-id
 UAM_MEMORY_LLM_BASE_URL=https://model-gateway.example.com/v1
 UAM_MEMORY_LLM_API_KEY=gateway-specific-key
-UAM_MEMORY_LLM_CONTEXT_TOKENS=32768
-UAM_MEMORY_LLM_MAX_TOKENS=1600
+UAM_MEMORY_LLM_CONTEXT_TOKENS=8192
+UAM_MEMORY_LLM_MAX_TOKENS=1200
 UAM_MEMORY_LLM_EXTRA_BODY_JSON={}
 ```
 
 `UAM_MEMORY_LLM_CONTEXT_TOKENS` относится только к внутреннему curator. Он не
-равен бюджету контекста агента: curator получает ограниченные evidence-first
-фрагменты и должен обрабатывать длинные источники по частям, а не одним
-128k-prompt.
+равен бюджету контекста агента: curator получает 6k-символьные evidence-first
+фрагменты, а затем иерархически сворачивает только их JSON-выжимки. Полная
+переписка никогда не отправляется одним prompt.
 
 The separate agent recall budget remains configurable with
-`UAM_CONTEXT_BUDGET_TOKENS` (default `131072`); it is not sent wholesale to
+`UAM_CONTEXT_BUDGET_TOKENS` (default `8192`); it is not sent wholesale to
 the curator.
 
 `BASE_URL`, `MODEL`, `API_KEY`, and optional `EXTRA_BODY_JSON` belong to the
@@ -397,7 +397,7 @@ production evidence. The manifest contract is documented in
 [docs/RELEASE_EVIDENCE.md](docs/RELEASE_EVIDENCE.md).
 
 The benchmark suite covers config contracts, API memory contracts, memory LLM
-wiring, in-memory vector recall, 128k context compilation, agent integration
+wiring, in-memory vector recall, compact context compilation, agent integration
 defaults, web build, Docker state, live HTTP API, live memory LLM, and live
 embeddings when configured endpoints are reachable. Passing these checks is not a
 substitute for the production gates in the gap audit.

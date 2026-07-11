@@ -37,7 +37,7 @@ function cfg(pluginConfig = {}) {
     threadId: pluginConfig.threadId || process.env.UAM_THREAD_ID || "",
     topK: Number(pluginConfig.topK || process.env.UAM_MEMORY_RECALL_TOP_K || 8),
     contextBudgetTokens: Number(
-      pluginConfig.contextBudgetTokens || process.env.UAM_CONTEXT_BUDGET_TOKENS || 131072,
+      pluginConfig.contextBudgetTokens || process.env.UAM_CONTEXT_BUDGET_TOKENS || 8192,
     ),
     retainToolTraces: envBool("UAM_RETAIN_TOOL_TRACES", pluginConfig.retainToolTraces ?? true),
   };
@@ -157,7 +157,7 @@ export default {
         agentId: { type: "string" },
         enabled: { type: "boolean", default: true },
         topK: { type: "number", default: 8 },
-        contextBudgetTokens: { type: "number", default: 131072 },
+        contextBudgetTokens: { type: "number", default: 8192 },
       },
     },
   },
