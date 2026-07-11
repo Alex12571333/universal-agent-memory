@@ -1,0 +1,4 @@
+# Run daily as an administrator-capable service account. Source database
+# credentials from /etc/obelisk-memory.env or a secret manager; do not use the
+# runtime application role because it intentionally cannot delete audit/history.
+23 3 * * * obelisk /usr/local/bin/python /app/scripts/maintenance_retention.py --database-url "$UAM_MAINTENANCE_DATABASE_URL" --retention-days "${UAM_MAINTENANCE_RETENTION_DAYS:-30}" --batch-size 500 --apply --report /var/lib/obelisk/evidence/maintenance-retention.json >> /var/log/obelisk/maintenance-retention.log 2>&1

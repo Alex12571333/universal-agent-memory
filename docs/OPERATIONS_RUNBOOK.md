@@ -352,6 +352,14 @@ only a read/export fallback and cannot prune immutable audit rows. The
 JSON report uses format `obelisk-audit-retention-v1` and records cutoff,
 exported event count, signature/verification status and pruned row count.
 
+## Processed-event and idempotency retention
+
+Install [maintenance-retention.cron](../deploy/ops/maintenance-retention.cron)
+for a daily admin-only bounded cleanup of processed/dead-lettered outbox events
+and old idempotency keys. It never deletes pending outbox events. Run it first
+without `--apply`, review the JSON count report, then enable the schedule with
+an approved `UAM_MAINTENANCE_RETENTION_DAYS` policy.
+
 ## Signed vault bundles
 
 Production operators can protect an unchanged vault export with a signed
