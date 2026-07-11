@@ -581,7 +581,9 @@ def test_restore_drill_uses_temporary_docker_target(
         capture_output: bool = False,
     ) -> subprocess.CompletedProcess[str]:
         commands.append(command)
-        stdout = "\n3\n0\n0\n0\n" if capture_output else ""
+        stdout = ""
+        if capture_output and "pg_policies" not in command[-1]:
+            stdout = "\n3\n0\n0\n0\n"
         return subprocess.CompletedProcess(command, 0, stdout=stdout, stderr="")
 
     monkeypatch.setattr(restore_drill.subprocess, "run", fake_run)
@@ -599,6 +601,22 @@ def test_restore_drill_uses_temporary_docker_target(
     assert any(command[:4] == ["docker", "exec", container, "psql"] for command in commands)
     assert commands[-2] == ["docker", "rm", "-f", container]
     assert commands[-1] == ["docker", "volume", "rm", "-f", volume]
+
+
+def test_restore_drill_rejects_missing_tenant_isolation(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_run(
+        command: list[str],
+        *,
+        check: bool = True,
+        text: bool = True,
+        capture_output: bool = False,
+    ) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(command, 0, stdout="memory_items\n", stderr="")
+
+    monkeypatch.setattr(restore_drill.subprocess, "run", fake_run)
+
+    with pytest.raises(RuntimeError, match="RLS verification failed: memory_items"):
+        restore_drill._verify_rls("restore-target", "postgresql://example/memory")
 
 
 def test_backup_encryption_round_trip_rejects_tampering(tmp_path: Path) -> None:

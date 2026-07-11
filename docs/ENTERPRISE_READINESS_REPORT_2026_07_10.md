@@ -1,6 +1,6 @@
 # Production envelope report — 2026-07-10
 
-Passed: 150
+Passed: 144
 Failed: 0
 
 | Check | Status | Detail |
@@ -9,8 +9,6 @@ Failed: 0
 | `file:SECURITY.md` | PASS | required production artifact |
 | `file:.env.production.example` | PASS | required production artifact |
 | `file:docker-compose.prod.yml` | PASS | required production artifact |
-| `file:deploy/reverse-proxy/Caddyfile` | PASS | required production artifact |
-| `file:deploy/reverse-proxy/docker-compose.caddy.yml` | PASS | required production artifact |
 | `file:.github/workflows/ci.yml` | PASS | required production artifact |
 | `file:src/memory_plane/config/secrets.py` | PASS | required production artifact |
 | `file:migrations/008_audit_events.sql` | PASS | required production artifact |
@@ -42,7 +40,6 @@ Failed: 0
 | `file:docs/GITHUB_BRANCH_PROTECTION.md` | PASS | required production artifact |
 | `file:docs/OPERATIONS_RUNBOOK.md` | PASS | required production artifact |
 | `file:docs/OBSERVABILITY.md` | PASS | required production artifact |
-| `file:docs/TLS_REVERSE_PROXY.md` | PASS | required production artifact |
 | `file:docs/ENTERPRISE_READINESS.md` | PASS | required production artifact |
 | `file:docs/PRODUCTION_GAP_AUDIT_2026_07_10.md` | PASS | required production artifact |
 | `file:docs/RELEASE_CHECKLIST.md` | PASS | required production artifact |
@@ -60,7 +57,7 @@ Failed: 0
 | `readme:env-validation` | PASS | README documents strict local-appliance env validation |
 | `readme:release-memory-llm-eval` | PASS | README delegates live memory LLM evidence to release documentation |
 | `readme:release-ui-walkthrough` | PASS | README delegates live UI walkthrough evidence to release documentation |
-| `readme:128k` | PASS | 128k context budget documented |
+| `readme:agent-context-budget` | PASS | agent recall context budget documented independently of curator window |
 | `readme:openai-compatible-llm` | PASS | README documents provider-neutral memory LLM endpoint |
 | `prod-compose:only-api-published` | PASS | production compose publishes API/UI but not PostgreSQL |
 | `prod-compose:internal-qdrant` | PASS | Qdrant is internal in production |
@@ -69,14 +66,11 @@ Failed: 0
 | `prod-compose:provider-neutral-embeddings` | PASS | production API and worker use provider-neutral embedding defaults |
 | `prod-compose:text-encryption` | PASS | production API and embedding worker receive canonical text encryption settings |
 | `prod-compose:qdrant-redacted-payload` | PASS | production API and embedding worker keep raw text out of Qdrant payloads |
-| `reverse-proxy:caddy-overlay` | PASS | Caddy TLS reverse proxy example exists |
-| `docs:tls-reverse-proxy` | PASS | TLS reverse proxy guide documents backend exposure limits |
 | `ci:ruff` | PASS | CI runs ruff |
 | `ci:pytest` | PASS | CI runs pytest |
 | `ci:web-build` | PASS | CI builds web UI |
 | `ci:production-readiness-eval` | PASS | CI runs in-process production readiness eval |
 | `ci:prod-compose` | PASS | CI validates production compose |
-| `ci:reverse-proxy-compose` | PASS | CI validates reverse proxy compose overlay |
 | `ci:env-placeholder-guard` | PASS | CI confirms placeholder env cannot pass strict production validation |
 | `release:branch-protection-verifier` | PASS | branch-protection verifier checks PR, status, and admin enforcement |
 | `tests:branch-protection-verifier` | PASS | branch-protection verifier behavior is covered by tests |
@@ -111,7 +105,7 @@ Failed: 0
 | `keys:registry-rls` | PASS | API key registry stores non-secret metadata under RLS |
 | `keys:operator-api` | PASS | API key registry is operator-scoped |
 | `tests:key-registry` | PASS | key registry last-used and revocation behavior is covered |
-| `restore-drill:script` | PASS | restore drill restores into isolated PostgreSQL and checks schema presence |
+| `restore-drill:script` | PASS | restore drill checks schema and forced tenant RLS after isolated restore |
 | `tests:restore-drill` | PASS | restore drill command flow is covered by tests |
 | `backup:schedule-runner` | PASS | scheduled backup runner performs backup, restore drill and alert hook |
 | `tests:scheduled-backup` | PASS | scheduled backup success/failure reporting is covered |
