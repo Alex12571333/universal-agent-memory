@@ -170,9 +170,10 @@ static readiness script are green.
     `ConversationCurator` now emits an evidence-linked proposal and never makes
     LLM output recallable by itself. PostgreSQL proposal acceptance now locks
     the proposal and writes canonical memory, idempotency, outbox and accepted
-    status in one transaction. Target PostgreSQL failure-injection and
-    concurrent-accept evidence are still required before the release gate is
-    closed.
+    status in one transaction. A live target concurrent-accept check on
+    2026-07-12 returned the same memory ID to both requests with exactly one
+    creation. Target PostgreSQL failure-injection evidence is still required
+    before the release gate is closed.
 
 ### P1 — reliability, scale and operations
 
