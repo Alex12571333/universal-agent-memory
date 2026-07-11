@@ -111,20 +111,10 @@ release checklist and its signed target evidence.
    only those files into the services; database passwords are not interpolated
    into container environment URLs.
 
-2. Start the production stack:
+2. Start the self-hosted production stack:
 
    ```bash
    docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
-   ```
-
-   For a host reachable from another machine, use the TLS reverse-proxy overlay:
-
-   ```bash
-   docker compose \
-     -f docker-compose.prod.yml \
-     -f deploy/reverse-proxy/docker-compose.caddy.yml \
-     --env-file .env.production \
-     up -d --build
    ```
 
 3. Check health and metrics:
@@ -142,7 +132,6 @@ release checklist and its signed target evidence.
    pytest -q
    docker compose -f docker-compose.prod.yml --env-file .env.production config
    python scripts/validate_production_env.py .env.production \
-     --require-public-tls \
      --require-signed-artifacts \
      --require-real-embeddings
    ```
@@ -152,10 +141,11 @@ release checklist and its signed target evidence.
    complete target-environment reports and seal them into signed,
    content-addressed release evidence.
 
-Production notes:
+Local-appliance notes:
 
-- put TLS and IP allowlisting in front of `6798` if the service leaves localhost;
-- never expose PostgreSQL, Qdrant, NATS, or MinIO directly to an untrusted LAN;
+- bind the API only to the local host or your trusted LAN; no domain, VPN, or
+  reverse proxy is required for that deployment model;
+- never expose PostgreSQL, Qdrant, NATS, or MinIO outside the trusted local network;
 - set `UAM_API_KEY` to a long random secret;
 - prefer scoped `UAM_API_KEYS` for agents and UI operators:
   `openclaw:<secret>:agent,hermes:<secret>:agent,operator:<secret>:operator`;
@@ -171,9 +161,7 @@ Production notes:
   URL-safe-base64 key; scheduled backup artifacts use authenticated AES-256-GCM;
 - pin and test embedding/model dimensions before changing providers.
 
-Full runbook: [docs/OPERATIONS_RUNBOOK.md](docs/OPERATIONS_RUNBOOK.md). TLS
-guide: [docs/TLS_REVERSE_PROXY.md](docs/TLS_REVERSE_PROXY.md). Security policy:
-[SECURITY.md](SECURITY.md).
+Full runbook: [docs/OPERATIONS_RUNBOOK.md](docs/OPERATIONS_RUNBOOK.md).
 
 ## API examples
 

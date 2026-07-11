@@ -253,7 +253,9 @@ def test_openclaw_installable_plugin_package_exists() -> None:
     assert index_js.exists()
     assert "openclaw" in package_json.read_text()
     index = index_js.read_text()
-    assert "registerHook(\"agent_turn_prepare\"" in index
+    assert "on(\"agent_turn_prepare\"" in index
+    assert "api.on" in index
+    assert "api.registerHook" in index
     assert "obelisk-memory-recall" in index
     assert "definePluginEntry" not in index
     assert "export default {" in index

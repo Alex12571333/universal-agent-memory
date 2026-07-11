@@ -34,6 +34,7 @@ function cfg(pluginConfig = {}) {
       pluginConfig.agentId ||
       process.env.UAM_AGENT_ID ||
       stableUuid(`agent:${integration}:${process.env.USER || "openclaw"}`),
+    threadId: pluginConfig.threadId || process.env.UAM_THREAD_ID || "",
     topK: Number(pluginConfig.topK || process.env.UAM_MEMORY_RECALL_TOP_K || 8),
     contextBudgetTokens: Number(
       pluginConfig.contextBudgetTokens || process.env.UAM_CONTEXT_BUDGET_TOKENS || 131072,
@@ -57,13 +58,14 @@ async function postJson(config, path, payload) {
 }
 
 function contextFromHook(config, event, ctx) {
-  const session = ctx?.sessionKey || ctx?.sessionId || event?.sessionKey || event?.runId || "openclaw";
+  const hookContext = ctx || event?.context || {};
+  const session = hookContext.sessionKey || hookContext.sessionId || event?.sessionKey || event?.runId || "openclaw";
   return {
     tenant_id: config.tenantId,
     workspace_id: config.workspaceId,
     agent_id: config.agentId,
-    thread_id: stableUuid(`thread:${session}`),
-    labels: ["openclaw", ctx?.workspaceDir || process.cwd()].filter(Boolean),
+    thread_id: config.threadId || stableUuid(`thread:${session}`),
+    labels: ["openclaw", hookContext.workspaceDir || process.cwd()].filter(Boolean),
   };
 }
 
@@ -161,8 +163,14 @@ export default {
   },
   register(api) {
     const configFor = (ctx) => cfg(ctx?.pluginConfig || api.pluginConfig || {});
+    const on = (hook, handler, metadata) => {
+      if (typeof api.on === "function") {
+        return api.on(hook, handler, { priority: 0 });
+      }
+      return api.registerHook(hook, handler, metadata);
+    };
 
-    api.registerHook("agent_turn_prepare", async (event, ctx) => {
+    on("agent_turn_prepare", async (event, ctx) => {
       const config = configFor(ctx);
       if (!config.enabled) return undefined;
       const base = contextFromHook(config, event, ctx);
@@ -185,7 +193,7 @@ export default {
       }
     }, { name: "obelisk-memory-recall", description: "Recall Obelisk context before an agent turn." });
 
-    api.registerHook("after_tool_call", async (event, ctx) => {
+    on("after_tool_call", async (event, ctx) => {
       const config = configFor(ctx);
       if (!config.enabled || !config.retainToolTraces) return;
       const base = contextFromHook(config, event, ctx);
@@ -209,7 +217,7 @@ export default {
       }
     }, { name: "obelisk-memory-tool-retain", description: "Retain durable tool outcomes in Obelisk." });
 
-    api.registerHook("agent_end", async (event, ctx) => {
+    on("agent_end", async (event, ctx) => {
       const config = configFor(ctx);
       if (!config.enabled || !event?.success) return;
       const summary = lastMessageText(event?.messages);
