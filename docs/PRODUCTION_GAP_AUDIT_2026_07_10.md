@@ -204,9 +204,13 @@ static readiness script are green.
    workspace inside each adapter. A future schema migration can make this
    namespace queryable for operations, but independent workspace retries no
    longer collide.
-10. Published outbox events, processed-event IDs, raw conversations, proposals,
-    idempotency records and checkpoint revisions do not have an installed data
-    lifecycle policy.
+10. Conversation staging, audit windows and checkpoint compaction have bounded
+    retention paths. An admin-only, dry-run-first maintenance job now ages out
+    processed/dead-lettered outbox records and idempotency keys in bounded
+    batches while SQL-excluding pending outbox events. It still needs an
+    installed target schedule, TTL policy approval, and preserved target report;
+    raw conversations and proposals remain governed by their explicit retention
+    policies rather than blanket deletion.
 11. Qdrant retrieval is dense-only in the actual worker path and multi-layer
     filter handling is incomplete. Model/dimension identity is now enforced,
     but collection migration still needs target release evidence.
