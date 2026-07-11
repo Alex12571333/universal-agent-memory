@@ -22,7 +22,11 @@ async def run() -> None:
     nats_url = os.getenv("UAM_NATS_URL", "nats://nats:4222")
     poll_seconds = float(os.getenv("UAM_OUTBOX_POLL_SECONDS", "0.5"))
     store = PostgresMemoryLedger(dsn)
-    sink = NatsJetStreamSink(nats_url)
+    sink = NatsJetStreamSink(
+        nats_url,
+        max_bytes=int(os.getenv("UAM_NATS_STREAM_MAX_BYTES", "536870912")),
+        max_age_seconds=int(os.getenv("UAM_NATS_STREAM_MAX_AGE_SECONDS", "604800")),
+    )
     await sink.connect()
     relay = OutboxRelay(
         store,

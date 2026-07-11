@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from base64 import b64encode
+from dataclasses import replace
 from datetime import datetime
 from hashlib import sha256
 from typing import Any
@@ -11,6 +12,9 @@ from uuid import UUID
 
 from memory_plane.contracts.events import IntegrationEvent
 from memory_plane.services.consumer import IdempotentEventConsumer
+
+DEFAULT_DLQ_MAX_BYTES = 134_217_728
+DEFAULT_DLQ_MAX_AGE_SECONDS = 1_209_600
 
 
 class NatsPullWorker:
@@ -29,6 +33,8 @@ class NatsPullWorker:
         retry_max_seconds: int = 60,
         dead_letter_stream: str = "MEMORY_DLQ",
         dead_letter_subject: str = "memory.dead_letters.embedding",
+        dead_letter_max_bytes: int = DEFAULT_DLQ_MAX_BYTES,
+        dead_letter_max_age_seconds: int = DEFAULT_DLQ_MAX_AGE_SECONDS,
     ) -> None:
         if not durable.strip():
             raise ValueError("durable consumer name must not be empty")
@@ -36,6 +42,8 @@ class NatsPullWorker:
             raise ValueError("max_deliveries must be positive")
         if retry_base_seconds < 1 or retry_max_seconds < retry_base_seconds:
             raise ValueError("invalid retry delay bounds")
+        if dead_letter_max_bytes < 1 or dead_letter_max_age_seconds < 1:
+            raise ValueError("NATS dead-letter limits must be positive")
         self._url = url
         self._consumer = consumer
         self._durable = durable
@@ -46,6 +54,8 @@ class NatsPullWorker:
         self._retry_max_seconds = retry_max_seconds
         self._dead_letter_stream = dead_letter_stream
         self._dead_letter_subject = dead_letter_subject
+        self._dead_letter_max_bytes = dead_letter_max_bytes
+        self._dead_letter_max_age_seconds = dead_letter_max_age_seconds
         self._client: Any = None
         self._subscription: Any = None
         self._jetstream: Any = None
@@ -60,12 +70,25 @@ class NatsPullWorker:
         self._client = await nats.connect(self._url)
         self._jetstream = self._client.jetstream()
         try:
-            await self._jetstream.stream_info(self._dead_letter_stream)
+            existing = await self._jetstream.stream_info(self._dead_letter_stream)
+            if (
+                existing.config.max_bytes != self._dead_letter_max_bytes
+                or existing.config.max_age != self._dead_letter_max_age_seconds
+            ):
+                await self._jetstream.update_stream(
+                    config=replace(
+                        existing.config,
+                        max_bytes=self._dead_letter_max_bytes,
+                        max_age=self._dead_letter_max_age_seconds,
+                    )
+                )
         except NotFoundError:
             await self._jetstream.add_stream(
                 name=self._dead_letter_stream,
                 subjects=["memory.dead_letters.>"],
                 storage="file",
+                max_bytes=self._dead_letter_max_bytes,
+                max_age=self._dead_letter_max_age_seconds,
             )
         self._subscription = await self._jetstream.pull_subscribe(
             self._subject,

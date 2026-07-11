@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from typing import Any
 
 from memory_plane.contracts.events import IntegrationEvent
+
+DEFAULT_STREAM_MAX_BYTES = 536_870_912
+DEFAULT_STREAM_MAX_AGE_SECONDS = 604_800
 
 
 class NatsJetStreamSink:
@@ -17,12 +21,18 @@ class NatsJetStreamSink:
         *,
         stream: str = "MEMORY_EVENTS",
         subject_prefix: str = "memory.events",
+        max_bytes: int = DEFAULT_STREAM_MAX_BYTES,
+        max_age_seconds: int = DEFAULT_STREAM_MAX_AGE_SECONDS,
     ) -> None:
         if not url.strip():
             raise ValueError("NATS URL must not be empty")
+        if max_bytes < 1 or max_age_seconds < 1:
+            raise ValueError("NATS stream limits must be positive")
         self._url = url
         self._stream = stream
         self._subject_prefix = subject_prefix.rstrip(".")
+        self._max_bytes = max_bytes
+        self._max_age_seconds = max_age_seconds
         self._client: Any = None
         self._jetstream: Any = None
 
@@ -37,12 +47,25 @@ class NatsJetStreamSink:
         self._client = await nats.connect(self._url)
         self._jetstream = self._client.jetstream()
         try:
-            await self._jetstream.stream_info(self._stream)
+            existing = await self._jetstream.stream_info(self._stream)
+            if (
+                existing.config.max_bytes != self._max_bytes
+                or existing.config.max_age != self._max_age_seconds
+            ):
+                await self._jetstream.update_stream(
+                    config=replace(
+                        existing.config,
+                        max_bytes=self._max_bytes,
+                        max_age=self._max_age_seconds,
+                    )
+                )
         except NotFoundError:
             await self._jetstream.add_stream(
                 name=self._stream,
                 subjects=[f"{self._subject_prefix}.>"],
                 storage="file",
+                max_bytes=self._max_bytes,
+                max_age=self._max_age_seconds,
             )
 
     async def send(self, event: IntegrationEvent) -> None:
