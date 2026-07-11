@@ -53,6 +53,7 @@ def test_prometheus_alerts_cover_production_failure_modes() -> None:
         "ObeliskOutboxLagHigh",
         "ObeliskProcessedEventLeasesHigh",
         "ObeliskEmbeddingFailures",
+        "ObeliskEmbeddingWorkerDown",
         "ObeliskReindexFailures",
         "ObeliskRetrievalDegraded",
         "ObeliskRetrievalSourceFailures",
@@ -79,3 +80,4 @@ def test_observability_docs_reference_dashboard_alerts_and_release_gate() -> Non
     assert "deploy/observability/prometheus-alerts.yml" in docs
     assert "scripts/check_metrics_health.py" in docs
     assert "ops/metrics-health.json" in docs
+    assert "embedding-worker:9091" in docs

@@ -182,9 +182,9 @@ static readiness script are green.
    AES-256-GCM and verifies decryption through the restore drill, but artifacts
    are not signed and the drill still checks schema presence rather than
    source/restore row-count parity, recall, RLS or required Qdrant reindex.
-5. Embedding metrics exposed by the API describe the API process, while actual
-   embedding work runs in another container. Worker failures can remain absent
-   from the metrics used by alerts.
+5. Worker embedding metrics are now exposed privately at
+   `embedding-worker:9091/metrics`; release evidence must demonstrate that the
+   monitoring target scrapes this endpoint and its alerts are routed.
 6. PostgreSQL lexical recall loads and decrypts the full workspace in Python
    instead of using the existing FTS/trigram indexes. Several list/export paths
    also lack production pagination.

@@ -87,10 +87,9 @@ Healthy production means:
 `check_metrics_health.py` turns Prometheus text into an operator gate. It fails
 when outbox pending, dead-letter, lag or in-flight values exceed configured
 thresholds, writes a JSON report, and can post failed reports through
-`UAM_METRICS_ALERT_WEBHOOK`. The API `/metrics` surface contains embedding
-counter names, but the deployed embedding worker is a separate process and does
-not yet export its own metrics endpoint. Do not treat API-side counters as proof
-of worker health; worker metrics are an open production blocker.
+`UAM_METRICS_ALERT_WEBHOOK`. The embedding worker exposes private Prometheus
+metrics on `embedding-worker:9091/metrics`; scrape that target separately from
+the API. API-side reindex counters and worker embedding counters are distinct.
 
 Import `deploy/observability/grafana-dashboard.json` and
 `deploy/observability/prometheus-alerts.yml` into the target monitoring stack.

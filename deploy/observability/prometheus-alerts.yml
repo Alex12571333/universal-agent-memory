@@ -50,7 +50,7 @@ groups:
             tasks, crashed processes or slow provider calls.
 
       - alert: ObeliskEmbeddingFailures
-        expr: increase(uam_embedding_failures_total[10m]) > 0
+        expr: increase(uam_embedding_failures_total{job="obelisk-embedding-worker"}[10m]) > 0
         for: 1m
         labels:
           severity: warning
@@ -60,6 +60,18 @@ groups:
           description: >
             Embedding worker failures occurred in the last ten minutes. Recall
             can fall back, but semantic freshness is degraded.
+
+      - alert: ObeliskEmbeddingWorkerDown
+        expr: up{job="obelisk-embedding-worker"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: obelisk-memory
+        annotations:
+          summary: Obelisk Memory embedding worker is unreachable
+          description: >
+            Prometheus cannot scrape the private embedding-worker metrics
+            endpoint. New memories will not receive fresh dense vectors.
 
       - alert: ObeliskReindexFailures
         expr: increase(uam_embedding_reindex_failures_total[30m]) > 0

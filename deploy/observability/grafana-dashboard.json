@@ -256,22 +256,22 @@
       },
       "targets": [
         {
-          "expr": "increase(uam_embedding_operations_total[5m])",
+          "expr": "increase(uam_embedding_operations_total{job=\"obelisk-embedding-worker\"}[5m])",
           "legendFormat": "embedding operations",
           "refId": "A"
         },
         {
-          "expr": "increase(uam_embedding_failures_total[5m])",
+          "expr": "increase(uam_embedding_failures_total{job=\"obelisk-embedding-worker\"}[5m])",
           "legendFormat": "embedding failures",
           "refId": "B"
         },
         {
-          "expr": "increase(uam_embedding_reindex_total[5m])",
+          "expr": "increase(uam_embedding_reindex_total{job=\"obelisk-memory\"}[5m])",
           "legendFormat": "reindex operations",
           "refId": "C"
         },
         {
-          "expr": "increase(uam_embedding_reindex_failures_total[5m])",
+          "expr": "increase(uam_embedding_reindex_failures_total{job=\"obelisk-memory\"}[5m])",
           "legendFormat": "reindex failures",
           "refId": "D"
         }
@@ -310,12 +310,12 @@
       },
       "targets": [
         {
-          "expr": "uam_embedding_last_duration_seconds",
+          "expr": "uam_embedding_last_duration_seconds{job=\"obelisk-embedding-worker\"}",
           "legendFormat": "last embedding duration",
           "refId": "A"
         },
         {
-          "expr": "uam_embedding_reindex_last_duration_seconds",
+          "expr": "uam_embedding_reindex_last_duration_seconds{job=\"obelisk-memory\"}",
           "legendFormat": "last reindex duration",
           "refId": "B"
         }

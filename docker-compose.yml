@@ -151,6 +151,7 @@ services:
       UAM_EMBEDDING_BASE_URL: ${UAM_EMBEDDING_BASE_URL:-}
       UAM_EMBEDDING_SEND_DIMENSIONS: ${UAM_EMBEDDING_SEND_DIMENSIONS:-false}
       UAM_EMBEDDING_API_KEY: ${UAM_EMBEDDING_API_KEY:-}
+      UAM_WORKER_METRICS_PORT: ${UAM_WORKER_METRICS_PORT:-9091}
     depends_on:
       migrate:
         condition: service_completed_successfully

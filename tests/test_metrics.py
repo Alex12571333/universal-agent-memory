@@ -32,6 +32,13 @@ def test_render_prometheus_sorts_and_prefixes_metrics() -> None:
     )
 
 
+def test_render_prometheus_marks_duration_sums_as_counters() -> None:
+    text = render_prometheus({"embedding_duration_seconds_sum": 2.5, "worker_up": 1})
+
+    assert "# TYPE uam_embedding_duration_seconds_sum counter" in text
+    assert "# TYPE uam_worker_up gauge" in text
+
+
 def test_metrics_health_passes_when_outbox_thresholds_are_green() -> None:
     metrics = check_metrics_health.parse_prometheus_metrics(
         """

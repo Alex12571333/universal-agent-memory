@@ -57,7 +57,7 @@ Failed: 0
 | `readme:gap-audit` | PASS | README links the honest production gap audit |
 | `readme:agents` | PASS | agent adapters documented |
 | `readme:agent-soak` | PASS | README documents live agent soak evidence |
-| `readme:env-validation` | PASS | README documents strict production env validation |
+| `readme:env-validation` | PASS | README documents strict local-appliance env validation |
 | `readme:release-memory-llm-eval` | PASS | README delegates live memory LLM evidence to release documentation |
 | `readme:release-ui-walkthrough` | PASS | README delegates live UI walkthrough evidence to release documentation |
 | `readme:128k` | PASS | 128k context budget documented |
@@ -91,12 +91,12 @@ Failed: 0
 | `env:identity-bindings` | PASS | strict agent principal bindings are documented |
 | `env:text-encryption-scopes` | PASS | canonical memory text encryption scopes are documented |
 | `env:signing-keys` | PASS | operator-held signing keys are documented |
-| `env:public-host` | PASS | public TLS endpoint env is documented |
+| `env:local-appliance` | PASS | local-appliance deployment does not require a public endpoint |
 | `api:security-headers` | PASS | API applies baseline security headers |
 | `tests:security-headers` | PASS | security headers are covered by API tests |
 | `ui:conflict-actions` | PASS | operator UI can accept, override or dismiss conflicts |
 | `tests:ui-conflict-actions` | PASS | conflict UI/API decision behavior is covered |
-| `ops:metrics-health-evaluator` | PASS | static metrics contracts cover outbox and embedding counters; worker export remains a runtime gap |
+| `ops:metrics-health-evaluator` | PASS | embedding worker exports a private Prometheus endpoint |
 | `ops:observability-artifacts` | PASS | Prometheus alerts and Grafana dashboard cover production metrics |
 | `tests:observability-artifacts` | PASS | observability artifacts are covered by tests |
 | `tests:metrics-health-evaluator` | PASS | metrics health thresholds and report behavior are covered |
