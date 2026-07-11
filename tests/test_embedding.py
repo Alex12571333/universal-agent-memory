@@ -40,6 +40,25 @@ class EmbeddingServiceTest(unittest.TestCase):
         self.assertEqual(vec1, vec2)
         self.assertNotEqual(vec1, vec3)
 
+    def test_embedding_service_mean_pools_bounded_document_chunks(self) -> None:
+        with unittest.mock.patch.dict(
+            "os.environ", {"UAM_EMBEDDING_DOCUMENT_CHUNK_CHARS": "256"}, clear=False
+        ):
+            container = build_in_memory_container()
+        left_chunk, right_chunk = "a" * 256, "b" * 256
+        expected = [
+            (left + right) / 2
+            for left, right in zip(
+                container.embedding._client.embed(left_chunk),
+                container.embedding._client.embed(right_chunk),
+                strict=True,
+            )
+        ]
+
+        actual = container.embedding._embed_document(left_chunk + right_chunk)
+
+        self.assertEqual(expected, actual)
+
     def test_embedding_provider_factory_selects_fake(self) -> None:
         """Provider factory keeps deterministic fake as the default local mode."""
         client = build_embedding_client(
