@@ -47,6 +47,16 @@ def _scope_idempotency_key(workspace_id: UUID, key: str | None) -> str | None:
     return None if key is None else f"{workspace_id}:{key}"
 
 _PGCRYPTO_TEXT_PREFIX = "enc:pgcrypto:v1:"
+_RUNTIME_ACL_REQUIRED = {
+    "outbox_events_update": ("outbox_events", "update"),
+    "checkpoints_delete": ("checkpoints", "delete"),
+}
+_RUNTIME_ACL_FORBIDDEN = {
+    "memory_items_update": ("memory_items", "update"),
+    "memory_items_delete": ("memory_items", "delete"),
+    "audit_events_update": ("audit_events", "update"),
+    "audit_events_delete": ("audit_events", "delete"),
+}
 
 _ITEM_COLUMNS = f"""
     m.id, m.tenant_id, m.workspace_id, m.agent_id, m.thread_id,
@@ -146,6 +156,9 @@ class PostgresMemoryLedger:
         self._text_encryption_scopes = _parse_text_encryption_scopes(
             os.getenv("UAM_MEMORY_TEXT_ENCRYPTION_SCOPES", "all")
         )
+        self._enforce_runtime_acl = (
+            os.getenv("UAM_ENFORCE_RUNTIME_DB_ACL", "false").strip().lower() == "true"
+        )
         if self._text_encryption_mode not in {"off", "pgcrypto"}:
             raise ValueError("UAM_MEMORY_TEXT_ENCRYPTION must be off or pgcrypto")
         if self._text_encryption_enabled and not self._text_encryption_key:
@@ -160,6 +173,34 @@ class PostgresMemoryLedger:
             row = connection.execute("select to_regclass('memory_items') as table_name").fetchone()
             if row is None or row["table_name"] is None:
                 raise RuntimeError("memory schema is not installed")
+            if self._enforce_runtime_acl:
+                self._verify_runtime_acl(connection)
+
+    @staticmethod
+    def _verify_runtime_acl(connection: Any) -> None:
+        """Fail closed if the runtime login can mutate canonical/audit history."""
+        checks = {**_RUNTIME_ACL_REQUIRED, **_RUNTIME_ACL_FORBIDDEN}
+        expressions = ", ".join(
+            "has_table_privilege(current_user, %s, %s) as " + name
+            for name in checks
+        )
+        params = tuple(
+            value for table, privilege in checks.values() for value in (table, privilege)
+        )
+        row = connection.execute(f"select {expressions}", params).fetchone()
+        if row is None:
+            raise RuntimeError("runtime database ACL verification returned no result")
+        missing = [name for name in _RUNTIME_ACL_REQUIRED if not row[name]]
+        forbidden = [name for name in _RUNTIME_ACL_FORBIDDEN if row[name]]
+        if missing or forbidden:
+            details = ", ".join([
+                *(f"missing:{name}" for name in missing),
+                *(f"forbidden:{name}" for name in forbidden),
+            ])
+            raise RuntimeError(
+                "runtime database ACL is unsafe; rerun the migration job before serving: "
+                + details
+            )
 
     def ping(self) -> bool:
         """Actively verify canonical PostgreSQL readiness."""

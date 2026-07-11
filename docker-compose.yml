@@ -6,6 +6,7 @@ services:
       context: .
     environment:
       UAM_DATABASE_URL: postgresql://memory_app:memory@postgres:5432/memory
+      UAM_ENFORCE_RUNTIME_DB_ACL: "true"
       UAM_SERVER_ID: 00000000-0000-0000-0000-000000000001
       UAM_PROJECT_ID: 00000000-0000-0000-0000-000000000002
       UAM_VERSION: ${UAM_VERSION:-0.1.0}
@@ -124,6 +125,7 @@ services:
     command: ["python", "-m", "memory_plane.workers.outbox_main"]
     environment:
       UAM_DATABASE_URL: postgresql://memory_app:memory@postgres:5432/memory
+      UAM_ENFORCE_RUNTIME_DB_ACL: "true"
       UAM_SERVER_ID: 00000000-0000-0000-0000-000000000001
       UAM_NATS_URL: nats://nats:4222
     depends_on:
@@ -140,6 +142,7 @@ services:
     command: ["python", "-m", "memory_plane.workers.embedding_main"]
     environment:
       UAM_DATABASE_URL: postgresql://memory_app:memory@postgres:5432/memory
+      UAM_ENFORCE_RUNTIME_DB_ACL: "true"
       UAM_SERVER_ID: 00000000-0000-0000-0000-000000000001
       UAM_PROJECT_ID: 00000000-0000-0000-0000-000000000002
       UAM_NATS_URL: nats://nats:4222
@@ -168,6 +171,7 @@ services:
     command: ["python", "-m", "memory_plane.workers.maintenance_main"]
     environment:
       UAM_DATABASE_URL: postgresql://memory_app:memory@postgres:5432/memory
+      UAM_ENFORCE_RUNTIME_DB_ACL: "true"
       UAM_SERVER_ID: 00000000-0000-0000-0000-000000000001
       UAM_PROJECT_ID: 00000000-0000-0000-0000-000000000002
       UAM_NATS_URL: nats://nats:4222
@@ -213,6 +217,7 @@ services:
     command: ["python", "scripts/export_vault.py", "/vault"]
     environment:
       UAM_DATABASE_URL: postgresql://memory_app:memory@postgres:5432/memory
+      UAM_ENFORCE_RUNTIME_DB_ACL: "true"
       UAM_SERVER_ID: 00000000-0000-0000-0000-000000000001
       UAM_PROJECT_ID: 00000000-0000-0000-0000-000000000002
     volumes:
@@ -229,6 +234,7 @@ services:
     command: ["python", "scripts/import_vault.py", "/vault"]
     environment:
       UAM_DATABASE_URL: postgresql://memory_app:memory@postgres:5432/memory
+      UAM_ENFORCE_RUNTIME_DB_ACL: "true"
       UAM_SERVER_ID: 00000000-0000-0000-0000-000000000001
       UAM_PROJECT_ID: 00000000-0000-0000-0000-000000000002
     volumes:

@@ -10,6 +10,7 @@ services:
       UAM_DATABASE_NAME: ${POSTGRES_DB}
       UAM_DATABASE_USER: ${UAM_APP_DB_USER}
       UAM_DATABASE_PASSWORD_FILE: /run/secrets/app_db_password
+      UAM_ENFORCE_RUNTIME_DB_ACL: "true"
       UAM_SERVER_ID: ${UAM_SERVER_ID}
       UAM_PROJECT_ID: ${UAM_PROJECT_ID}
       UAM_VERSION: ${UAM_VERSION}
@@ -149,6 +150,7 @@ services:
       UAM_DATABASE_NAME: ${POSTGRES_DB}
       UAM_DATABASE_USER: ${UAM_APP_DB_USER}
       UAM_DATABASE_PASSWORD_FILE: /run/secrets/app_db_password
+      UAM_ENFORCE_RUNTIME_DB_ACL: "true"
       UAM_SERVER_ID: ${UAM_SERVER_ID}
       UAM_NATS_URL: nats://nats:4222
       UAM_NATS_AUTH_TOKEN_FILE: /run/secrets/nats_auth_token
@@ -172,6 +174,7 @@ services:
       UAM_DATABASE_NAME: ${POSTGRES_DB}
       UAM_DATABASE_USER: ${UAM_APP_DB_USER}
       UAM_DATABASE_PASSWORD_FILE: /run/secrets/app_db_password
+      UAM_ENFORCE_RUNTIME_DB_ACL: "true"
       UAM_SERVER_ID: ${UAM_SERVER_ID}
       UAM_PROJECT_ID: ${UAM_PROJECT_ID}
       UAM_NATS_URL: nats://nats:4222
@@ -213,6 +216,7 @@ services:
       UAM_DATABASE_NAME: ${POSTGRES_DB}
       UAM_DATABASE_USER: ${UAM_APP_DB_USER}
       UAM_DATABASE_PASSWORD_FILE: /run/secrets/app_db_password
+      UAM_ENFORCE_RUNTIME_DB_ACL: "true"
       UAM_SERVER_ID: ${UAM_SERVER_ID}
       UAM_PROJECT_ID: ${UAM_PROJECT_ID}
       UAM_NATS_URL: nats://nats:4222
