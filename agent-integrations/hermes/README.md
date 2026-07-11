@@ -29,8 +29,8 @@ Implemented behavior:
 Install outline:
 
 ```bash
-mkdir -p "$HERMES_HOME/plugins/memory"
-cp -R agent-integrations/hermes/universal_agent_memory "$HERMES_HOME/plugins/memory/"
+mkdir -p "$HERMES_HOME/plugins"
+cp -R agent-integrations/hermes/universal_agent_memory "$HERMES_HOME/plugins/"
 ```
 
 Then set Hermes config:
@@ -59,3 +59,30 @@ UAM_AGENT_ID=00000000-0000-0000-0000-000000000003
 
 Without those values, the provider derives stable local UUIDs from the Hermes
 session/runtime context.
+
+## Qwen 3 through llama.cpp or vLLM
+
+For a Qwen 3 OpenAI-compatible endpoint, disable thinking in the Hermes custom
+provider profile. This deployment requires a final `content` response for
+memory recall and tool loops; otherwise Qwen can return only reasoning.
+
+```bash
+hermes config set custom_providers.0.model nvidia/Qwen3.6-35B-A3B-NVFP4
+hermes config set custom_providers.0.extra_body.chat_template_kwargs.enable_thinking false
+```
+
+Use the index of the custom provider which has the Qwen endpoint. The setting
+becomes this YAML shape:
+
+```yaml
+custom_providers:
+  - model: nvidia/Qwen3.6-35B-A3B-NVFP4
+    extra_body:
+      chat_template_kwargs:
+        enable_thinking: false
+```
+
+Verify it with a unique synthetic fact: after the fact is accepted through the
+proposal workflow, a fresh `hermes -z` invocation must return that fact from
+Obelisk Memory. Do not treat a provider merely being installed as proof that
+the model is consuming recalled context.

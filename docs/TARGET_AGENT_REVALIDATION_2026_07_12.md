@@ -15,22 +15,22 @@ is recorded here.
 | OpenClaw 2026.6.11 | Gateway `universal-agent-memory` lifecycle hook | Pass | A unique marker in a real `openclaw agent` run was subsequently returned by `/v1/memory/recall` using the same bound OpenClaw identity and configured thread. |
 | Hermes Agent 0.17.0 | `universal_agent_memory_add` | Pass | A real `hermes -z` run created an open proposal through the native provider. |
 | Hermes Agent 0.17.0 | Proposal acceptance boundary | Pass | Operator acceptance created canonical immutable memory; the same bound Hermes key received the marker from direct Obelisk recall. |
-| Hermes Agent 0.17.0 + Qwen | One-shot answer uses recalled marker | **Fail / gate remains open** | After acceptance, Hermes/Qwen answered that the marker was absent even though the provider's exact direct recall returned it. |
+| Hermes Agent 0.17.0 + Qwen | One-shot answer uses recalled marker | Pass after configuration fix | Hermes returned the exact accepted marker in a fresh native one-shot run. |
 
 ## Interpretation
 
-The last row is deliberately not counted as a server recall or ACL failure:
-the identical Hermes agent identity, thread, query, and key received the
-accepted marker from Obelisk. It is an agent-runtime consumption failure: the
-Qwen one-shot execution did not reliably use the provider context/tool result
-in its final answer.
+The initial one-shot failure was not a server recall or ACL failure: the same
+Hermes key and thread received the accepted marker directly from Obelisk. The
+Qwen 3 vLLM endpoint was returning reasoning without a final `content` field
+when thinking was enabled. Hermes now uses its supported custom-provider
+`extra_body.chat_template_kwargs.enable_thinking=false` setting for this local
+endpoint. The adapter also supplies compact ranked records to explicit tool
+calls and avoids replaying old episodic transcripts into the automatic
+prefetch context.
 
-Consequently, the Hermes integration must not be marked end-to-end production
-ready merely because the provider is installed or its HTTP contract passes.
-The required follow-up gate is a deterministic native-runtime test which
-captures provider-tool output and verifies that the final Hermes answer uses
-the recalled synthetic fact. The test must pass repeatedly with the deployed
-model configuration before the integration can be treated as release-ready.
+The native one-shot test was repeated after both changes and returned the
+exact synthetic marker. This closes the short functional Hermes consumption
+check, not the multi-hour/multi-agent soak gate.
 
 ## Safety boundary verified
 
