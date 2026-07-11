@@ -54,6 +54,7 @@ secret_files_preflight = _load_script("secret_files_preflight")
 verify_release_evidence = _load_script("verify_release_evidence")
 generate_release_evidence_manifest = _load_script("generate_release_evidence_manifest")
 generate_release_notes = _load_script("generate_release_notes")
+restore_recovery_evidence = _load_script("restore_recovery_evidence")
 
 
 def test_migration_runner_includes_every_versioned_sql_file() -> None:
@@ -619,6 +620,37 @@ def test_restore_drill_rejects_missing_tenant_isolation(monkeypatch: pytest.Monk
 
     with pytest.raises(RuntimeError, match="RLS verification failed: memory_items"):
         restore_drill._verify_rls("restore-target", "postgresql://example/memory")
+
+
+def test_restore_recovery_evidence_fails_without_semantic_recall(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    restore_path, reindex_path, semantic_path, report_path = (
+        tmp_path / "restore.json",
+        tmp_path / "reindex.json",
+        tmp_path / "semantic.json",
+        tmp_path / "recovery.json",
+    )
+    restore_path.write_text(
+        json.dumps({"ok": True, "steps": [{"name": "restore_drill", "ok": True}]}),
+        encoding="utf-8",
+    )
+    reindex_path.write_text(
+        json.dumps({"ok": True, "indexed_points": 3, "verified_points": 3}),
+        encoding="utf-8",
+    )
+    semantic_path.write_text(json.dumps({"ok": True, "checks": []}), encoding="utf-8")
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "restore_recovery_evidence.py", "--restore-report", str(restore_path),
+            "--reindex-report", str(reindex_path), "--semantic-report", str(semantic_path),
+            "--report", str(report_path),
+        ],
+    )
+
+    assert restore_recovery_evidence.main() == 1
+    assert json.loads(report_path.read_text(encoding="utf-8"))["checks"]["semantic_recall"] is False
 
 
 def test_backup_encryption_round_trip_rejects_tampering(tmp_path: Path) -> None:
