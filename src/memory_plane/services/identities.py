@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any
 from uuid import UUID
 
-from memory_plane.domain.identity import AgentIdentity, ThreadIdentity
+from memory_plane.domain.identity import AgentIdentity, ThreadIdentity, WorkspaceIdentity
 from memory_plane.ports.repositories import IdentityRegistry
 
 
@@ -22,6 +22,15 @@ class ProvisionIdentityCommand:
     agent_config: dict[str, Any] = field(default_factory=dict)
     thread_id: UUID | None = None
     thread_status: str = "active"
+
+
+@dataclass(frozen=True, slots=True)
+class ProvisionWorkspaceCommand:
+    """Operator request to idempotently register a tenant-owned workspace."""
+
+    tenant_id: UUID
+    workspace_id: UUID
+    workspace_name: str
 
 
 class IdentityProvisioningService:
@@ -58,4 +67,19 @@ class IdentityProvisioningService:
             ),
             thread_id=command.thread_id,
             thread_status=status,
+        )
+
+    def provision_workspace(self, command: ProvisionWorkspaceCommand) -> WorkspaceIdentity:
+        """Validate workspace metadata before registering its durable scope."""
+        name = command.workspace_name.strip()
+        if not name:
+            raise ValueError("workspace_name must not be empty")
+        if len(name) > 160:
+            raise ValueError("workspace_name is too long")
+        return self.registry.provision_workspace(
+            WorkspaceIdentity(
+                id=command.workspace_id,
+                tenant_id=command.tenant_id,
+                name=name,
+            )
         )
