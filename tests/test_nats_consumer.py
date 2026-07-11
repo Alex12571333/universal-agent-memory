@@ -9,6 +9,8 @@ from memory_plane.workers.nats_consumer import NatsPullWorker
 class Message:
     def __init__(self, attempts: int) -> None:
         self.metadata = SimpleNamespace(num_delivered=attempts)
+        self.data = b'{"id":"event"}'
+        self.subject = "memory.events.memory.retained.v1"
         self.delays: list[int] = []
         self.terminated = False
 
@@ -32,10 +34,20 @@ class NatsPullWorkerTest(unittest.IsolatedAsyncioTestCase):
         retry = Message(attempts=3)
         poison = Message(attempts=4)
 
-        await worker._retry_or_term(retry)
-        await worker._retry_or_term(poison)
+        await worker._retry_or_dead_letter(retry, "failed")
+        worker._jetstream = DeadLetterJetStream()
+        await worker._retry_or_dead_letter(poison, "failed")
 
         self.assertEqual([5], retry.delays)
         self.assertFalse(retry.terminated)
         self.assertTrue(poison.terminated)
         self.assertEqual([], poison.delays)
+        self.assertEqual(1, len(worker._jetstream.published))
+
+
+class DeadLetterJetStream:
+    def __init__(self) -> None:
+        self.published: list[tuple] = []
+
+    async def publish(self, *args, **kwargs) -> None:
+        self.published.append((args, kwargs))

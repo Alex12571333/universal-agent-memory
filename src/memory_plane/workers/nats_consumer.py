@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+from base64 import b64encode
 from datetime import datetime
+from hashlib import sha256
 from typing import Any
 from uuid import UUID
 
@@ -25,6 +27,8 @@ class NatsPullWorker:
         max_deliveries: int = 8,
         retry_base_seconds: int = 2,
         retry_max_seconds: int = 60,
+        dead_letter_stream: str = "MEMORY_DLQ",
+        dead_letter_subject: str = "memory.dead_letters.embedding",
     ) -> None:
         if not durable.strip():
             raise ValueError("durable consumer name must not be empty")
@@ -40,17 +44,30 @@ class NatsPullWorker:
         self._max_deliveries = max_deliveries
         self._retry_base_seconds = retry_base_seconds
         self._retry_max_seconds = retry_max_seconds
+        self._dead_letter_stream = dead_letter_stream
+        self._dead_letter_subject = dead_letter_subject
         self._client: Any = None
         self._subscription: Any = None
+        self._jetstream: Any = None
 
     async def connect(self) -> None:
         """Create or resume a durable pull consumer."""
         try:
             import nats
+            from nats.js.errors import NotFoundError
         except ImportError as error:
             raise RuntimeError('NATS support is not installed; use ".[nats]"') from error
         self._client = await nats.connect(self._url)
-        self._subscription = await self._client.jetstream().pull_subscribe(
+        self._jetstream = self._client.jetstream()
+        try:
+            await self._jetstream.stream_info(self._dead_letter_stream)
+        except NotFoundError:
+            await self._jetstream.add_stream(
+                name=self._dead_letter_stream,
+                subjects=["memory.dead_letters.>"],
+                storage="file",
+            )
+        self._subscription = await self._jetstream.pull_subscribe(
             self._subject,
             durable=self._durable,
             stream=self._stream,
@@ -72,22 +89,51 @@ class NatsPullWorker:
                 event = self.decode(message.data)
                 result = await self._consumer.handle(event)
                 if result.busy or (not result.processed and not result.duplicate):
-                    await self._retry_or_term(message)
+                    await self._retry_or_dead_letter(message, "consumer_busy")
                     continue
                 await message.ack_sync()
                 acknowledged += 1
-            except Exception:
-                await self._retry_or_term(message)
+            except Exception as error:  # noqa: BLE001 - transport must retain failures for replay.
+                await self._retry_or_dead_letter(message, f"{type(error).__name__}: {error}")
         return acknowledged
 
-    async def _retry_or_term(self, message: Any) -> None:
-        """Bound poison-message delivery while leaving the JetStream record inspectable."""
+    async def _retry_or_dead_letter(self, message: Any, error: str) -> None:
+        """Bound poison-message delivery and atomically preserve a replay record first."""
         attempts = _delivery_attempts(message)
         if attempts >= self._max_deliveries:
+            try:
+                await self._publish_dead_letter(message, attempts, error)
+            except Exception:  # noqa: BLE001 - never terminally drop without a DLQ copy.
+                await message.nak(delay=self._retry_max_seconds)
+                return
             await message.term()
             return
         delay = min(self._retry_max_seconds, self._retry_base_seconds * (2 ** (attempts - 1)))
         await message.nak(delay=delay)
+
+    async def _publish_dead_letter(self, message: Any, attempts: int, error: str) -> None:
+        if self._jetstream is None:
+            raise RuntimeError("NATS JetStream is not connected")
+        raw = bytes(message.data)
+        body = json.dumps(
+            {
+                "source_stream": self._stream,
+                "source_subject": getattr(message, "subject", ""),
+                "consumer": self._durable,
+                "deliveries": attempts,
+                "error": error[:2000],
+                "event_base64": b64encode(raw).decode(),
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+        message_id = sha256(raw + str(attempts).encode()).hexdigest()
+        await self._jetstream.publish(
+            self._dead_letter_subject,
+            body,
+            stream=self._dead_letter_stream,
+            headers={"Nats-Msg-Id": message_id},
+        )
 
     async def close(self) -> None:
         """Drain the NATS connection after current acknowledgements."""
@@ -95,6 +141,7 @@ class NatsPullWorker:
             await self._client.drain()
             self._client = None
             self._subscription = None
+            self._jetstream = None
 
     @staticmethod
     def decode(data: bytes) -> IntegrationEvent:

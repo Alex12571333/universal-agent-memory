@@ -62,6 +62,8 @@ async def run() -> None:
         max_deliveries=int(os.getenv("UAM_NATS_MAX_DELIVERIES", "8")),
         retry_base_seconds=int(os.getenv("UAM_NATS_RETRY_BASE_SECONDS", "2")),
         retry_max_seconds=int(os.getenv("UAM_NATS_RETRY_MAX_SECONDS", "60")),
+        dead_letter_stream=os.getenv("UAM_NATS_DLQ_STREAM", "MEMORY_DLQ"),
+        dead_letter_subject=os.getenv("UAM_NATS_DLQ_SUBJECT", "memory.dead_letters.embedding"),
     )
 
     await worker.connect()
