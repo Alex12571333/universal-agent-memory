@@ -132,6 +132,8 @@ def main() -> int:
                     sys.executable,
                     str(ROOT / "scripts" / "restore_drill.py"),
                     str(backup_path),
+                    "--source-database-url",
+                    args.database_url,
                 ],
             )
         elif args.skip_restore_drill:
