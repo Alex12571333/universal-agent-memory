@@ -183,10 +183,11 @@ static readiness script are green.
    process and single-node PostgreSQL/Qdrant/NATS volumes, with no HA or safe
    horizontal-scaling design.
 4. Backup covers PostgreSQL only. The scheduled runner encrypts new dumps with
-   AES-256-GCM and verifies decryption through the restore drill. The drill
-   verifies source/restore row-count parity and forced tenant RLS policies, but
-   artifacts are not signed and it does not yet prove active-head recall or
-   required Qdrant reindex.
+   AES-256-GCM and verifies decryption through the restore drill. A local LAN
+   target drill on 2026-07-12 passed source/restore row-count parity, forced
+   tenant RLS, a separate restored-ledger reindex of 35 active records and
+   `qdrant_hybrid` semantic recall in a fresh Qdrant collection. Artifacts are
+   not yet signed or scheduled/retained as a release bundle.
 5. Worker embedding metrics are now exposed privately at
    `embedding-worker:9091/metrics`; release evidence must demonstrate that the
    monitoring target scrapes this endpoint and its alerts are routed.
