@@ -1440,6 +1440,10 @@ class PostgresMemoryLedger:
         workspace_id: UUID,
         *,
         layers: tuple[MemoryLayer, ...] = (),
+        status: MemoryStatus | None = None,
+        label: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> tuple[MemoryItem, ...]:
         """List canonical workspace memory in deterministic creation order."""
         with self._connection() as connection:
@@ -1449,6 +1453,18 @@ class PostgresMemoryLedger:
             if layers:
                 layer_filter = "and m.layer = any(%s)"
                 params.append([layer.value for layer in layers])
+            status_filter = ""
+            if status is not None:
+                status_filter = "and m.status = %s"
+                params.append(status.value)
+            label_filter = ""
+            if label:
+                label_filter = "and %s = any(m.labels)"
+                params.append(label)
+            page_filter = ""
+            if limit is not None:
+                page_filter = "limit %s offset %s"
+                params.extend((max(1, limit), max(0, offset)))
             rows = connection.execute(
                 f"""
                 select {_ITEM_COLUMNS}
@@ -1457,7 +1473,10 @@ class PostgresMemoryLedger:
                 where m.workspace_id = %s
                   and m.deleted_at is null
                   {layer_filter}
+                  {status_filter}
+                  {label_filter}
                 order by m.created_at, m.id
+                {page_filter}
                 """,
                 params,
             ).fetchall()
