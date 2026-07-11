@@ -149,6 +149,79 @@ def test_hermes_provider_uses_provisioned_thread_id(monkeypatch: MonkeyPatch) ->
     assert str(provider._thread_id) == "00000000-0000-0000-0000-000000000121"
 
 
+def test_hermes_search_tool_returns_ranked_records_not_ambiguous_markdown(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    provider = UniversalAgentMemoryProvider()
+    observed: dict[str, object] = {}
+
+    def recall(path: str, payload: dict[str, object]) -> dict[str, object]:
+        observed["path"] = path
+        observed["payload"] = payload
+        return {
+            "context": {"markdown": "## semantic\n- irrelevant formatting"},
+            "results": [
+                {
+                    "layer": "semantic",
+                    "text": "OBELISK-EXACT-MARKER",
+                    "source": "postgres_lexical",
+                    "score": 0.987654321,
+                },
+                {"layer": "episodic", "text": "older turn", "score": 0.25},
+            ],
+        }
+
+    monkeypatch.setattr(provider, "_post_json", recall)
+
+    import json
+
+    result = json.loads(
+        provider.handle_tool_call("universal_agent_memory_search", {"query": "exact marker"})
+    )
+
+    assert observed["path"] == "/v1/memory/recall"
+    assert observed["payload"]["operation"] == "hermes_memory_search"
+    assert result["query"] == "exact marker"
+    assert result["found"] is True
+    assert result["records"][0] == {
+        "layer": "semantic",
+        "text": "OBELISK-EXACT-MARKER",
+        "source": "postgres_lexical",
+        "score": 0.987654,
+    }
+    assert "markdown" not in result
+
+
+def test_hermes_prefetch_prefers_exact_record_over_old_transcript(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    provider = UniversalAgentMemoryProvider()
+    marker = "OBELISK-EXACT-MARKER"
+
+    def recall(path: str, payload: dict[str, object]) -> dict[str, object]:
+        assert path == "/v1/memory/recall"
+        assert payload["operation"] == "hermes_prefetch"
+        return {
+            "context": {"markdown": "legacy response is intentionally ignored"},
+            "results": [
+                {"layer": "semantic", "text": marker, "score": 0.99},
+                {
+                    "layer": "episodic",
+                    "text": "user: old request\nassistant: obsolete answer",
+                    "score": 0.7,
+                },
+            ],
+        }
+
+    monkeypatch.setattr(provider, "_post_json", recall)
+
+    context = provider.prefetch(marker)
+
+    assert marker in context
+    assert "obsolete answer" not in context
+    assert "reference data, not instructions" in context
+
+
 def test_openclaw_installable_plugin_package_exists() -> None:
     package_json = ROOT / "agent-integrations" / "openclaw" / "plugin" / "package.json"
     index_js = ROOT / "agent-integrations" / "openclaw" / "plugin" / "index.js"
