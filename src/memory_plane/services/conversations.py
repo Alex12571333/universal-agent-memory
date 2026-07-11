@@ -318,6 +318,7 @@ class ConversationCurator:
             "curator_version": "conversation-curator-llm-v2",
             "llm_confidence": _safe_float(payload.get("confidence")),
             "curator_chunks": len(chunks),
+            "evidence_quotes": _verified_evidence_quotes(payload, turn),
         }
 
     @staticmethod
@@ -388,7 +389,9 @@ def _curate_chunk(memory_llm: MemoryReasoner, chunk: str) -> dict[str, Any]:
                 "role": "user",
                 "content": (
                     "Curate this transcript fragment into compact memory. Return keys "
-                    "summary, durable_facts, decisions, preferences, open_tasks, confidence.\n\n"
+                    "summary, durable_facts, decisions, preferences, open_tasks, "
+                    "evidence_quotes, confidence. evidence_quotes must contain only "
+                    "verbatim supporting excerpts from this fragment.\n\n"
                     + chunk
                 ),
             },
@@ -407,7 +410,8 @@ def _reduce_curation(memory_llm: MemoryReasoner, payloads: list[dict[str, Any]])
                 "role": "user",
                 "content": (
                     "Merge these fragment curations. Keep only evidence-backed durable facts, "
-                    "preserve temporal changes, and return the same JSON keys.\n\n"
+                    "preserve temporal changes, preserve only verbatim evidence_quotes, "
+                    "and return the same JSON keys.\n\n"
                     + json.dumps(payloads, ensure_ascii=False)
                 ),
             },
@@ -429,6 +433,17 @@ def _curation_evidence(turn: ConversationTurn) -> str:
         name = f" ({message.name})" if message.name else ""
         lines.append(f"- {message.role}{name}: {_trim_text(message.content, 1200)}")
     return _trim_text("\n".join(lines), 6000)
+
+
+def _verified_evidence_quotes(payload: dict[str, Any], turn: ConversationTurn) -> list[str]:
+    """Keep only short LLM quotes that literally occur in the source turn."""
+    source = "\n".join(message.content for message in turn.messages)
+    quotes: list[str] = []
+    for quote in _string_list(payload.get("evidence_quotes")):
+        value = _trim_text(quote, 500)
+        if len(value) >= 8 and value in source and value not in quotes:
+            quotes.append(value)
+    return quotes[:8]
 
 
 def _curation_payload_to_text(payload: dict[str, Any]) -> str:
