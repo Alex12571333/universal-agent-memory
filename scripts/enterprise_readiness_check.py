@@ -69,6 +69,7 @@ def run_checks(*, static_only: bool) -> list[Check]:
         "scripts/restore_drill.py",
         "scripts/scheduled_backup.py",
         "scripts/audit_retention.py",
+        "scripts/maintenance_retention.py",
         "scripts/verify_release_evidence.py",
         "scripts/migrate_vector_collection.py",
         "scripts/purge_expired_conversations.py",
@@ -83,6 +84,7 @@ def run_checks(*, static_only: bool) -> list[Check]:
         "docs/VECTOR_COLLECTION_MIGRATION.md",
         "deploy/observability/grafana-dashboard.json",
         "deploy/observability/prometheus-alerts.yml",
+        "deploy/ops/maintenance-retention.cron",
     ]
     checks.extend(check_file(path) for path in required_files)
 
@@ -498,6 +500,14 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 and "test_audit_retention_apply_requires_signed_export"
                 in read("tests/test_backup_restore_scripts.py"),
                 "audit retention safety behavior is covered",
+            ),
+            Check(
+                "maintenance:retention-runner",
+                "obelisk-maintenance-retention-v1" in read("scripts/maintenance_retention.py")
+                and "pending_outbox_preserved" in read("scripts/maintenance_retention.py")
+                and "UAM_MAINTENANCE_DATABASE_URL" in read("scripts/maintenance_retention.py")
+                and "--apply" in read("deploy/ops/maintenance-retention.cron"),
+                "admin-only bounded maintenance retention has a schedule template",
             ),
             Check(
                 "keys:registry-rls",
