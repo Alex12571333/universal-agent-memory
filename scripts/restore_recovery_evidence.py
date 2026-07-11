@@ -7,6 +7,7 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
+RECOVERY_PROBE_FORMAT = "obelisk-restored-reindex-probe-v1"
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -18,6 +19,15 @@ def main() -> int:
     restore = _read(args.restore_report)
     reindex = _read(args.reindex_report)
     semantic = _read(args.semantic_report)
+    probe_dimension = reindex.get("embedding_dimension")
+    probe_valid = (
+        reindex.get("format") == RECOVERY_PROBE_FORMAT
+        and semantic.get("format") == RECOVERY_PROBE_FORMAT
+        and bool(reindex.get("embedding_model"))
+        and isinstance(probe_dimension, int)
+        and not isinstance(probe_dimension, bool)
+        and probe_dimension > 0
+    )
     checks = {
         "restore_drill": bool(restore.get("ok"))
         and any(
@@ -31,6 +41,7 @@ def main() -> int:
             item.get("ok") and "semantic" in str(item.get("name", ""))
             for item in semantic.get("checks", [])
         ),
+        "recovery_probe": probe_valid,
     }
     report = {
         "format": "obelisk-restore-recovery-evidence-v1",
