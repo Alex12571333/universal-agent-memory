@@ -56,6 +56,11 @@ def main() -> int:
         action="store_true",
         help="Keep the temporary container and volume for manual inspection",
     )
+    parser.add_argument(
+        "--source-database-url",
+        default=os.getenv("UAM_BACKUP_DATABASE_URL") or os.getenv("UAM_DATABASE_URL"),
+        help="Optional source PostgreSQL URL used to verify restored row counts",
+    )
     args = parser.parse_args()
 
     backup = Path(args.backup)
@@ -125,6 +130,8 @@ def main() -> int:
             ]
         )
         _verify_schema(container, dsn)
+        if args.source_database_url:
+            _verify_row_parity(args.source_database_url, container, dsn)
         print(f"restore_drill=PASS container={container} volume={volume}")
         return 0
     finally:
@@ -200,6 +207,41 @@ def _verify_schema(container: str, dsn: str) -> None:
     if missing:
         raise RuntimeError(f"restore drill missing tables: {', '.join(missing)}")
     print("restore_drill_verified_tables=" + ",".join(REQUIRED_TABLES))
+
+
+def _verify_row_parity(source_dsn: str, container: str, restored_dsn: str) -> None:
+    """Reject a restore that lost rows from critical durable tables."""
+    tables = tuple(table for table in REQUIRED_TABLES if table != "schema_migrations")
+    sql = "\n".join(
+        f"select '{table}', count(*) from {table};" for table in tables
+    )
+    source = _run(
+        ["psql", "--tuples-only", "--no-align", f"--dbname={source_dsn}", "--command", sql],
+        capture_output=True,
+    )
+    restored = _run(
+        [
+            "docker", "exec", container, "psql", "--tuples-only", "--no-align",
+            f"--dbname={restored_dsn}", "--command", sql,
+        ],
+        capture_output=True,
+    )
+    source_counts = _parse_counts(source.stdout)
+    restored_counts = _parse_counts(restored.stdout)
+    if source_counts != restored_counts:
+        raise RuntimeError(
+            f"restore drill row parity failed: source={source_counts} restored={restored_counts}"
+        )
+    print("restore_drill_row_parity=PASS")
+
+
+def _parse_counts(output: str) -> dict[str, int]:
+    return {
+        table: int(count)
+        for line in output.splitlines()
+        if (parts := line.strip().split("|", 1)) and len(parts) == 2
+        for table, count in [parts]
+    }
 
 
 def _run(
