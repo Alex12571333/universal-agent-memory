@@ -117,7 +117,9 @@ remaining hard requirements.
 
 ## Required before calling it full production
 
-- [ ] Prove a fresh production boot with generated application-role credentials.
+- [x] Fresh-production smoke boots an isolated Compose project with generated
+      secret files, verifies `/ready` and application-role PostgreSQL access,
+      then removes all temporary resources.
 - [ ] Preserve target PostgreSQL evidence for operator-provisioned agent/thread
       retain and concurrent checkpoint-CAS tests. The provisioning endpoint and
       optional integration test exist; live target proof remains required.
