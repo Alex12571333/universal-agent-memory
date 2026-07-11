@@ -1261,7 +1261,7 @@ class PostgresMemoryLedger:
                   requester, target, {_PROPOSAL_TEXT_SQL} as proposal,
                   {_PROPOSAL_EVIDENCE_SQL} as evidence, confidence, importance,
                   status, metadata, created_at, reviewed_at, reviewer, review_reason
-                from memory_proposals
+                from memory_proposals p
                 where id = %s
                 """,
                 (proposal_id,),
@@ -1323,7 +1323,7 @@ class PostgresMemoryLedger:
                   requester, target, {_PROPOSAL_TEXT_SQL} as proposal,
                   {_PROPOSAL_EVIDENCE_SQL} as evidence, confidence, importance,
                   status, metadata, created_at, reviewed_at, reviewer, review_reason
-                from memory_proposals where id = %s for update
+                from memory_proposals p where p.id = %s for update
                 """,
                 (proposal.id,),
             ).fetchone()
@@ -1404,7 +1404,7 @@ class PostgresMemoryLedger:
                   requester, target, {_PROPOSAL_TEXT_SQL} as proposal,
                   {_PROPOSAL_EVIDENCE_SQL} as evidence, confidence, importance,
                   status, metadata, created_at, reviewed_at, reviewer, review_reason
-                from memory_proposals
+                from memory_proposals p
                 where workspace_id = %s
                   and (%s::text is null or namespace = %s::text)
                   and (%s::text is null or status = %s::text)

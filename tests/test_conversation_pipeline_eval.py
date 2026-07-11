@@ -35,7 +35,7 @@ class FakeConversationClient:
         self.leak_raw = leak_raw
         self.turn_id = "00000000-0000-0000-0000-000000000111"
         self.memory_id = "00000000-0000-0000-0000-000000000222"
-        self.curated = False
+        self.accepted = False
         self.marker = ""
         self.build_identity = BUILD_IDENTITY if include_build_identity else None
 
@@ -62,10 +62,20 @@ class FakeConversationClient:
         if method == "GET" and path.startswith("/v1/conversations/turns"):
             return {"count": 1, "turns": [{"id": self.turn_id}]}
         if method == "POST" and path == f"/v1/conversations/turns/{self.turn_id}/curate":
-            self.curated = True
-            return {"id": self.memory_id, "created": True}
+            return {
+                "id": self.memory_id,
+                "created": True,
+                "status": "open",
+                "metadata": {"claim_status": "unverified"},
+            }
+        if method == "POST" and path == f"/v1/memory/proposals/{self.memory_id}/accept":
+            self.accepted = True
+            return {
+                "proposal": {"status": "accepted"},
+                "memory": {"id": self.memory_id, "created": True},
+            }
         if method == "POST" and path == "/v1/memory/recall":
-            if self.curated:
+            if self.accepted:
                 return {"results": [{"id": self.memory_id, "text": self.marker}]}
             if self.leak_raw:
                 return {"results": [{"id": self.turn_id, "text": self.marker}]}
@@ -95,8 +105,10 @@ def test_conversation_pipeline_eval_passes_full_pipeline() -> None:
         "raw-turn-stored",
         "raw-turn-listed",
         "raw-turn-not-recalled",
-        "curation-created-memory",
-        "curated-memory-recalled",
+        "curation-created-proposal",
+        "unaccepted-proposal-not-recalled",
+        "operator-accepted-proposal-created-memory",
+        "accepted-memory-recalled",
     }
     assert report.turn_id == "00000000-0000-0000-0000-000000000111"
     assert report.memory_id == "00000000-0000-0000-0000-000000000222"
