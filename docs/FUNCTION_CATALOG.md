@@ -271,6 +271,7 @@
 | `supersede_if_current(item, event, expected_revision, key)` | CAS-запись новой ревизии | `FOR UPDATE` parent + recursive head check; одна outbox-транзакция |
 | `append(item, key)` | Импортирует memory без события | Append-only и tenant-bound |
 | `_stored_memory_text(connection, item)` | Готовит plaintext или pgcrypto ciphertext для `memory_items.text` | Supports all-row encryption or selected `MemoryScope` values via `UAM_MEMORY_TEXT_ENCRYPTION_SCOPES` |
+| `_stored_sensitive_json(connection, value)` | Шифрует JSONB operational evidence | Прозрачная backward-compatible wrapper для audit metadata и checkpoint state |
 | `get(tenant, item)` | Загружает memory с provenance | Устанавливает RLS tenant context |
 | `list_for_workspace(...)` | Детализация workspace с layer filter | Детерминированный порядок |
 | `search(query)` | PostgreSQL lexical fallback | Project/thread/label/time filters |

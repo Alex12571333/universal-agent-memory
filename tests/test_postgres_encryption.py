@@ -5,9 +5,14 @@ from uuid import uuid4
 import pytest
 
 from memory_plane.adapters.postgres import (
+    _AUDIT_METADATA_SQL,
+    _CHECKPOINT_STATE_SQL,
     _CONVERSATION_CONTENT_SQL,
+    _OBSERVATION_SUMMARY_SQL,
+    _PGCRYPTO_JSON_KEY,
     _PROPOSAL_EVIDENCE_SQL,
     _PROPOSAL_TEXT_SQL,
+    _PROVENANCE_QUOTE_SQL,
     PostgresMemoryLedger,
 )
 from memory_plane.domain.models import MemoryItem, MemoryLayer, MemoryScope, Provenance
@@ -141,3 +146,22 @@ def test_postgres_decrypt_queries_cover_proposal_and_evidence_columns() -> None:
     assert "p.evidence" in _PROPOSAL_EVIDENCE_SQL
     assert "pgp_sym_decrypt" in _PROPOSAL_TEXT_SQL
     assert "pgp_sym_decrypt" in _PROPOSAL_EVIDENCE_SQL
+
+
+def test_postgres_pgcrypto_wraps_noncanonical_json_and_reads_it_back(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("UAM_MEMORY_TEXT_ENCRYPTION", "pgcrypto")
+    monkeypatch.setenv("UAM_MEMORY_TEXT_ENCRYPTION_KEY", "memtext_" + "a" * 40)
+    ledger = PostgresMemoryLedger("postgresql://example/memory")
+    connection = _FakeRowConnection()
+
+    stored = ledger._stored_sensitive_json(connection, {"query": "private detail"})
+
+    assert stored == {_PGCRYPTO_JSON_KEY: "enc:pgcrypto:v1:ciphertext"}
+    assert connection.calls[0][1][1] == '{"query":"private detail"}'
+    assert "p.quote_text" in _PROVENANCE_QUOTE_SQL
+    assert "o.summary" in _OBSERVATION_SUMMARY_SQL
+    assert "a.metadata" in _AUDIT_METADATA_SQL
+    assert "state" in _CHECKPOINT_STATE_SQL
+    assert _PGCRYPTO_JSON_KEY in _AUDIT_METADATA_SQL

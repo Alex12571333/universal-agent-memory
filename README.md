@@ -313,7 +313,9 @@ PostgreSQL ledger.
 For production PostgreSQL storage, keep `UAM_MEMORY_TEXT_ENCRYPTION=pgcrypto`
 and provide `UAM_MEMORY_TEXT_ENCRYPTION_KEY` from an external secret manager.
 The application sees normal text after loading from the ledger, while
-`memory_items.text` is stored as `enc:pgcrypto:v1:*` ciphertext.
+canonical text and non-canonical evidence fields (provenance quotes,
+observations, checkpoint state and audit metadata) are stored as
+`enc:pgcrypto:v1:*` ciphertext or an encrypted JSON wrapper.
 By default `UAM_MEMORY_TEXT_ENCRYPTION_SCOPES=all`; operators can use a
 comma-separated scope list such as `private,thread` when only selected
 visibility scopes need row-level ciphertext.

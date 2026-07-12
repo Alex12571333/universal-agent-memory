@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 from collections.abc import Iterator
@@ -47,6 +48,7 @@ def _scope_idempotency_key(workspace_id: UUID, key: str | None) -> str | None:
     return None if key is None else f"{workspace_id}:{key}"
 
 _PGCRYPTO_TEXT_PREFIX = "enc:pgcrypto:v1:"
+_PGCRYPTO_JSON_KEY = "_uam_encrypted_json_v1"
 _RUNTIME_ACL_REQUIRED = {
     "outbox_events_update": ("outbox_events", "update"),
     "checkpoints_delete": ("checkpoints", "delete"),
@@ -58,23 +60,6 @@ _RUNTIME_ACL_FORBIDDEN = {
     "audit_events_delete": ("audit_events", "delete"),
 }
 
-_ITEM_COLUMNS = f"""
-    m.id, m.tenant_id, m.workspace_id, m.agent_id, m.thread_id,
-    m.layer, m.scope, m.kind,
-    case
-      when left(m.text, {len(_PGCRYPTO_TEXT_PREFIX)}) = '{_PGCRYPTO_TEXT_PREFIX}'
-      then pgp_sym_decrypt(
-        decode(substr(m.text, {len(_PGCRYPTO_TEXT_PREFIX) + 1}), 'base64'),
-        nullif(current_setting('app.memory_text_encryption_key', true), '')
-      )
-      else m.text
-    end as text,
-    m.labels, m.metadata, m.status,
-    m.importance, m.salience, m.confidence, m.observed_at,
-    m.valid_from, m.valid_to, m.created_at, m.revision, m.supersedes_id,
-    p.source_kind, p.origin_uri, p.object_key, p.checksum_sha256,
-    p.quote_text, p.extraction_version
-"""
 _WORD = re.compile(r"\w+", re.UNICODE)
 _CONVERSATION_CONTENT_SQL = f"""
 case
@@ -97,6 +82,70 @@ case when left(p.evidence, {len(_PGCRYPTO_TEXT_PREFIX)}) = '{_PGCRYPTO_TEXT_PREF
 then pgp_sym_decrypt(decode(substr(p.evidence, {len(_PGCRYPTO_TEXT_PREFIX) + 1}), 'base64'),
   nullif(current_setting('app.memory_text_encryption_key', true), ''))
 else p.evidence end
+"""
+_PROVENANCE_QUOTE_SQL = f"""
+case
+  when left(p.quote_text, {len(_PGCRYPTO_TEXT_PREFIX)}) = '{_PGCRYPTO_TEXT_PREFIX}'
+  then pgp_sym_decrypt(
+    decode(substr(p.quote_text, {len(_PGCRYPTO_TEXT_PREFIX) + 1}), 'base64'),
+    nullif(current_setting('app.memory_text_encryption_key', true), '')
+  )
+  else p.quote_text
+end
+"""
+_OBSERVATION_SUMMARY_SQL = f"""
+case
+  when left(o.summary, {len(_PGCRYPTO_TEXT_PREFIX)}) = '{_PGCRYPTO_TEXT_PREFIX}'
+  then pgp_sym_decrypt(
+    decode(substr(o.summary, {len(_PGCRYPTO_TEXT_PREFIX) + 1}), 'base64'),
+    nullif(current_setting('app.memory_text_encryption_key', true), '')
+  )
+  else o.summary
+end
+"""
+
+
+def _encrypted_json_sql(column: str) -> str:
+    """Read a backward-compatible pgcrypto JSON wrapper from *column*."""
+    return f"""
+    case
+      when jsonb_typeof({column}) = 'object'
+        and {column} ? '{_PGCRYPTO_JSON_KEY}'
+        and ({column} - '{_PGCRYPTO_JSON_KEY}') = '{{}}'::jsonb
+        and left(
+          {column} ->> '{_PGCRYPTO_JSON_KEY}',
+          {len(_PGCRYPTO_TEXT_PREFIX)}
+        ) = '{_PGCRYPTO_TEXT_PREFIX}'
+      then pgp_sym_decrypt(
+        decode(
+          substr({column} ->> '{_PGCRYPTO_JSON_KEY}', {len(_PGCRYPTO_TEXT_PREFIX) + 1}),
+          'base64'
+        ),
+        nullif(current_setting('app.memory_text_encryption_key', true), '')
+      )::jsonb
+      else {column}
+    end
+    """
+
+
+_AUDIT_METADATA_SQL = _encrypted_json_sql("a.metadata")
+_CHECKPOINT_STATE_SQL = _encrypted_json_sql("state")
+_ITEM_COLUMNS = f"""
+    m.id, m.tenant_id, m.workspace_id, m.agent_id, m.thread_id,
+    m.layer, m.scope, m.kind,
+    case
+      when left(m.text, {len(_PGCRYPTO_TEXT_PREFIX)}) = '{_PGCRYPTO_TEXT_PREFIX}'
+      then pgp_sym_decrypt(
+        decode(substr(m.text, {len(_PGCRYPTO_TEXT_PREFIX) + 1}), 'base64'),
+        nullif(current_setting('app.memory_text_encryption_key', true), '')
+      )
+      else m.text
+    end as text,
+    m.labels, m.metadata, m.status,
+    m.importance, m.salience, m.confidence, m.observed_at,
+    m.valid_from, m.valid_to, m.created_at, m.revision, m.supersedes_id,
+    p.source_kind, p.origin_uri, p.object_key, p.checksum_sha256,
+    {_PROVENANCE_QUOTE_SQL} as quote_text, p.extraction_version
 """
 
 
@@ -803,7 +852,7 @@ class PostgresMemoryLedger:
                     event.resource_type,
                     event.resource_id,
                     event.status,
-                    Jsonb(event.metadata),
+                    Jsonb(self._stored_sensitive_json(connection, event.metadata)),
                     event.created_at,
                 ),
             )
@@ -826,10 +875,10 @@ class PostgresMemoryLedger:
         with self._connection() as connection:
             self._set_tenant(connection, tenant_id)
             rows = connection.execute(
-                """
+                f"""
                 select id, tenant_id, workspace_id, action, actor, actor_type,
-                  resource_type, resource_id, status, metadata, created_at
-                from audit_events
+                  resource_type, resource_id, status, {_AUDIT_METADATA_SQL} as metadata, created_at
+                from audit_events a
                 where (%s::uuid is null or workspace_id = %s::uuid)
                   and (%s::text is null or action = %s::text)
                   and (%s::text is null or resource_type = %s::text)
@@ -1643,7 +1692,7 @@ class PostgresMemoryLedger:
                     observation.id,
                     observation.tenant_id,
                     observation.workspace_id,
-                    observation.summary,
+                    self._stored_sensitive_text(connection, observation.summary),
                     observation.confidence,
                     observation.stale,
                     observation.created_at,
@@ -1826,9 +1875,10 @@ class PostgresMemoryLedger:
         with self._connection() as connection:
             self._set_tenant(connection, tenant_id)
             rows = connection.execute(
-                """
+                f"""
                 select
-                  o.id, o.tenant_id, o.workspace_id, o.summary, o.confidence,
+                  o.id, o.tenant_id, o.workspace_id,
+                  {_OBSERVATION_SUMMARY_SQL} as summary, o.confidence,
                   o.stale, o.created_at,
                   array_agg(e.memory_item_id order by e.memory_item_id) as evidence_ids
                 from observations o
@@ -2108,7 +2158,7 @@ class PostgresMemoryLedger:
                 provenance.origin_uri,
                 provenance.object_key,
                 provenance.checksum_sha256,
-                provenance.quote,
+                self._stored_sensitive_text(connection, provenance.quote),
                 provenance.extraction_version,
             ),
         )
@@ -2117,10 +2167,15 @@ class PostgresMemoryLedger:
         """Return plaintext or pgcrypto ciphertext for memory_items.text."""
         if not self._should_encrypt_item(item):
             return item.text
-        return self._stored_sensitive_text(connection, item.text)
+        stored = self._stored_sensitive_text(connection, item.text)
+        if stored is None:
+            raise RuntimeError("pgcrypto did not return encrypted memory text")
+        return stored
 
-    def _stored_sensitive_text(self, connection: Any, value: str) -> str:
+    def _stored_sensitive_text(self, connection: Any, value: str | None) -> str | None:
         """Encrypt a non-indexed sensitive value when pgcrypto is enabled."""
+        if value is None:
+            return None
         if not self._text_encryption_enabled:
             return value
         row = connection.execute(
@@ -2135,6 +2190,18 @@ class PostgresMemoryLedger:
         if row is None:
             raise RuntimeError("pgcrypto did not return encrypted memory text")
         return str(row["encrypted_text"])
+
+    def _stored_sensitive_json(
+        self, connection: Any, value: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Encrypt a JSON payload while keeping its JSONB column type stable."""
+        if not self._text_encryption_enabled:
+            return value
+        plaintext = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        ciphertext = self._stored_sensitive_text(connection, plaintext)
+        if ciphertext is None:
+            raise RuntimeError("pgcrypto did not return encrypted JSON")
+        return {_PGCRYPTO_JSON_KEY: ciphertext}
 
     def _should_encrypt_item(self, item: MemoryItem) -> bool:
         """Return whether canonical text for this item must be encrypted at rest."""
@@ -2459,7 +2526,9 @@ class PostgresCheckpointStore:
                     checkpoint.workspace_id,
                     checkpoint.thread_id,
                     checkpoint.revision,
-                    Jsonb(checkpoint.state),
+                    Jsonb(
+                        self._ledger._stored_sensitive_json(connection, checkpoint.state)
+                    ),
                     checkpoint.created_at,
                 ),
             )
@@ -2504,7 +2573,9 @@ class PostgresCheckpointStore:
                     checkpoint.workspace_id,
                     checkpoint.thread_id,
                     checkpoint.revision,
-                    Jsonb(checkpoint.state),
+                    Jsonb(
+                        self._ledger._stored_sensitive_json(connection, checkpoint.state)
+                    ),
                     checkpoint.created_at,
                 ),
             )
@@ -2517,9 +2588,9 @@ class PostgresCheckpointStore:
         with self._ledger._connection() as connection:
             self._ledger._set_tenant(connection, tenant_id)
             row = connection.execute(
-                """
+                f"""
                 select id, tenant_id, workspace_id, thread_id,
-                       revision, state, created_at
+                       revision, {_CHECKPOINT_STATE_SQL} as state, created_at
                 from checkpoints
                 where thread_id = %s
                 order by revision desc
@@ -2536,9 +2607,9 @@ class PostgresCheckpointStore:
         with self._ledger._connection() as connection:
             self._ledger._set_tenant(connection, tenant_id)
             row = connection.execute(
-                """
+                f"""
                 select id, tenant_id, workspace_id, thread_id,
-                       revision, state, created_at
+                       revision, {_CHECKPOINT_STATE_SQL} as state, created_at
                 from checkpoints
                 where thread_id = %s and revision = %s
                 """,
@@ -2553,11 +2624,11 @@ class PostgresCheckpointStore:
         with self._ledger._connection() as connection:
             self._ledger._set_tenant(connection, tenant_id)
             rows = connection.execute(
-                """
+                f"""
                 with heads as (
                   select distinct on (thread_id)
                        id, tenant_id, workspace_id, thread_id,
-                       revision, state, created_at
+                       revision, {_CHECKPOINT_STATE_SQL} as state, created_at
                   from checkpoints
                   where workspace_id = %s
                   order by thread_id, revision desc
