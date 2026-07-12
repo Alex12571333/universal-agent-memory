@@ -86,8 +86,11 @@ static readiness script are green.
 5. **Encryption-at-rest coverage is incomplete.**
    pgcrypto now protects new `memory_items.text` rows, raw conversation content,
    proposals, proposal evidence, provenance quotes, observation summaries,
-   checkpoint state and audit metadata. Existing legacy plaintext rows and
-   unprotected JSON metadata outside those fields can still contain plaintext.
+   checkpoint state and audit metadata. `scripts/reencrypt_legacy_pgcrypto.py`
+   now converts the corresponding legacy plaintext rows in restart-safe,
+   administrator-only batches and emits evidence reports. It must be run after
+   every writer uses the same pgcrypto key; unprotected JSON metadata outside
+   those fields can still contain plaintext.
    New scheduled PostgreSQL artifacts use authenticated AES-256-GCM,
    but direct `backup.py` is intentionally a low-level raw-dump primitive and
    must not be used for a production schedule. Production documentation must

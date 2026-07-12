@@ -77,6 +77,29 @@ Healthy production means:
 - `outbox-relay` and `embedding-worker` are running;
 - `/metrics` does not show growing pending/dead-letter backlogs.
 
+### Encrypting legacy PostgreSQL rows
+
+Enabling `UAM_MEMORY_TEXT_ENCRYPTION=pgcrypto` only protects new writes. After
+all memory-server and embedding-worker replicas are running with the same
+encryption key, use the administrator connection to migrate supported legacy
+fields in small restart-safe batches:
+
+```bash
+PYTHONPATH=src python scripts/reencrypt_legacy_pgcrypto.py \
+  --dry-run --report audit-exports/legacy-encryption-dry-run.json
+PYTHONPATH=src python scripts/reencrypt_legacy_pgcrypto.py \
+  --batch-size 500 --report audit-exports/legacy-encryption.json
+```
+
+The tool requires `UAM_ADMIN_DATABASE_URL` (or `UAM_ADMIN_DATABASE_*`) and
+`UAM_MEMORY_TEXT_ENCRYPTION_KEY`/`_FILE`. It intentionally refuses the
+restricted runtime database role. Preserve the second report only when
+`complete: true`; rerun the dry run afterwards to prove `pending_after: 0` for
+every field. It encrypts canonical text, provenance quotes, raw conversation
+content, proposal/evidence text, observation summaries, checkpoint state and
+audit metadata. Remaining general JSON metadata is outside this migration's
+scope and must not be described as full-database encryption.
+
 `check_metrics_health.py` turns Prometheus text into an operator gate. It fails
 when outbox pending, dead-letter, lag or in-flight values exceed configured
 thresholds, writes a JSON report, and can post failed reports through
