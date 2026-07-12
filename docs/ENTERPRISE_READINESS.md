@@ -83,8 +83,11 @@ remaining hard requirements.
 - [ ] Add target multi-replica/crash and collection-migration release evidence.
 - [x] PostgreSQL `memory_items.text` encryption can cover all memory rows or
       selected visibility scopes via `UAM_MEMORY_TEXT_ENCRYPTION_SCOPES`.
-- [ ] Encrypt or otherwise protect provenance, conversations, proposals,
-      checkpoints, audit metadata and backups at rest.
+- [x] New provenance quotes, conversation content, proposals, checkpoint state
+      and audit metadata are encrypted when pgcrypto is enabled; scheduled
+      backup artifacts are encrypted too.
+- [ ] Migrate legacy plaintext rows and protect the remaining JSON metadata
+      fields before claiming full database encryption at rest.
 - [x] Memory LLM is separate from embedding endpoint.
 - [x] OpenAI-compatible embedding live regression runner exists and writes JSON
       release evidence for dimension and semantic recall checks.

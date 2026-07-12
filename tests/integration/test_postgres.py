@@ -14,6 +14,7 @@ from memory_plane.adapters.postgres import (
 )
 from memory_plane.contracts.dto import RecallQuery
 from memory_plane.contracts.events import ConsumerClaim, IntegrationEvent
+from memory_plane.domain.audit import AuditEvent
 from memory_plane.domain.checkpoint import Checkpoint, StaleRevisionError
 from memory_plane.domain.conflict import ConflictReviewDecision, ConflictReviewStatus
 from memory_plane.domain.conversation import (
@@ -29,6 +30,7 @@ from memory_plane.domain.models import (
     MemoryRevisionConflictError,
     MemoryScope,
     MemoryStatus,
+    Observation,
     Provenance,
 )
 from memory_plane.domain.proposal import MemoryProposalStatus, MemoryProposalTarget
@@ -134,6 +136,104 @@ class PostgresMemoryLedgerTest(unittest.TestCase):
                 (item.id,),
             ).fetchone()["count"]
         self.assertEqual(1, count)
+
+    def test_pgcrypto_protects_noncanonical_memory_fields_and_round_trips(self) -> None:
+        """Operational evidence must not leave quotes, summaries or state in plaintext."""
+        key = "integration-pgcrypto-" + "a" * 40
+        with patch.dict(
+            os.environ,
+            {
+                "UAM_MEMORY_TEXT_ENCRYPTION": "pgcrypto",
+                "UAM_MEMORY_TEXT_ENCRYPTION_KEY": key,
+                "UAM_MEMORY_TEXT_ENCRYPTION_SCOPES": "all",
+            },
+            clear=False,
+        ):
+            protected = PostgresMemoryLedger(DATABASE_URL or "")
+            item = self._item("protected canonical text")
+            item = replace(
+                item,
+                provenance=Provenance(
+                    source_kind="test",
+                    quote="private supporting quote 9001",
+                ),
+            )
+            protected.retain(item, self._event(item), "protected-noncanonical-fields")
+            self.assertEqual(item, protected.get(self.tenant, item.id))
+
+            observation = Observation(
+                tenant_id=self.tenant,
+                workspace_id=self.workspace,
+                summary="private derived observation 9002",
+                evidence_ids=(item.id,),
+            )
+            protected.save(observation)
+            self.assertEqual(
+                observation.summary,
+                protected.list_observations(self.tenant, self.workspace)[-1].summary,
+            )
+
+            audit = AuditEvent(
+                tenant_id=self.tenant,
+                workspace_id=self.workspace,
+                action="integration.protected_fields",
+                actor="test",
+                actor_type="system",
+                resource_type="memory_item",
+                resource_id=str(item.id),
+                metadata={"detail": "private audit detail 9003"},
+            )
+            protected.append_audit_event(audit)
+            self.assertEqual(
+                audit.metadata,
+                protected.list_audit_events(self.tenant, workspace_id=self.workspace)[0].metadata,
+            )
+
+            thread_id = uuid4()
+            with protected._connection() as connection:
+                protected._set_tenant(connection, self.tenant)
+                connection.execute(
+                    """
+                    insert into threads (id, tenant_id, workspace_id, owner_agent_id, status)
+                    values (%s, %s, %s, null, 'active')
+                    """,
+                    (thread_id, self.tenant, self.workspace),
+                )
+            checkpoint = Checkpoint(
+                tenant_id=self.tenant,
+                workspace_id=self.workspace,
+                thread_id=thread_id,
+                revision=1,
+                state={"secret": "private checkpoint state 9004"},
+            )
+            checkpoint_store = PostgresCheckpointStore(protected)
+            checkpoint_store.save(checkpoint)
+            restored = checkpoint_store.get_head(self.tenant, thread_id)
+            self.assertIsNotNone(restored)
+            self.assertEqual(checkpoint.state, restored.state if restored else None)
+
+            with protected._connection() as connection:
+                protected._set_tenant(connection, self.tenant)
+                quote = connection.execute(
+                    "select quote_text from memory_provenance where memory_item_id = %s",
+                    (item.id,),
+                ).fetchone()["quote_text"]
+                summary = connection.execute(
+                    "select summary from observations where id = %s",
+                    (observation.id,),
+                ).fetchone()["summary"]
+                metadata = connection.execute(
+                    "select metadata from audit_events where id = %s",
+                    (audit.id,),
+                ).fetchone()["metadata"]
+                state = connection.execute(
+                    "select state from checkpoints where id = %s",
+                    (checkpoint.id,),
+                ).fetchone()["state"]
+            self.assertNotIn("private supporting quote 9001", quote)
+            self.assertNotIn("private derived observation 9002", summary)
+            self.assertNotIn("private audit detail 9003", str(metadata))
+            self.assertNotIn("private checkpoint state 9004", str(state))
 
     def test_plaintext_lexical_search_uses_postgres_fts_candidate_path(self) -> None:
         """Plaintext deployments must bound lexical recall in PostgreSQL."""
