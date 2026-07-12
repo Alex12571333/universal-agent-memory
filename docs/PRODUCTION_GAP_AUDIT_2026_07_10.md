@@ -187,9 +187,10 @@ static readiness script are green.
    durable DLQ records and an operator-selected replay command. Stream
    size/age limits and authenticated NATS remain to be installed for a long
    running appliance.
-3. PostgreSQL opens a new connection per operation. The deployment has one API
-   process and single-node PostgreSQL/Qdrant/NATS volumes, with no HA or safe
-   horizontal-scaling design.
+3. PostgreSQL uses an explicit bounded `psycopg_pool` connection pool per
+   process. The deployment still has one API process and single-node
+   PostgreSQL/Qdrant/NATS volumes, with no HA or safe horizontal-scaling
+   design.
 4. Backup covers PostgreSQL only. The scheduled runner encrypts new dumps with
    AES-256-GCM and verifies decryption through the restore drill. A local LAN
    target drill on 2026-07-12 passed source/restore row-count parity, forced
