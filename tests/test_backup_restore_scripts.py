@@ -484,6 +484,16 @@ def test_production_compose_wires_memory_text_encryption() -> None:
     assert compose.count("UAM_QDRANT_PAYLOAD_TEXT: ${UAM_QDRANT_PAYLOAD_TEXT:-false}") >= 2
 
 
+def test_local_compose_can_opt_into_the_same_pgcrypto_profile() -> None:
+    compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+    scopes = "UAM_MEMORY_TEXT_ENCRYPTION_SCOPES: " "${UAM_MEMORY_TEXT_ENCRYPTION_SCOPES:-all}"
+    key_file = "UAM_MEMORY_TEXT_ENCRYPTION_KEY_FILE: " "${UAM_MEMORY_TEXT_ENCRYPTION_KEY_FILE:-}"
+
+    assert compose.count("UAM_MEMORY_TEXT_ENCRYPTION: ${UAM_MEMORY_TEXT_ENCRYPTION:-off}") >= 2
+    assert compose.count(scopes) >= 2
+    assert compose.count(key_file) >= 2
+
+
 def test_validate_production_env_rejects_qdrant_text_payloads(tmp_path: Path) -> None:
     env_file = tmp_path / ".env.production"
     env_file.write_text(
