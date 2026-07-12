@@ -1798,6 +1798,7 @@ class PostgresMemoryLedger:
                 max_size=max(1, int(os.getenv("UAM_POSTGRES_POOL_MAX_SIZE", "10"))),
                 timeout=float(os.getenv("UAM_POSTGRES_POOL_TIMEOUT_SECONDS", "30")),
                 kwargs={"row_factory": dict_row},
+                open=True,
             )
         with self._pool.connection() as connection:
             if self._text_encryption_key:
