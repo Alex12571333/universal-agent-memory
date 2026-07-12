@@ -154,6 +154,61 @@ class PostgresMemoryLedgerTest(unittest.TestCase):
         self.assertEqual(item.id, results[0].item.id)
         self.assertGreater(results[0].lexical, 0)
 
+    def test_plaintext_fts_search_enforces_thread_and_private_scope(self) -> None:
+        """SQL candidate filtering must not broaden agent or thread visibility."""
+        self.assertFalse(self.store._text_encryption_enabled)
+        agent_id = uuid4()
+        thread_id = uuid4()
+        self.store.provision_agent_thread(
+            AgentIdentity(
+                id=agent_id,
+                tenant_id=self.tenant,
+                workspace_id=self.workspace,
+                name="FTS scope test agent",
+                role="integration",
+            ),
+            thread_id=thread_id,
+        )
+        workspace_item = self._item("scope marker visible to workspace")
+        thread_item = replace(
+            self._item("scope marker visible only to thread"),
+            scope=MemoryScope.THREAD,
+            agent_id=agent_id,
+            thread_id=thread_id,
+        )
+        private_item = replace(
+            self._item("scope marker visible only to agent"),
+            scope=MemoryScope.PRIVATE,
+            agent_id=agent_id,
+        )
+        for index, item in enumerate((workspace_item, thread_item, private_item), start=1):
+            self.store.retain(item, self._event(item), f"fts-scope-{index}")
+
+        anonymous = self.store.search(
+            RecallQuery(
+                tenant_id=self.tenant,
+                workspace_id=self.workspace,
+                text="scope marker visible",
+                top_k=10,
+            )
+        )
+        scoped = self.store.search(
+            RecallQuery(
+                tenant_id=self.tenant,
+                workspace_id=self.workspace,
+                agent_id=agent_id,
+                thread_id=thread_id,
+                text="scope marker visible",
+                top_k=10,
+            )
+        )
+
+        self.assertEqual({workspace_item.id}, {candidate.item.id for candidate in anonymous})
+        self.assertEqual(
+            {workspace_item.id, thread_item.id, private_item.id},
+            {candidate.item.id for candidate in scoped},
+        )
+
     def test_proposal_accept_rolls_back_memory_and_status_when_outbox_insert_fails(self) -> None:
         """A failed atomic accept must never turn an LLM proposal into a fact."""
         service = MemoryProposalService(self.store, RetentionService(self.store))
