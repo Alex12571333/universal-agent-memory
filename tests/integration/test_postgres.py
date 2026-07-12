@@ -135,6 +135,25 @@ class PostgresMemoryLedgerTest(unittest.TestCase):
             ).fetchone()["count"]
         self.assertEqual(1, count)
 
+    def test_plaintext_lexical_search_uses_postgres_fts_candidate_path(self) -> None:
+        """Plaintext deployments must bound lexical recall in PostgreSQL."""
+        self.assertFalse(self.store._text_encryption_enabled)
+        item = self._item("Obelisk remembers unique FTS marker quartz-astronomy-417.")
+        self.store.retain(item, self._event(item), "fts-candidate-path")
+
+        results = self.store.search(
+            RecallQuery(
+                tenant_id=self.tenant,
+                workspace_id=self.workspace,
+                text="quartz astronomy 417",
+                top_k=3,
+            )
+        )
+
+        self.assertTrue(results)
+        self.assertEqual(item.id, results[0].item.id)
+        self.assertGreater(results[0].lexical, 0)
+
     def test_proposal_accept_rolls_back_memory_and_status_when_outbox_insert_fails(self) -> None:
         """A failed atomic accept must never turn an LLM proposal into a fact."""
         service = MemoryProposalService(self.store, RetentionService(self.store))
