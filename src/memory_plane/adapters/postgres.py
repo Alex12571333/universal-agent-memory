@@ -1521,8 +1521,14 @@ class PostgresMemoryLedger:
         """Provide a durable lexical fallback until the optional vector index is enabled."""
         query_terms = self._terms(query.text)
         candidates: list[Candidate] = []
-        items = self.list_for_workspace(
-            query.tenant_id, query.workspace_id, layers=query.layers
+        items = (
+            self._search_unencrypted_workspace(query)
+            if not self._text_encryption_enabled
+            else self.list_for_workspace(
+                query.tenant_id,
+                query.workspace_id,
+                layers=query.layers,
+            )
         )
         superseded_ids = {
             item.supersedes_id for item in items if item.supersedes_id is not None
@@ -1554,6 +1560,73 @@ class PostgresMemoryLedger:
                 )
         candidates.sort(key=lambda row: (row.lexical, row.item.created_at), reverse=True)
         return tuple(candidates[: query.top_k * 3])
+
+    def _search_unencrypted_workspace(self, query: RecallQuery) -> tuple[MemoryItem, ...]:
+        """Use PostgreSQL FTS to bound plaintext lexical candidates before decoding.
+
+        When pgcrypto text encryption is enabled, PostgreSQL only sees
+        ciphertext and this path would be both incorrect and non-indexable.
+        That protected mode deliberately keeps the existing post-decryption
+        fallback until a separately designed protected search index exists.
+        """
+        with self._connection() as connection:
+            self._set_tenant(connection, query.tenant_id)
+            params: list[Any] = [query.workspace_id]
+            layer_filter = ""
+            if query.layers:
+                layer_filter = "and m.layer = any(%s)"
+                params.append([layer.value for layer in query.layers])
+            thread_filter = "and m.scope <> 'thread'"
+            if query.thread_id is not None:
+                thread_filter = "and (m.scope <> 'thread' or m.thread_id = %s)"
+                params.append(query.thread_id)
+            private_filter = "and m.scope <> 'private'"
+            if query.agent_id is not None:
+                private_filter = "and (m.scope <> 'private' or m.agent_id = %s)"
+                params.append(query.agent_id)
+            label_filter = ""
+            if query.labels:
+                label_filter = "and m.labels @> %s"
+                params.append(list(query.labels))
+            validity_filter = ""
+            if query.valid_at is not None:
+                validity_filter = (
+                    "and (m.valid_from is null or m.valid_from <= %s) "
+                    "and (m.valid_to is null or m.valid_to >= %s)"
+                )
+                params.extend((query.valid_at, query.valid_at))
+            # Keep core/working memory available for compact system context
+            # even when a lexical query has no term overlap.
+            params.extend((query.text, query.text, max(1, query.top_k * 3)))
+            rows = connection.execute(
+                f"""
+                select {_ITEM_COLUMNS}
+                from memory_items m
+                join memory_provenance p on p.memory_item_id = m.id
+                where m.workspace_id = %s
+                  and m.deleted_at is null
+                  and m.status not in ('rejected', 'archived')
+                  and not exists (
+                    select 1 from memory_items child
+                    where child.supersedes_id = m.id and child.deleted_at is null
+                  )
+                  {layer_filter}
+                  {thread_filter}
+                  {private_filter}
+                  {label_filter}
+                  {validity_filter}
+                  and (
+                    to_tsvector('simple', m.text) @@ plainto_tsquery('simple', %s)
+                    or m.layer in ('core', 'working')
+                  )
+                order by
+                  (to_tsvector('simple', m.text) @@ plainto_tsquery('simple', %s)) desc,
+                  m.created_at desc, m.id desc
+                limit %s
+                """,
+                params,
+            ).fetchall()
+        return tuple(self._to_item(row) for row in rows)
 
     def save(self, observation: Observation) -> Observation:
         """Store an evidence-grounded observation and its immutable links."""
@@ -1798,6 +1871,7 @@ class PostgresMemoryLedger:
                 max_size=max(1, int(os.getenv("UAM_POSTGRES_POOL_MAX_SIZE", "10"))),
                 timeout=float(os.getenv("UAM_POSTGRES_POOL_TIMEOUT_SECONDS", "30")),
                 kwargs={"row_factory": dict_row},
+                open=True,
             )
         with self._pool.connection() as connection:
             if self._text_encryption_key:

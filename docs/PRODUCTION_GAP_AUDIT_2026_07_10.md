@@ -187,9 +187,10 @@ static readiness script are green.
    durable DLQ records and an operator-selected replay command. Stream
    size/age limits and authenticated NATS remain to be installed for a long
    running appliance.
-3. PostgreSQL opens a new connection per operation. The deployment has one API
-   process and single-node PostgreSQL/Qdrant/NATS volumes, with no HA or safe
-   horizontal-scaling design.
+3. PostgreSQL uses an explicit bounded `psycopg_pool` connection pool per
+   process. The deployment still has one API process and single-node
+   PostgreSQL/Qdrant/NATS volumes, with no HA or safe horizontal-scaling
+   design.
 4. Backup covers PostgreSQL only. The scheduled runner encrypts new dumps with
    AES-256-GCM and verifies decryption through the restore drill. A local LAN
    target drill on 2026-07-12 passed source/restore row-count parity, forced
@@ -202,9 +203,11 @@ static readiness script are green.
 5. Worker embedding metrics are now exposed privately at
    `embedding-worker:9091/metrics`; release evidence must demonstrate that the
    monitoring target scrapes this endpoint and its alerts are routed.
-6. PostgreSQL lexical recall loads and decrypts the full workspace in Python
-   instead of using the existing FTS/trigram indexes. Several list/export paths
-   also lack production pagination.
+6. Plaintext PostgreSQL lexical recall now filters active, scope-authorized FTS
+   candidates in SQL before decoding them in Python. The pgcrypto mode keeps a
+   correctness-first post-decryption fallback because ciphertext cannot use the
+   normal FTS index; a protected searchable index and production pagination for
+   several list/export paths remain required.
 7. Audit events are incomplete and separate from the transaction they describe.
    Denied requests, raw conversations, proposals, graph writes, reflect,
    reindex and checkpoints need complete status-aware audit coverage.
