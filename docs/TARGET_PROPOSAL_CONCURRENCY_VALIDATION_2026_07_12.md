@@ -19,8 +19,11 @@ The PostgreSQL proposal row lock and workspace-namespaced idempotency key thus
 produced one immutable canonical memory and one outbox event, rather than two
 memories from a concurrent operator retry.
 
-## Remaining boundary evidence
+## Failure-injection rollback
 
-This validates the live concurrent-success path only. The separate
-failure-injection test — proving that an insertion/outbox failure leaves the
-proposal open and creates no memory — remains a required release gate.
+The runtime-role PostgreSQL integration suite also injected an outbox insert
+failure inside `accept_proposal_with_memory`. The transaction raised the
+injected error; afterwards the proposal was still `open`, its metadata had no
+`accepted_memory_id`, and neither the proposal-derived canonical memory nor an
+outbox event existed. This covers the failure path that prevents a partially
+accepted LLM proposal from becoming durable memory.
