@@ -74,8 +74,8 @@ def _json_step(name: str, table: str, column: str) -> ReencryptionStep:
         )
         update {table} target
         set {column} = jsonb_build_object(
-          %s,
-          %s || encode(
+          %s::text,
+          %s::text || encode(
             pgp_sym_encrypt(target.{column}::text, %s, 'cipher-algo=aes256,compress-algo=0'),
             'base64'
           )

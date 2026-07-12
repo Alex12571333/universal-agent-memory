@@ -70,6 +70,7 @@ def test_reencrypt_legacy_covers_every_supported_plaintext_field(monkeypatch) ->
     assert len(connection.updates) == len(report["steps"])
     assert connection.commits == len(report["steps"])
     assert any("jsonb_build_object" in sql for sql, _params in connection.updates)
+    assert any("%s::text" in sql for sql, _params in connection.updates)
     assert all("pgp_sym_encrypt" in sql for sql, _params in connection.updates)
 
 

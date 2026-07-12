@@ -542,6 +542,7 @@ def test_validate_production_env_rejects_unsafe_qdrant_collection_name() -> None
 def test_backup_invokes_pg_dump(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     run = Mock()
     monkeypatch.setattr(backup.subprocess, "run", run)
+    monkeypatch.setattr(backup.shutil, "which", lambda command: "/usr/bin/pg_dump")
     monkeypatch.setenv("UAM_BACKUP_DATABASE_URL", "postgresql://example/db")
     output = tmp_path / "nested" / "uam.dump"
     monkeypatch.setattr("sys.argv", ["backup.py", str(output)])
@@ -560,6 +561,29 @@ def test_backup_invokes_pg_dump(monkeypatch: pytest.MonkeyPatch, tmp_path: Path)
         check=True,
     )
     assert output.parent.exists()
+
+
+def test_backup_uses_local_compose_postgres_when_pg_dump_is_unavailable(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    run = Mock()
+    monkeypatch.setattr(backup.subprocess, "run", run)
+    monkeypatch.setattr(
+        backup.shutil,
+        "which",
+        lambda command: "/usr/bin/docker" if command == "docker" else None,
+    )
+    monkeypatch.setenv("UAM_BACKUP_DATABASE_URL", "postgresql://memory_admin:memory@127.0.0.1:6548/memory")
+    output = tmp_path / "uam.dump"
+    monkeypatch.setattr("sys.argv", ["backup.py", str(output)])
+
+    assert backup.main() == 0
+
+    assert run.call_args_list[0].args[0][:6] == [
+        "docker", "compose", "exec", "-T", "postgres", "pg_dump"
+    ]
+    assert "@127.0.0.1:5432/memory" in run.call_args_list[0].args[0][-1]
+    assert run.call_args_list[1].args[0][:3] == ["docker", "compose", "cp"]
 
 
 def test_restore_invokes_pg_restore_with_optional_clean(
