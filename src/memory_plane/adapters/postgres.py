@@ -1281,7 +1281,10 @@ class PostgresMemoryLedger:
         return tuple(dict.fromkeys(row["id"] for row in rows))
 
     def append_proposal(
-        self, proposal: MemoryProposal, idempotency_key: str | None = None
+        self,
+        proposal: MemoryProposal,
+        idempotency_key: str | None = None,
+        audit_event: AuditEvent | None = None,
     ) -> tuple[MemoryProposal, bool]:
         """Append one memory proposal under the tenant boundary."""
         idempotency_key = _scope_idempotency_key(proposal.workspace_id, idempotency_key)
@@ -1310,6 +1313,8 @@ class PostgresMemoryLedger:
                     """,
                     (proposal.tenant_id, idempotency_key, proposal.id),
                 )
+            if audit_event is not None:
+                self._insert_audit_event(connection, audit_event)
             return proposal, True
 
     def get_proposal(

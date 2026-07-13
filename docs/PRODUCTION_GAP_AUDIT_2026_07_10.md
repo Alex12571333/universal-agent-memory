@@ -13,7 +13,7 @@ under failure.
 | Architecture | PostgreSQL source of truth, Qdrant index, outbox, NATS workers, vault, API, UI | Good foundation |
 | Docker | Local self-hosted compose keeps infra ports internal in production topology; database secrets use dedicated mounts; deployment preflight writes boundary evidence | Fresh role provisioning still needs clean target-boot evidence |
 | API auth | Bearer keys, route capabilities, strict principal bindings, env validation and non-secret key registry exist; `/health` is public | Identity isolation is implemented and locally proven; target-deployment evidence remains required |
-| Audit trail | `audit_events`, export/signing and retention tools exist; retain, CAS supersede, proposal reviews and conflict decisions share their canonical write transaction | Coverage is incomplete for conversations, graph, reflection, reindex and checkpoints |
+| Audit trail | `audit_events`, export/signing and retention tools exist; retain, CAS supersede, proposal submission/reviews and conflict decisions share their canonical write transaction | Coverage is incomplete for conversations, graph, reflection, reindex and checkpoints |
 | Browser/API hardening | Security headers are enforced by middleware and tests | Baseline present |
 | Data model | Append-only memory, CAS supersede, atomic conflict-winner revisions, canonical active-head recall, provenance, statuses and pgcrypto for canonical text, raw conversations and proposals exist | Sensitive-table, legacy-data and backup encryption remain incomplete |
 | Conversation capture | Raw ledger, proposal-first curation, `curated_only` purge, bounded staging TTL, stable identities and live pipeline runner exist | The purge schedule and installed agent hooks still require target evidence |
@@ -222,6 +222,8 @@ static readiness script are green.
    failure injection preserving the original `open` status. Conflict
    decisions now commit their review and winner/loser revisions with
    `conflict.decide` audit atomically; failure injection rolls all of them back.
+   Proposal submission now commits its sanitized proposal, idempotency record
+   and `proposal.submit` audit together; audit failure leaves no proposal.
    Denied requests, raw conversations, graph writes, reflect, reindex and checkpoints still need
    complete status-aware and, where applicable, transactional audit coverage.
 8. The application role is now granted `SELECT/INSERT` by default, with only

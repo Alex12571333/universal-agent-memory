@@ -1884,8 +1884,18 @@ def create_app(
         return _memory_write_response(retained)
 
     @app.post("/v1/memory/proposals", status_code=201)
-    def submit_memory_proposal(body: MemoryProposalBody) -> dict[str, Any]:
+    def submit_memory_proposal(body: MemoryProposalBody, request: Request) -> dict[str, Any]:
         """Store a proposed memory update without directly mutating memory."""
+        principal = _principal_from_request(request)
+        audit_event = AuditEvent(
+            tenant_id=body.tenant_id,
+            workspace_id=body.workspace_id,
+            action="proposal.submit",
+            actor=principal.name,
+            actor_type=_audit_actor_type(principal),
+            resource_type="memory_proposal",
+            metadata={"namespace": body.namespace, "target": body.target.value},
+        )
         try:
             result = services.proposals.submit(
                 SubmitMemoryProposalCommand(
@@ -1902,7 +1912,8 @@ def create_app(
                     importance=body.importance,
                     metadata=body.metadata,
                     idempotency_key=body.idempotency_key,
-                )
+                ),
+                audit_event=audit_event,
             )
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
