@@ -318,6 +318,7 @@ class InMemoryMemoryStore:
         turn: ConversationTurn,
         idempotency_key: str | None = None,
         audit_event: AuditEvent | None = None,
+        event: IntegrationEvent | None = None,
     ) -> tuple[ConversationTurn, bool]:
         """Atomically append a raw conversation turn."""
         idempotency_key = _scope_idempotency_key(turn.workspace_id, idempotency_key)
@@ -332,6 +333,8 @@ class InMemoryMemoryStore:
                 self._turn_idempotency[(turn.tenant_id, idempotency_key)] = turn.id
             if audit_event is not None:
                 self.append_audit_event(audit_event)
+            if event is not None:
+                self.publish(event)
             return turn, True
 
     def get_turn(self, tenant_id: UUID, turn_id: UUID) -> ConversationTurn | None:

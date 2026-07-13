@@ -243,6 +243,8 @@ class MemoryProposalService:
                 temperature=0.0,
                 max_tokens=900,
             )
+            if not isinstance(payload, dict):
+                raise ValueError("memory proposal classifier returned a non-object JSON value")
         except Exception as exc:  # noqa: BLE001 - proposals must fail soft
             return (
                 target,

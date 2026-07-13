@@ -12,12 +12,13 @@ from memory_plane.config.database import read_database_dsn
 from memory_plane.config.secrets import read_secret_env
 from memory_plane.contracts.events import IntegrationEvent
 from memory_plane.services.consumer import IdempotentEventConsumer
+from memory_plane.services.conversations import CurateConversationTurnCommand
 from memory_plane.workers.logging import log_event
 from memory_plane.workers.nats_consumer import NatsPullWorker
 
 
 async def run() -> None:
-    """Process reflection jobs until stopped."""
+    """Process reflection and safe conversation-curation jobs until stopped."""
     dsn = read_database_dsn()
     if not dsn:
         raise RuntimeError("PostgreSQL connection configuration is required")
@@ -40,6 +41,31 @@ async def run() -> None:
                 tenant_id=event.tenant_id,
                 workspace_id=event.workspace_id,
             )
+            return
+        if event.name != "conversation.turn.appended.v1" or "curate" not in event.payload.get(
+            "jobs", []
+        ):
+            return
+        turn_id = event.payload.get("turn_id")
+        if not turn_id:
+            raise ValueError("conversation curation event has no turn_id")
+        result = await asyncio.to_thread(
+            container.curator.curate_turn,
+            CurateConversationTurnCommand(
+                tenant_id=event.tenant_id,
+                turn_id=UUID(str(turn_id)),
+                auto_accept=True,
+                idempotency_key=f"auto-curate-conversation-turn:{turn_id}",
+            ),
+        )
+        log_event(
+            "conversation_curation_completed",
+            worker="maintenance",
+            tenant_id=event.tenant_id,
+            workspace_id=event.workspace_id,
+            turn_id=turn_id,
+            outcome="accepted" if result.retained is not None else "proposal",
+        )
 
     consumer = IdempotentEventConsumer(
         container.store,  # type: ignore[arg-type]
