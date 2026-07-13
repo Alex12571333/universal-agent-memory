@@ -1167,6 +1167,42 @@ class PostgresMemoryLedgerTest(unittest.TestCase):
             ).fetchone()["count"]
         self.assertEqual(0, count)
 
+    def test_observation_audit_failure_rolls_back_observation_and_evidence(self) -> None:
+        item = self._item("observation audit rollback evidence")
+        self.store.retain(item, self._event(item))
+        observation = Observation(
+            tenant_id=self.tenant,
+            workspace_id=self.workspace,
+            summary="derived observation must roll back with audit",
+            evidence_ids=(item.id,),
+        )
+        audit = AuditEvent(
+            tenant_id=self.tenant,
+            workspace_id=self.workspace,
+            action="reflection.observation.create",
+            actor="maintenance",
+            actor_type="system",
+            resource_type="observation",
+            resource_id=str(observation.id),
+        )
+        with patch.object(
+            self.store, "_insert_audit_event", side_effect=RuntimeError("audit down")
+        ):
+            with self.assertRaisesRegex(RuntimeError, "audit down"):
+                self.store.save(observation, audit_event=audit)
+
+        self.assertNotIn(
+            observation.id,
+            {row.id for row in self.store.list_observations(self.tenant, self.workspace)},
+        )
+        with self.store._connection() as connection:
+            self.store._set_tenant(connection, self.tenant)
+            count = connection.execute(
+                "select count(*) as count from observation_evidence where observation_id = %s",
+                (observation.id,),
+            ).fetchone()["count"]
+        self.assertEqual(0, count)
+
     def test_supersede_audit_failure_rolls_back_replacement_and_outbox(self) -> None:
         parent = self._item("audit supersede parent")
         self.store.retain(parent, self._event(parent))

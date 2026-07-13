@@ -210,7 +210,9 @@ class ProcessedEventRepository(Protocol):
 class ObservationRepository(Protocol):
     """Storage boundary for consolidated, evidence-grounded observations."""
 
-    def save(self, observation: Observation) -> Observation:
+    def save(
+        self, observation: Observation, audit_event: AuditEvent | None = None
+    ) -> Observation:
         """Store an observation idempotently by its identity."""
         ...
 

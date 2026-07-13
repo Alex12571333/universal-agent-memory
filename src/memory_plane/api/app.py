@@ -2250,9 +2250,15 @@ def create_app(
         }
 
     @app.post("/v1/workspaces/{workspace_id}/reflect", status_code=202)
-    def reflect(workspace_id: UUID, tenant_id: UUID) -> dict[str, Any]:
+    def reflect(workspace_id: UUID, tenant_id: UUID, request: Request) -> dict[str, Any]:
         """Run the baseline reflection synchronously behind an async-shaped API."""
-        observations = services.reflection.reflect(tenant_id, workspace_id)
+        principal = _principal_from_request(request)
+        observations = services.reflection.reflect(
+            tenant_id,
+            workspace_id,
+            actor=principal.name,
+            actor_type=_audit_actor_type(principal),
+        )
         return {
             "created": len(observations),
             "observation_ids": [str(row.id) for row in observations],
