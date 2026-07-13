@@ -212,7 +212,10 @@ static readiness script are green.
    dead-lettered. JetStream delivery is bounded with exponential NAK delays,
    durable DLQ records and an operator-selected replay command. Production
    compose supplies an NATS auth token and the worker configures bounded
-   stream/DLQ size and age. Long-running target evidence for retention under
+   stream/DLQ size and age. On 2026-07-13, the local appliance embedding worker
+   was stopped before a durable retain; after restart the queued marker was
+   recovered through `qdrant_hybrid` recall and pending/dead-letter/in-flight
+   metrics returned to zero. Long-running target evidence for retention under
    real traffic still remains required.
 3. PostgreSQL uses an explicit bounded `psycopg_pool` connection pool per
    process. The deployment still has one API process and single-node
@@ -390,7 +393,10 @@ Required gates:
      alerts. Metrics health evaluator, embedding counters and
      `scripts/observability_preflight.py` verify dashboard/alert coverage for
      the target monitoring artifacts.
-   - Worker restart and poison-event behavior tested.
+   - Worker restart and poison-event behavior tested. The local worker-restart
+     drill preserves an outbox event across a stopped embedding worker and
+     confirms hybrid recall after restart; longer target traffic evidence is
+     still required.
    - Graceful degradation when embeddings, Qdrant, or the configured memory LLM are down.
 
 3. **Memory-quality gate**
