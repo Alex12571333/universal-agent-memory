@@ -2449,6 +2449,39 @@ def create_app(
             ],
         }
 
+    @app.get("/v1/workspaces/{workspace_id}/vault/health")
+    def vault_health(
+        workspace_id: UUID,
+        tenant_id: UUID = DEFAULT_SERVER_ID,
+    ) -> dict[str, Any]:
+        """Inspect vault projection integrity without invoking models or mutating memory."""
+        report = services.vault_health.inspect(tenant_id, workspace_id)
+        return {
+            "tenant_id": str(report.tenant_id),
+            "workspace_id": str(report.workspace_id),
+            "healthy": report.healthy,
+            "memory_count": report.memory_count,
+            "edge_count": report.edge_count,
+            "observation_count": report.observation_count,
+            "recallable_head_count": report.recallable_head_count,
+            "unlinked_head_count": report.unlinked_head_count,
+            "error_count": report.error_count,
+            "warning_count": report.warning_count,
+            "issues": [
+                {
+                    "severity": issue.severity,
+                    "code": issue.code,
+                    "message": issue.message,
+                    "item_id": str(issue.item_id) if issue.item_id else None,
+                    "edge_id": str(issue.edge_id) if issue.edge_id else None,
+                    "observation_id": str(issue.observation_id)
+                    if issue.observation_id
+                    else None,
+                }
+                for issue in report.issues
+            ],
+        }
+
     @app.post("/v1/workspaces/{workspace_id}/vault/import")
     def import_vault(
         workspace_id: UUID,

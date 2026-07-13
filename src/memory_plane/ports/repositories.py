@@ -264,6 +264,12 @@ class GraphRepository(Protocol):
         """List incoming and outgoing edges for one item."""
         ...
 
+    def list_for_workspace(
+        self, tenant_id: UUID, workspace_id: UUID
+    ) -> tuple[MemoryEdge, ...]:
+        """List all typed graph edges in one tenant-scoped workspace."""
+        ...
+
 
 class AuditRepository(Protocol):
     """Append-only audit trail for operator and agent actions."""

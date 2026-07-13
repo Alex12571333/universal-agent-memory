@@ -36,6 +36,7 @@ from memory_plane.services.reflection import ReflectionService
 from memory_plane.services.retention import RetentionService
 from memory_plane.services.retrieval import RetrievalService
 from memory_plane.services.vault import VaultExporter
+from memory_plane.services.vault_health import VaultHealthService
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,6 +60,7 @@ class Container:
     embedding: EmbeddingService
     memory_llm: MemoryLLMClient
     vault: VaultExporter
+    vault_health: VaultHealthService
     store: object
 
 
@@ -108,6 +110,7 @@ def build_in_memory_container() -> Container:
         embedding=embedding,
         memory_llm=build_memory_llm_client(),
         vault=VaultExporter(store, observations, retention),
+        vault_health=VaultHealthService(store, observations, graph),
         store=store,
     )
 
@@ -217,6 +220,7 @@ def build_postgres_container(
         embedding=embedding,
         memory_llm=memory_llm,
         vault=VaultExporter(store, observations, retention),
+        vault_health=VaultHealthService(store, observations, graph),
         store=store,
     )
 

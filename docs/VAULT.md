@@ -38,6 +38,25 @@ docker compose --profile ops run --rm vault-export
 
 which writes the current workspace projection to `./vault`.
 
+## Deterministic vault-health check
+
+Before reviewing or importing a vault, an operator can inspect the canonical
+projection without invoking an LLM, embedding model or graph extractor:
+
+```http
+GET /v1/workspaces/{workspace_id}/vault/health?tenant_id={tenant_id}
+```
+
+The response is tenant/workspace-scoped and contains counts plus diagnostics.
+`error` means a canonical reference is broken (for example a graph endpoint or
+observation evidence item is missing). `warning` currently includes an
+`unlinked_memory_head`: an active recallable memory that has neither a typed
+graph edge nor active observation evidence. It is deliberately not considered
+corruption and is never automatically linked or rewritten.
+
+The check is read-only. It does not expose raw conversation content, vectors or
+embedding payloads, and it does not change vault files or canonical memories.
+
 ## Opening in Obsidian
 
 1. For an editable trusted-environment export, omit the integrity manifest:
