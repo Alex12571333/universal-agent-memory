@@ -16,4 +16,5 @@ __all__ = [
     "RetrievalService",
     "TextChunker",
     "VaultExporter",
+    "VaultHealthService",
 ]
