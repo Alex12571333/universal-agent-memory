@@ -43,6 +43,7 @@ def main() -> int:
                 "ui_session_signing_key",
                 "backup_encryption_key",
                 "nats_auth_token",
+                "memory_text_key",
             )
         }
         env_file.write_text(_env(paths, api_key), encoding="utf-8")
@@ -131,7 +132,7 @@ def _env(paths: dict[str, Path], api_key: str) -> str:
             "UAM_MODEL_ENDPOINT_ALLOWLIST=http://host.docker.internal:1",
             "UAM_MEMORY_TEXT_ENCRYPTION=pgcrypto",
             "UAM_MEMORY_TEXT_ENCRYPTION_SCOPES=all",
-            "UAM_MEMORY_TEXT_ENCRYPTION_KEY=smoke_" + secrets.token_urlsafe(32),
+            f"UAM_MEMORY_TEXT_ENCRYPTION_KEY_FILE={paths['memory_text_key']}",
             f"POSTGRES_PASSWORD_FILE={paths['postgres_password']}",
             f"UAM_APP_DB_PASSWORD_FILE={paths['app_db_password']}",
             f"UAM_UI_SESSION_SIGNING_KEY_FILE={paths['ui_session_signing_key']}",

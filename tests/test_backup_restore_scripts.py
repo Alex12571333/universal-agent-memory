@@ -515,9 +515,10 @@ def test_validate_production_env_rejects_unknown_memory_encryption_scope() -> No
 def test_production_compose_wires_memory_text_encryption() -> None:
     compose = (ROOT / "docker-compose.prod.yml").read_text(encoding="utf-8")
 
-    assert compose.count("UAM_MEMORY_TEXT_ENCRYPTION: ${UAM_MEMORY_TEXT_ENCRYPTION:-pgcrypto}") >= 2
-    assert compose.count("UAM_MEMORY_TEXT_ENCRYPTION_SCOPES: ") >= 2
-    assert compose.count("UAM_MEMORY_TEXT_ENCRYPTION_KEY_FILE: ") >= 2
+    assert compose.count("UAM_MEMORY_TEXT_ENCRYPTION: ${UAM_MEMORY_TEXT_ENCRYPTION:-pgcrypto}") >= 4
+    assert compose.count("UAM_MEMORY_TEXT_ENCRYPTION_SCOPES: ") >= 4
+    assert compose.count("UAM_MEMORY_TEXT_ENCRYPTION_KEY_FILE: /run/secrets/memory_text_key") >= 4
+    assert "memory_text_key:" in compose
     assert "UAM_BACKUP_ENCRYPTION_KEY_FILE: /run/secrets/backup_encryption_key" in compose
     assert "backup_encryption_key:" in compose
     assert "UAM_API_KEY_FILE: ${UAM_API_KEY_FILE:-}" in compose
@@ -534,9 +535,20 @@ def test_local_compose_can_opt_into_the_same_pgcrypto_profile() -> None:
     scopes = "UAM_MEMORY_TEXT_ENCRYPTION_SCOPES: " "${UAM_MEMORY_TEXT_ENCRYPTION_SCOPES:-all}"
     key_file = "UAM_MEMORY_TEXT_ENCRYPTION_KEY_FILE: " "${UAM_MEMORY_TEXT_ENCRYPTION_KEY_FILE:-}"
 
-    assert compose.count("UAM_MEMORY_TEXT_ENCRYPTION: ${UAM_MEMORY_TEXT_ENCRYPTION:-off}") >= 2
-    assert compose.count(scopes) >= 2
-    assert compose.count(key_file) >= 2
+    # API, outbox relay and embedding worker must agree; otherwise an encrypted
+    # outbox payload can be published as null and poison the downstream worker.
+    assert compose.count("UAM_MEMORY_TEXT_ENCRYPTION: ${UAM_MEMORY_TEXT_ENCRYPTION:-off}") >= 3
+    assert compose.count(scopes) >= 3
+    assert compose.count(key_file) >= 3
+
+
+def test_local_compose_keeps_runtime_dependency_probes_opt_in() -> None:
+    compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+
+    assert (
+        "UAM_RUNTIME_DEPENDENCY_PROBES: "
+        "${UAM_RUNTIME_DEPENDENCY_PROBES:-false}"
+    ) in compose
 
 
 def test_validate_production_env_rejects_qdrant_text_payloads(tmp_path: Path) -> None:

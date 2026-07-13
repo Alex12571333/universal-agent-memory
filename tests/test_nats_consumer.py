@@ -22,6 +22,12 @@ class Message:
 
 
 class NatsPullWorkerTest(unittest.IsolatedAsyncioTestCase):
+    async def test_empty_pull_with_asyncio_timeout_is_not_a_worker_failure(self) -> None:
+        worker = NatsPullWorker("nats://example", consumer=object(), durable="test")
+        worker._subscription = AsyncioTimeoutSubscription()
+
+        self.assertEqual(0, await worker.run_once())
+
     async def test_uses_capped_backoff_before_terminal_delivery(self) -> None:
         worker = NatsPullWorker(
             "nats://example",
@@ -51,3 +57,8 @@ class DeadLetterJetStream:
 
     async def publish(self, *args, **kwargs) -> None:
         self.published.append((args, kwargs))
+
+
+class AsyncioTimeoutSubscription:
+    async def fetch(self, *args, **kwargs) -> list[object]:
+        raise TimeoutError

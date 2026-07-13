@@ -36,7 +36,7 @@ services:
       UAM_MEMORY_TEXT_ENCRYPTION: ${UAM_MEMORY_TEXT_ENCRYPTION:-pgcrypto}
       UAM_MEMORY_TEXT_ENCRYPTION_SCOPES: ${UAM_MEMORY_TEXT_ENCRYPTION_SCOPES:-all}
       UAM_MEMORY_TEXT_ENCRYPTION_KEY: ${UAM_MEMORY_TEXT_ENCRYPTION_KEY:-}
-      UAM_MEMORY_TEXT_ENCRYPTION_KEY_FILE: ${UAM_MEMORY_TEXT_ENCRYPTION_KEY_FILE:-}
+      UAM_MEMORY_TEXT_ENCRYPTION_KEY_FILE: /run/secrets/memory_text_key
       UAM_QDRANT_URL: http://qdrant:6333
       UAM_QDRANT_COLLECTION: ${UAM_QDRANT_COLLECTION:-memory_items}
       UAM_QDRANT_PAYLOAD_TEXT: ${UAM_QDRANT_PAYLOAD_TEXT:-false}
@@ -64,6 +64,7 @@ services:
     secrets:
       - app_db_password
       - ui_session_signing_key
+      - memory_text_key
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -155,9 +156,13 @@ services:
       UAM_SERVER_ID: ${UAM_SERVER_ID}
       UAM_NATS_URL: nats://nats:4222
       UAM_NATS_AUTH_TOKEN_FILE: /run/secrets/nats_auth_token
+      UAM_MEMORY_TEXT_ENCRYPTION: ${UAM_MEMORY_TEXT_ENCRYPTION:-pgcrypto}
+      UAM_MEMORY_TEXT_ENCRYPTION_SCOPES: ${UAM_MEMORY_TEXT_ENCRYPTION_SCOPES:-all}
+      UAM_MEMORY_TEXT_ENCRYPTION_KEY_FILE: /run/secrets/memory_text_key
     secrets:
       - app_db_password
       - nats_auth_token
+      - memory_text_key
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -186,7 +191,7 @@ services:
       UAM_MEMORY_TEXT_ENCRYPTION: ${UAM_MEMORY_TEXT_ENCRYPTION:-pgcrypto}
       UAM_MEMORY_TEXT_ENCRYPTION_SCOPES: ${UAM_MEMORY_TEXT_ENCRYPTION_SCOPES:-all}
       UAM_MEMORY_TEXT_ENCRYPTION_KEY: ${UAM_MEMORY_TEXT_ENCRYPTION_KEY:-}
-      UAM_MEMORY_TEXT_ENCRYPTION_KEY_FILE: ${UAM_MEMORY_TEXT_ENCRYPTION_KEY_FILE:-}
+      UAM_MEMORY_TEXT_ENCRYPTION_KEY_FILE: /run/secrets/memory_text_key
       UAM_EMBEDDING_PROVIDER: ${UAM_EMBEDDING_PROVIDER:-openai-compatible}
       UAM_EMBEDDING_MODEL: ${UAM_EMBEDDING_MODEL:?UAM_EMBEDDING_MODEL must be set}
       UAM_EMBEDDING_DIM: ${UAM_EMBEDDING_DIM:?UAM_EMBEDDING_DIM must be set}
@@ -198,6 +203,7 @@ services:
     secrets:
       - app_db_password
       - nats_auth_token
+      - memory_text_key
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -222,9 +228,13 @@ services:
       UAM_PROJECT_ID: ${UAM_PROJECT_ID}
       UAM_NATS_URL: nats://nats:4222
       UAM_NATS_AUTH_TOKEN_FILE: /run/secrets/nats_auth_token
+      UAM_MEMORY_TEXT_ENCRYPTION: ${UAM_MEMORY_TEXT_ENCRYPTION:-pgcrypto}
+      UAM_MEMORY_TEXT_ENCRYPTION_SCOPES: ${UAM_MEMORY_TEXT_ENCRYPTION_SCOPES:-all}
+      UAM_MEMORY_TEXT_ENCRYPTION_KEY_FILE: /run/secrets/memory_text_key
     secrets:
       - app_db_password
       - nats_auth_token
+      - memory_text_key
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -283,3 +293,5 @@ secrets:
     file: ${UAM_BACKUP_ENCRYPTION_KEY_FILE:?UAM_BACKUP_ENCRYPTION_KEY_FILE must point to a host secret file}
   nats_auth_token:
     file: ${UAM_NATS_AUTH_TOKEN_FILE:?UAM_NATS_AUTH_TOKEN_FILE must point to a host secret file}
+  memory_text_key:
+    file: ${UAM_MEMORY_TEXT_ENCRYPTION_KEY_FILE:?UAM_MEMORY_TEXT_ENCRYPTION_KEY_FILE must point to a host secret file}
