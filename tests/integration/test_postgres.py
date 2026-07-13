@@ -35,6 +35,7 @@ from memory_plane.domain.models import (
 )
 from memory_plane.domain.proposal import MemoryProposalStatus, MemoryProposalTarget
 from memory_plane.services.conflicts import ConflictService
+from memory_plane.services.conversations import ConversationCurator, CurateConversationTurnCommand
 from memory_plane.services.proposals import (
     MemoryProposalService,
     ReviewMemoryProposalCommand,
@@ -396,6 +397,47 @@ class PostgresMemoryLedgerTest(unittest.TestCase):
             (),
             self.store.list_proposals(
                 self.tenant, self.workspace, namespace="postgres-submit-audit-failure"
+            ),
+        )
+
+    def test_conversation_curation_audit_failure_rolls_back_proposal(self) -> None:
+        turn = ConversationTurn(
+            tenant_id=self.tenant,
+            workspace_id=self.workspace,
+            thread_id=uuid4(),
+            namespace="postgres-curation-audit-failure",
+            retention_policy=ConversationRetentionPolicy.RAW_AND_CURATED,
+            messages=(ConversationMessage(role="user", content="curation audit probe"),),
+        )
+        self.store.append_turn(turn, "curation-audit-turn")
+        proposals = MemoryProposalService(self.store, RetentionService(self.store))
+        curator = ConversationCurator(
+            self.store,
+            RetentionService(self.store),
+            proposals=proposals,
+        )
+        audit = AuditEvent(
+            tenant_id=self.tenant,
+            workspace_id=self.workspace,
+            action="conversation.curate.propose",
+            actor="integration",
+            actor_type="system",
+            resource_type="memory_proposal",
+        )
+        with patch.object(
+            self.store, "_insert_audit_event", side_effect=RuntimeError("audit down")
+        ):
+            with self.assertRaisesRegex(RuntimeError, "audit down"):
+                curator.curate_turn(
+                    CurateConversationTurnCommand(tenant_id=self.tenant, turn_id=turn.id),
+                    audit_event=audit,
+                )
+        self.assertEqual(
+            (),
+            self.store.list_proposals(
+                self.tenant,
+                self.workspace,
+                namespace="postgres-curation-audit-failure",
             ),
         )
 

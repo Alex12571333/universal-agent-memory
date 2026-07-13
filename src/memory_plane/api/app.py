@@ -1839,6 +1839,16 @@ def create_app(
         request: Request,
     ) -> dict[str, Any]:
         """Distill a raw transcript turn into recallable curated memory."""
+        principal = _principal_from_request(request)
+        audit_event = AuditEvent(
+            tenant_id=body.tenant_id,
+            workspace_id=None,
+            action="conversation.curate.propose",
+            actor=principal.name,
+            actor_type=_audit_actor_type(principal),
+            resource_type="memory_proposal",
+            metadata={"turn_id": str(turn_id)},
+        )
         try:
             result = services.curator.curate_turn(
                 CurateConversationTurnCommand(
@@ -1850,7 +1860,8 @@ def create_app(
                     importance=body.importance,
                     confidence=body.confidence,
                     idempotency_key=body.idempotency_key,
-                )
+                ),
+                audit_event=audit_event,
             )
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="conversation turn not found") from exc
@@ -1860,15 +1871,6 @@ def create_app(
             raise HTTPException(status_code=503, detail=str(exc)) from exc
         if result.proposal is not None:
             proposal = result.proposal.proposal
-            record_audit(
-                request,
-                tenant_id=body.tenant_id,
-                workspace_id=proposal.workspace_id,
-                action="conversation.curate.propose",
-                resource_type="memory_proposal",
-                resource_id=str(proposal.id),
-                metadata={"turn_id": str(turn_id), "created": result.proposal.created},
-            )
             return _memory_proposal_response(proposal, created=result.proposal.created)
         assert result.retained is not None
         retained = result.retained

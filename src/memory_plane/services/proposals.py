@@ -196,7 +196,11 @@ class MemoryProposalService:
         stored, created = self._repository.append_proposal(
             proposal,
             command.idempotency_key,
-            audit_event=replace(audit_event, resource_id=str(proposal.id))
+            audit_event=replace(
+                audit_event,
+                workspace_id=proposal.workspace_id,
+                resource_id=str(proposal.id),
+            )
             if audit_event is not None
             else None,
         )
