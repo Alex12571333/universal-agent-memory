@@ -219,6 +219,28 @@ class PostgresMemoryLedgerTest(unittest.TestCase):
             ).fetchone()["count"]
         self.assertEqual(1, count)
 
+    def test_single_audit_lookup_is_tenant_scoped_and_returns_metadata(self) -> None:
+        """Exercise the SQL path used by operator recall replay, not just list/export."""
+        event = AuditEvent(
+            tenant_id=self.tenant,
+            workspace_id=self.workspace,
+            action="memory.recall",
+            actor="integration-test",
+            actor_type="system",
+            resource_type="memory_recall",
+            metadata={"trace_ids": [], "query_sha256": "a" * 64},
+        )
+        self.store.append_audit_event(event)
+
+        loaded = self.store.get_audit_event(self.tenant, event.id)
+
+        self.assertIsNotNone(loaded)
+        assert loaded is not None
+        self.assertEqual(event.id, loaded.id)
+        self.assertEqual(event.workspace_id, loaded.workspace_id)
+        self.assertEqual(event.metadata, loaded.metadata)
+        self.assertIsNone(self.store.get_audit_event(uuid4(), event.id))
+
     def test_protected_search_dual_write_is_scoped_and_uses_runtime_role(self) -> None:
         key = "integration-blind-index-" + "a" * 40
         with patch.dict(
