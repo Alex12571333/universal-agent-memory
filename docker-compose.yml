@@ -195,6 +195,24 @@ services:
       UAM_SERVER_ID: 00000000-0000-0000-0000-000000000001
       UAM_PROJECT_ID: 00000000-0000-0000-0000-000000000002
       UAM_NATS_URL: nats://nats:4222
+      # The worker reads encrypted raw-turn metadata before it can create an
+      # evidence-linked proposal. Keep this aligned with API and relay.
+      UAM_MEMORY_TEXT_ENCRYPTION: ${UAM_MEMORY_TEXT_ENCRYPTION:-off}
+      UAM_MEMORY_TEXT_ENCRYPTION_SCOPES: ${UAM_MEMORY_TEXT_ENCRYPTION_SCOPES:-all}
+      UAM_MEMORY_TEXT_ENCRYPTION_KEY: ${UAM_MEMORY_TEXT_ENCRYPTION_KEY:-}
+      UAM_MEMORY_TEXT_ENCRYPTION_KEY_FILE: ${UAM_MEMORY_TEXT_ENCRYPTION_KEY_FILE:-}
+      # The curator is a maintenance consumer, so it needs the same bounded
+      # OpenAI-compatible model configuration as the API. It still writes only
+      # evidence-linked proposals unless the narrow auto-accept policy passes.
+      UAM_MEMORY_LLM_PROVIDER: ${UAM_MEMORY_LLM_PROVIDER:-openai-compatible}
+      UAM_MEMORY_LLM_MODEL: ${UAM_MEMORY_LLM_MODEL:-memory-model}
+      UAM_MEMORY_LLM_BASE_URL: ${UAM_MEMORY_LLM_BASE_URL:-http://host.docker.internal:8000/v1}
+      UAM_MEMORY_LLM_API_KEY: ${UAM_MEMORY_LLM_API_KEY:-}
+      UAM_MEMORY_LLM_TIMEOUT_SECONDS: ${UAM_MEMORY_LLM_TIMEOUT_SECONDS:-60}
+      UAM_MEMORY_LLM_TEMPERATURE: ${UAM_MEMORY_LLM_TEMPERATURE:-0.1}
+      UAM_MEMORY_LLM_CONTEXT_TOKENS: ${UAM_MEMORY_LLM_CONTEXT_TOKENS:-8192}
+      UAM_MEMORY_LLM_MAX_TOKENS: ${UAM_MEMORY_LLM_MAX_TOKENS:-1200}
+      UAM_MEMORY_LLM_EXTRA_BODY_JSON: ${UAM_MEMORY_LLM_EXTRA_BODY_JSON:-}
     depends_on:
       migrate:
         condition: service_completed_successfully

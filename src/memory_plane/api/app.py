@@ -1915,7 +1915,11 @@ def create_app(
             )
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
-        return _conversation_turn_response(result.turn, created=result.created)
+        response = _conversation_turn_response(result.turn, created=result.created)
+        response["queued_event_ids"] = [
+            str(event_id) for event_id in result.queued_event_ids
+        ]
+        return response
 
     @app.get("/v1/conversations/turns")
     def list_conversation_turns(

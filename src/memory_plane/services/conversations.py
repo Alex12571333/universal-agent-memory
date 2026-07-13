@@ -10,6 +10,7 @@ from typing import Any, Protocol
 from uuid import UUID
 
 from memory_plane.contracts.dto import RetainResult
+from memory_plane.contracts.events import IntegrationEvent
 from memory_plane.domain.audit import AuditEvent
 from memory_plane.domain.conversation import (
     ConversationMessage,
@@ -49,8 +50,9 @@ class ConversationLedger(Protocol):
         turn: ConversationTurn,
         idempotency_key: str | None = None,
         audit_event: AuditEvent | None = None,
+        event: IntegrationEvent | None = None,
     ) -> tuple[ConversationTurn, bool]:
-        """Append a raw turn or return the existing turn for an idempotency key."""
+        """Append a raw turn and optional transactional maintenance event."""
         ...
 
     def get_turn(self, tenant_id: UUID, turn_id: UUID) -> ConversationTurn | None:
@@ -118,6 +120,7 @@ class AppendConversationTurnResult:
 
     turn: ConversationTurn
     created: bool
+    queued_event_ids: tuple[UUID, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -203,14 +206,32 @@ class ConversationService:
             created_at=created_at,
             expires_at=expires_at,
         )
+        event = IntegrationEvent(
+            name="conversation.turn.appended.v1",
+            tenant_id=turn.tenant_id,
+            workspace_id=turn.workspace_id,
+            correlation_id=turn.id,
+            payload={
+                "turn_id": str(turn.id),
+                "retention_policy": turn.retention_policy.value,
+                "jobs": ["curate"]
+                if turn.retention_policy != ConversationRetentionPolicy.RAW_ONLY
+                else [],
+            },
+        )
         stored, created = self._ledger.append_turn(
             turn,
             command.idempotency_key,
             audit_event=replace(audit_event, resource_id=str(turn.id))
             if audit_event is not None
             else None,
+            event=event,
         )
-        return AppendConversationTurnResult(turn=stored, created=created)
+        return AppendConversationTurnResult(
+            turn=stored,
+            created=created,
+            queued_event_ids=(event.id,) if created else (),
+        )
 
     def list_turns(
         self,

@@ -87,6 +87,24 @@ used.
 4. Opt-in bounded integration seed, evaluated against context budgets.
 5. CAS-backed targeted editor patches, including concurrency and reindex tests.
 
+## Automated curation delivery note
+
+Raw conversation turns now emit a redacted
+`conversation.turn.appended.v1` transactional-outbox event.  The maintenance
+worker consumes it asynchronously and runs the existing evidence-bound curator.
+This keeps the agent request path short, survives an API restart between write
+and processing, and never injects raw transcript text into ordinary recall.
+Every consumer that reads the raw turn must receive the same pgcrypto settings
+as the API and relay; the local advanced Compose profile enforces that parity.
+
+The curator may use the configured bounded OpenAI-compatible maintenance model,
+but its output remains an evidence-linked proposal by default.  Automatic
+acceptance is intentionally limited to the existing high-confidence,
+source-quoted, non-temporal policy.  A model-produced statement such as a
+changed preference therefore cannot silently overwrite a durable fact.  The
+outbox event and curation result are observable through worker logs/audit and
+are suitable for a target-runtime lifecycle probe.
+
 ## Acceptance criteria
 
 - A health request cannot inspect another tenant or workspace.

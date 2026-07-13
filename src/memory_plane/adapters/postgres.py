@@ -1227,6 +1227,7 @@ class PostgresMemoryLedger:
         turn: ConversationTurn,
         idempotency_key: str | None = None,
         audit_event: AuditEvent | None = None,
+        event: IntegrationEvent | None = None,
     ) -> tuple[ConversationTurn, bool]:
         """Append one raw conversation turn and its ordered messages."""
         idempotency_key = _scope_idempotency_key(turn.workspace_id, idempotency_key)
@@ -1251,6 +1252,9 @@ class PostgresMemoryLedger:
                 )
             if audit_event is not None:
                 self._insert_audit_event(connection, audit_event)
+            if event is not None:
+                self._validate_turn_event(turn, event)
+                self._insert_event(connection, event)
             return turn, True
 
     def get_turn(self, tenant_id: UUID, turn_id: UUID) -> ConversationTurn | None:
@@ -2561,6 +2565,14 @@ class PostgresMemoryLedger:
                 event.occurred_at,
             ),
         )
+
+    @staticmethod
+    def _validate_turn_event(turn: ConversationTurn, event: IntegrationEvent) -> None:
+        """Forbid an outbox event from escaping the appended turn's scope."""
+        if event.tenant_id != turn.tenant_id or event.workspace_id != turn.workspace_id:
+            raise ValueError("conversation outbox event scope must match the turn")
+        if event.correlation_id != turn.id:
+            raise ValueError("conversation outbox event correlation must be the turn ID")
 
     def _insert_audit_event(self, connection: Any, event: AuditEvent) -> None:
         """Write audit evidence inside an existing canonical transaction."""

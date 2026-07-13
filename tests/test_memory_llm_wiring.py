@@ -93,6 +93,51 @@ def test_conversation_curator_uses_memory_llm_when_available() -> None:
     assert reasoner.calls[0]["max_tokens"] == 700
 
 
+def test_appending_a_curatable_turn_emits_redacted_outbox_event() -> None:
+    store = InMemoryMemoryStore()
+    tenant_id, workspace_id, thread_id = uuid4(), uuid4(), uuid4()
+
+    result = ConversationService(store).append_turn(
+        AppendConversationTurnCommand(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            thread_id=thread_id,
+            namespace="hermes",
+            messages=(ConversationMessage(role="user", content="Do not expose this raw text."),),
+            idempotency_key="turn-with-curation-event",
+        )
+    )
+
+    assert len(result.queued_event_ids) == 1
+    assert len(store.events) == 1
+    event = store.events[0]
+    assert event.id == result.queued_event_ids[0]
+    assert event.name == "conversation.turn.appended.v1"
+    assert event.tenant_id == tenant_id
+    assert event.workspace_id == workspace_id
+    assert event.correlation_id == result.turn.id
+    assert event.payload == {
+        "turn_id": str(result.turn.id),
+        "retention_policy": "raw_and_curated",
+        "jobs": ["curate"],
+    }
+    assert "raw text" not in str(event.payload)
+
+    retry = ConversationService(store).append_turn(
+        AppendConversationTurnCommand(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            thread_id=thread_id,
+            namespace="hermes",
+            messages=(ConversationMessage(role="user", content="Do not expose this raw text."),),
+            idempotency_key="turn-with-curation-event",
+        )
+    )
+    assert retry.created is False
+    assert retry.queued_event_ids == ()
+    assert len(store.events) == 1
+
+
 def test_conversation_curator_chunks_long_transcript_then_reduces() -> None:
     store = InMemoryMemoryStore()
     tenant_id, workspace_id, thread_id = uuid4(), uuid4(), uuid4()
@@ -249,3 +294,27 @@ def test_memory_gateway_classifies_auto_proposal_with_memory_llm() -> None:
     assert result.proposal.importance == 0.76
     assert result.proposal.metadata["gateway_engine"] == "memory_llm"
     assert "Explicit user preference" in result.proposal.metadata["gateway_rationale"]
+
+
+def test_memory_gateway_falls_back_when_classifier_returns_non_object_json() -> None:
+    store = InMemoryMemoryStore()
+    service = MemoryProposalService(
+        store,
+        RetentionService(store),
+        memory_llm=FakeReasoner(None),
+    )
+
+    result = service.submit(
+        SubmitMemoryProposalCommand(
+            tenant_id=uuid4(),
+            workspace_id=uuid4(),
+            namespace="hermes",
+            requester="test",
+            target=MemoryProposalTarget.AUTO,
+            proposal="A harmless evidence-backed proposal.",
+            evidence="source_turn_id: 00000000-0000-0000-0000-000000000001",
+        )
+    )
+
+    assert result.proposal.metadata["gateway_engine"] == "deterministic_fallback"
+    assert result.proposal.metadata["gateway_llm_error"] == "ValueError"
