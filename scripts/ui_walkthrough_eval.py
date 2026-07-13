@@ -467,8 +467,17 @@ def _find_conflict_case(
 
 
 def _find_vault_file(files: list[dict[str, Any]], text: str) -> dict[str, Any]:
+    """Find the editable memory note, never the vault index preview.
+
+    The generated README intentionally repeats short memory excerpts.  It is a
+    navigation aid rather than a note that an operator can supersede or
+    archive.  Selecting it here could falsely report technical text from an
+    unrelated preview as a vector leak in the editor.
+    """
     for file in files:
-        if text in str(file.get("content", "")) or text in str(file.get("editable_content", "")):
+        path = str(file.get("path", ""))
+        editable = str(file.get("editable_content", ""))
+        if path != "README.md" and text in editable:
             return file
     raise AssertionError("vault export did not include the retained marker memory")
 

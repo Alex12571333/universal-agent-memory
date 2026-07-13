@@ -178,6 +178,26 @@ def test_ui_walkthrough_eval_fails_when_vault_editor_exposes_vectors() -> None:
     assert "system/vector fields" in check.detail
 
 
+def test_find_vault_file_ignores_index_preview_with_unrelated_technical_text() -> None:
+    marker = "UI walkthrough editable marker unit"
+    files = [
+        {
+            "path": "README.md",
+            "content": marker,
+            "editable_content": f"{marker}\nembedding: preview from another note",
+        },
+        {
+            "path": "semantic/mem-unit.md",
+            "content": marker,
+            "editable_content": marker,
+        },
+    ]
+
+    selected = ui_walkthrough_eval._find_vault_file(files, marker)
+
+    assert selected["path"] == "semantic/mem-unit.md"
+
+
 def test_ui_walkthrough_eval_fails_without_verified_build_identity() -> None:
     report = ui_walkthrough_eval.run_walkthrough(
         ui_walkthrough_eval.WalkthroughConfig(base_url="http://memory.example"),

@@ -87,6 +87,33 @@ used.
 4. Opt-in bounded integration seed, evaluated against context budgets.
 5. CAS-backed targeted editor patches, including concurrency and reindex tests.
 
+## Implementation status — 2026-07-13
+
+The first four delivery items are implemented behind tenant/workspace-scoped
+operator APIs and covered by unit or API tests:
+
+- deterministic vault health is served at
+  `GET /v1/workspaces/{workspace_id}/vault/health`;
+- every successful recall has an audit-backed, redacted `replay_id` and a
+  scoped replay endpoint;
+- the bounded `seed` endpoint is available for a new agent session and does
+  not replace task-scoped recall;
+- the vault UI/API exposes `editable_content` rather than vectors, Qdrant
+  payloads, tenant IDs, or provenance sections; saving still becomes a CAS
+  superseding revision and background reindex.
+
+The live operator walkthrough additionally proves the complete local flow:
+retain and recall a test note, persist a conflict decision, select a real
+editable memory note (never the README preview), archive it through the API,
+probe the configured embedding endpoint, request reindexing, and read metrics.
+The walkthrough treats an `embedding` field in an editable memory note as a
+failure.  This is a release gate, not a promise that all browser usability or
+multi-node production concerns are complete.
+
+Still pending from this phase is a purpose-built, field-level/section-level
+editor patch endpoint.  Until it exists, the supported editing mechanism is a
+full note body submitted through the existing CAS vault-import path.
+
 ## Automated curation delivery note
 
 Raw conversation turns now emit a redacted
