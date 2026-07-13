@@ -71,6 +71,30 @@ Do not treat a backfill report as a rotation approval. Retain the final report,
 verify `complete: true`, perform a scoped count/restart drill, then capture the
 reader's separate query-plan evidence before relying on the capacity benefit.
 
+### Key rotation and retirement
+
+1. Deploy the new distinct index key and increment
+   `UAM_PROTECTED_SEARCH_INDEX_KEY_VERSION` on every writer. The reader falls
+   back until the new version is covered.
+2. Backfill and probe every workspace with the new version.
+3. Use an administrator-only DSN to remove an old version. The command refuses
+   `--apply` unless the new marker covers every non-deleted item in that
+   workspace.
+
+```bash
+UAM_PROTECTED_SEARCH_INDEX=hmac-v1 \
+UAM_PROTECTED_SEARCH_INDEX_KEY_FILE=/run/secrets/protected_search_index_key \
+UAM_ADMIN_DATABASE_URL_FILE=/run/secrets/admin_database_url \
+PYTHONPATH=src python scripts/retire_protected_search_key.py \
+  --tenant-id <tenant-uuid> --workspace-id <workspace-uuid> \
+  --retire-key-version <old-version> \
+  --report ./ops/protected-search-key-retirement.json --apply
+```
+
+The report contains counts and versions only. Never run the destructive step
+until all memory-server/worker replicas use the new key and retained backfill
+and query-plan evidence exists.
+
 Capture that evidence with a non-secret plan probe. It fails unless coverage is
 complete and PostgreSQL can use `memory_search_tokens_lookup_idx`; the report
 redacts HMAC literals and contains neither memory text nor the query text.

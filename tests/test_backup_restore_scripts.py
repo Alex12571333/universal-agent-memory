@@ -94,6 +94,7 @@ generate_release_notes = _load_script("generate_release_notes")
 restore_recovery_evidence = _load_script("restore_recovery_evidence")
 protected_search_backfill = _load_script("backfill_protected_search_tokens")
 protected_search_index_probe = _load_script("protected_search_index_probe")
+retire_protected_search_key = _load_script("retire_protected_search_key")
 
 
 def test_protected_search_backfill_cursor_is_text_free_and_validated(tmp_path: Path) -> None:
@@ -124,6 +125,15 @@ def test_protected_search_probe_redacts_digests_and_extracts_indexes() -> None:
 
     assert protected_search_index_probe._index_names(plan) == ("memory_search_tokens_lookup_idx",)
     assert "abc123" not in str(protected_search_index_probe._redact_plan(plan))
+
+
+def test_protected_search_key_retirement_requires_explicit_admin_dsn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("UAM_ADMIN_DATABASE_URL", raising=False)
+    monkeypatch.delenv("UAM_ADMIN_DATABASE_USER", raising=False)
+
+    assert retire_protected_search_key._admin_dsn() is None
 
 
 def test_migration_runner_includes_every_versioned_sql_file() -> None:
