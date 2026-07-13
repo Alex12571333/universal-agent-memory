@@ -727,17 +727,20 @@ class InMemoryMemoryStore:
         )
 
     def save_conflict_review(
-        self, decision: ConflictReviewDecision
+        self, decision: ConflictReviewDecision, audit_event: AuditEvent | None = None
     ) -> ConflictReviewDecision:
         """Persist or replace a human conflict-review decision."""
         with self._lock:
             self._conflict_reviews[(decision.tenant_id, decision.case_id)] = decision
+            if audit_event is not None:
+                self.append_audit_event(audit_event)
             return decision
 
     def apply_conflict_resolution(
         self,
         decision: ConflictReviewDecision,
         writes: tuple[tuple[MemoryItem, IntegrationEvent, int], ...],
+        audit_event: AuditEvent | None = None,
     ) -> ConflictReviewDecision:
         """Atomically validate then apply resolution revisions/events and review."""
         with self._lock:
@@ -776,6 +779,8 @@ class InMemoryMemoryStore:
                 self._items[item.id] = item
                 self.events.append(event)
             self._conflict_reviews[key] = decision
+            if audit_event is not None:
+                self.append_audit_event(audit_event)
             return decision
 
     def list_conflict_reviews(
@@ -844,17 +849,20 @@ class InMemoryConflictReviewRepository:
         """Retain a shared store for local review decisions."""
         self._store = store
 
-    def save(self, decision: ConflictReviewDecision) -> ConflictReviewDecision:
+    def save(
+        self, decision: ConflictReviewDecision, audit_event: AuditEvent | None = None
+    ) -> ConflictReviewDecision:
         """Delegate decision persistence."""
-        return self._store.save_conflict_review(decision)
+        return self._store.save_conflict_review(decision, audit_event=audit_event)
 
     def apply_resolution(
         self,
         decision: ConflictReviewDecision,
         writes: tuple[tuple[MemoryItem, IntegrationEvent, int], ...],
+        audit_event: AuditEvent | None = None,
     ) -> ConflictReviewDecision:
         """Delegate atomic canonical conflict resolution."""
-        return self._store.apply_conflict_resolution(decision, writes)
+        return self._store.apply_conflict_resolution(decision, writes, audit_event=audit_event)
 
     def list_for_workspace(
         self, tenant_id: UUID, workspace_id: UUID

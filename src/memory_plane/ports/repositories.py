@@ -222,7 +222,9 @@ class ObservationRepository(Protocol):
 class ConflictReviewRepository(Protocol):
     """Storage boundary for human decisions on conflict cases."""
 
-    def save(self, decision: ConflictReviewDecision) -> ConflictReviewDecision:
+    def save(
+        self, decision: ConflictReviewDecision, audit_event: AuditEvent | None = None
+    ) -> ConflictReviewDecision:
         """Create or replace one review decision."""
         ...
 
@@ -230,6 +232,7 @@ class ConflictReviewRepository(Protocol):
         self,
         decision: ConflictReviewDecision,
         writes: tuple[tuple[MemoryItem, IntegrationEvent, int], ...],
+        audit_event: AuditEvent | None = None,
     ) -> ConflictReviewDecision:
         """Atomically append resolution revisions/events and persist the review."""
         ...

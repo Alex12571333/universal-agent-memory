@@ -2247,6 +2247,20 @@ def create_app(
         request: Request,
     ) -> dict[str, Any]:
         """Persist a human/operator decision for one conflict case."""
+        principal = _principal_from_request(request)
+        audit_event = AuditEvent(
+            tenant_id=body.tenant_id,
+            workspace_id=workspace_id,
+            action="conflict.decide",
+            actor=principal.name,
+            actor_type=_audit_actor_type(principal),
+            resource_type="conflict_case",
+            resource_id=str(case_id),
+            metadata={
+                "requested_status": body.status.value,
+                "requested_winner_value": body.winner_value,
+            },
+        )
         try:
             decision = services.conflicts.decide(
                 body.tenant_id,
@@ -2255,24 +2269,10 @@ def create_app(
                 status=body.status,
                 winner_value=body.winner_value,
                 reason=body.reason,
+                audit_event=audit_event,
             )
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
-        record_audit(
-            request,
-            tenant_id=body.tenant_id,
-            workspace_id=workspace_id,
-            action="conflict.decide",
-            resource_type="conflict_case",
-            resource_id=str(case_id),
-            metadata={
-                "status": decision.status.value,
-                "winner_value": decision.winner_value,
-                "applied_memory_id": str(decision.applied_memory_id)
-                if decision.applied_memory_id
-                else None,
-            },
-        )
         return _conflict_decision_response(decision) or {}
 
     @app.post("/v1/graph/edges", status_code=201)
