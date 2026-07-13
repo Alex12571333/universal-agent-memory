@@ -56,7 +56,11 @@ static readiness script are green.
    completed retain/retry/recall and cross-workspace exclusion. Agent keys
    intentionally cannot self-provision arbitrary identities. Native installers
    still need longer-running evidence before safe automatic first-use
-   registration is claimed.
+   registration is claimed. On 2026-07-13, the real `.14` OpenClaw gateway
+   reported the Obelisk native extension as enabled, and its bound agent key
+   completed a live retain/recall lifecycle probe in its own workspace. This is
+   partial runtime evidence only: a release-identified multi-agent OpenClaw +
+   Hermes soak remains required.
 
 3. **Identity-bound authorization needs target evidence.**
    Production configuration can now require each `agent` principal to map to a
