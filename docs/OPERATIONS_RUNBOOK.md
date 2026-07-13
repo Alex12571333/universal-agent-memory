@@ -263,6 +263,21 @@ checks and is included in the backup bundle manifest. Prefer this bound report
 as `--restore-report`; the verifier still accepts earlier scheduled-job reports
 for backward-compatible evidence review.
 
+For a reproducible end-to-end local recovery proof, use the isolated drill. It
+creates a temporary PostgreSQL and a separate empty Qdrant namespace, then
+rebuilds and recalls vectors only from the restored ledger. It does not query
+the live Qdrant collection and removes temporary containers and volume on exit:
+
+```bash
+set -a; source .env; set +a
+PYTHONPATH=src python scripts/isolated_recovery_drill.py \
+  ./backups/obelisk-memory-<timestamp>.dump.enc \
+  --report ./evidence/isolated-semantic-recovery.json
+```
+
+The final evidence refers to durable sibling `*.restore-drill.json` and
+`*.restored-reindex-probe.json` inputs. Use `--keep` only for failure forensics.
+
 ## Scheduled backup job
 
 For unattended operations, run the scheduler-ready backup wrapper from cron,
