@@ -45,7 +45,9 @@ class MemoryProposalRepository(Protocol):
         """List recent proposals for operator or curator review."""
         ...
 
-    def save_proposal_review(self, proposal: MemoryProposal) -> MemoryProposal:
+    def save_proposal_review(
+        self, proposal: MemoryProposal, audit_event: AuditEvent | None = None
+    ) -> MemoryProposal:
         """Persist a proposal review/status update."""
         ...
 
@@ -372,7 +374,11 @@ class MemoryProposalService:
             )
         )
 
-    def reject(self, command: ReviewMemoryProposalCommand) -> ReviewMemoryProposalResult:
+    def reject(
+        self,
+        command: ReviewMemoryProposalCommand,
+        audit_event: AuditEvent | None = None,
+    ) -> ReviewMemoryProposalResult:
         """Reject a proposal without creating durable memory."""
         proposal = self._load_for_review(command)
         if proposal.status == MemoryProposalStatus.ACCEPTED:
@@ -383,7 +389,13 @@ class MemoryProposalService:
             reviewer=command.reviewer,
             reason=command.reason,
         )
-        stored = self._repository.save_proposal_review(reviewed)
+        if audit_event is not None:
+            audit_event = replace(
+                audit_event,
+                workspace_id=proposal.workspace_id,
+                resource_id=str(proposal.id),
+            )
+        stored = self._repository.save_proposal_review(reviewed, audit_event=audit_event)
         return ReviewMemoryProposalResult(proposal=stored)
 
     def _load_for_review(self, command: ReviewMemoryProposalCommand) -> MemoryProposal:
