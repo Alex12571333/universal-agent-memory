@@ -203,6 +203,12 @@ class PostgresMemoryLedger:
         self._pool: Any | None = None
         self._text_encryption_mode = os.getenv("UAM_MEMORY_TEXT_ENCRYPTION", "off").lower()
         self._text_encryption_key = read_secret_env("UAM_MEMORY_TEXT_ENCRYPTION_KEY") or ""
+        self._protected_search_index_mode = os.getenv(
+            "UAM_PROTECTED_SEARCH_INDEX", "off"
+        ).strip().lower()
+        self._protected_search_index_key = (
+            read_secret_env("UAM_PROTECTED_SEARCH_INDEX_KEY") or ""
+        )
         self._text_encryption_scopes = _parse_text_encryption_scopes(
             os.getenv("UAM_MEMORY_TEXT_ENCRYPTION_SCOPES", "all")
         )
@@ -216,6 +222,19 @@ class PostgresMemoryLedger:
                 "UAM_MEMORY_TEXT_ENCRYPTION_KEY is required when "
                 "UAM_MEMORY_TEXT_ENCRYPTION=pgcrypto"
             )
+        if self._protected_search_index_mode not in {"off", "hmac-v1"}:
+            raise ValueError("UAM_PROTECTED_SEARCH_INDEX must be off or hmac-v1")
+        if self._protected_search_index_mode == "hmac-v1":
+            if not self._protected_search_index_key:
+                raise ValueError(
+                    "UAM_PROTECTED_SEARCH_INDEX_KEY is required when "
+                    "UAM_PROTECTED_SEARCH_INDEX=hmac-v1"
+                )
+            if self._protected_search_index_key == self._text_encryption_key:
+                raise ValueError(
+                    "UAM_PROTECTED_SEARCH_INDEX_KEY must differ from "
+                    "UAM_MEMORY_TEXT_ENCRYPTION_KEY"
+                )
 
     def connect(self) -> None:
         """Check that PostgreSQL is reachable and the schema is installed."""
