@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import importlib.util
 import os
+import sys
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
+from pathlib import Path
+from types import ModuleType
 from unittest.mock import patch
 from uuid import uuid4
 
@@ -48,6 +52,23 @@ from memory_plane.services.proposals import (
     SubmitMemoryProposalCommand,
 )
 from memory_plane.services.retention import RetentionService
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+def _load_script(name: str) -> ModuleType:
+    spec = importlib.util.spec_from_file_location(name, ROOT / "scripts" / f"{name}.py")
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+protected_search_backfill = _load_script("backfill_protected_search_tokens")
+BackfillCursor = protected_search_backfill.BackfillCursor
+backfill_workspace = protected_search_backfill.backfill_workspace
 
 DATABASE_URL = os.getenv("UAM_TEST_DATABASE_URL")
 if DATABASE_URL:
@@ -189,6 +210,109 @@ class PostgresMemoryLedgerTest(unittest.TestCase):
                     """,
                     (self.tenant, other_workspace, item.id, 3, b"x" * 32),
                 )
+
+    def test_protected_search_backfill_resumes_under_runtime_role(self) -> None:
+        first = self._item("legacy blind index backfill alpha")
+        second = self._item("legacy blind index backfill beta")
+        self.store.retain(first, self._event(first), "legacy-backfill-first")
+        self.store.retain(second, self._event(second), "legacy-backfill-second")
+        key = "integration-backfill-index-" + "a" * 40
+        with patch.dict(
+            os.environ,
+            {
+                "UAM_PROTECTED_SEARCH_INDEX": "hmac-v1",
+                "UAM_PROTECTED_SEARCH_INDEX_KEY": key,
+                "UAM_PROTECTED_SEARCH_INDEX_KEY_VERSION": "5",
+            },
+            clear=False,
+        ):
+            protected = PostgresMemoryLedger(DATABASE_URL or "")
+            first_run = backfill_workspace(
+                protected,
+                tenant_id=self.tenant,
+                workspace_id=self.workspace,
+                batch_size=1,
+                max_batches=1,
+            )
+            second_run = backfill_workspace(
+                protected,
+                tenant_id=self.tenant,
+                workspace_id=self.workspace,
+                cursor=BackfillCursor(**first_run["cursor"]),
+                batch_size=1,
+                max_batches=1,
+            )
+            completion_run = backfill_workspace(
+                protected,
+                tenant_id=self.tenant,
+                workspace_id=self.workspace,
+                cursor=BackfillCursor(**second_run["cursor"]),
+                batch_size=1,
+                max_batches=1,
+            )
+
+        self.assertEqual(1, first_run["rows_scanned"])
+        self.assertEqual(1, second_run["rows_scanned"])
+        self.assertTrue(completion_run["complete"])
+        self.assertEqual(0, completion_run["rows_scanned"])
+        with self.store._connection() as connection:
+            self.store._set_tenant(connection, self.tenant)
+            count = connection.execute(
+                """
+                select count(*) as count
+                from memory_search_tokens
+                where workspace_id = %s and key_version = 5
+                """,
+                (self.workspace,),
+            ).fetchone()["count"]
+        self.assertGreater(count, 0)
+
+    def test_pgcrypto_search_uses_blind_index_only_after_complete_backfill(self) -> None:
+        key = "integration-encrypted-search-" + "a" * 40
+        item = self._item("encrypted recall marker nebula-4821")
+        tokenless = self._item("🤖")
+        with patch.dict(
+            os.environ,
+            {
+                "UAM_MEMORY_TEXT_ENCRYPTION": "pgcrypto",
+                "UAM_MEMORY_TEXT_ENCRYPTION_KEY": key,
+                "UAM_PROTECTED_SEARCH_INDEX": "off",
+            },
+            clear=False,
+        ):
+            encrypted = PostgresMemoryLedger(DATABASE_URL or "")
+            encrypted.retain(item, self._event(item), "encrypted-protected-reader")
+            encrypted.retain(tokenless, self._event(tokenless), "encrypted-tokenless-marker")
+
+        with patch.dict(
+            os.environ,
+            {
+                "UAM_MEMORY_TEXT_ENCRYPTION": "pgcrypto",
+                "UAM_MEMORY_TEXT_ENCRYPTION_KEY": key,
+                "UAM_PROTECTED_SEARCH_INDEX": "hmac-v1",
+                "UAM_PROTECTED_SEARCH_INDEX_KEY": "blind-index-reader-" + "b" * 40,
+                "UAM_PROTECTED_SEARCH_INDEX_KEY_VERSION": "6",
+            },
+            clear=False,
+        ):
+            protected = PostgresMemoryLedger(DATABASE_URL or "")
+            query = RecallQuery(
+                tenant_id=self.tenant,
+                workspace_id=self.workspace,
+                text="nebula 4821",
+                top_k=3,
+            )
+            self.assertEqual(item.id, protected.search(query)[0].item.id)
+            backfill_workspace(
+                protected,
+                tenant_id=self.tenant,
+                workspace_id=self.workspace,
+                batch_size=10,
+            )
+            with patch.object(protected, "list_for_workspace", side_effect=AssertionError):
+                indexed = protected.search(query)
+
+        self.assertEqual(item.id, indexed[0].item.id)
 
     def test_pgcrypto_protects_noncanonical_memory_fields_and_round_trips(self) -> None:
         """Operational evidence must not leave quotes, summaries or state in plaintext."""

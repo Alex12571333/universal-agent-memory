@@ -328,9 +328,11 @@ visibility scopes need row-level ciphertext.
 `hmac-v1`, retain and supersede atomically dual-write HMAC-SHA-256 token
 digests using a key distinct from the pgcrypto key. It is a blind index: it
 leaks equality/frequency information and is not prefix, fuzzy, or semantic
-search. The current recall path remains correctness-first until an indexed
-reader, restart-safe backfill, rotation drill and query-plan evidence are
-released; do not enable indexed-only behavior merely because token rows exist.
+search. Recall uses the index only after it can prove every non-deleted row in
+the workspace has its per-document coverage marker for the active key version;
+otherwise it keeps the correctness-first authorized fallback. Complete the
+restart-safe backfill and preserve its report before expecting index-assisted
+recall. Key rotation and query-plan evidence remain separate release gates.
 
 ## Agent integration
 

@@ -215,11 +215,13 @@ static readiness script are green.
    candidates in SQL before decoding them in Python. The pgcrypto mode keeps a
    correctness-first post-decryption fallback because ciphertext cannot use the
    normal FTS index. The opt-in HMAC blind-index schema is now migrated and
-   canonical retains/supersedes dual-write scoped digests atomically, but its
-   reader, restart-safe backfill, key-rotation execution and query-plan evidence
-   remain required before it can serve recall. Production pagination for several
-   list/export paths also remains required. [RFC 0013](rfcs/0013-pgcrypto-protected-lexical-index.md)
-   defines the leakage boundary and release gates.
+   canonical retains/supersedes dual-write scoped digests atomically. A
+   restart-safe backfill and reader are now available; the reader proves a
+   marker for every non-deleted workspace item and otherwise preserves the
+   fallback. Key-rotation execution, query-plan evidence and production
+   pagination for several list/export paths remain required.
+   [RFC 0013](rfcs/0013-pgcrypto-protected-lexical-index.md) defines the
+   leakage boundary and release gates.
 7. `memory.retain` and `memory.supersede` audit records are now committed in
    the same PostgreSQL transaction as their canonical item, idempotency key and
    outbox event. Failure injection proves an audit insert error rolls back the

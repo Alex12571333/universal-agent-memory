@@ -41,7 +41,11 @@ from memory_plane.domain.proposal import (
     MemoryProposalStatus,
     MemoryProposalTarget,
 )
-from memory_plane.services.protected_search import protected_tokens
+from memory_plane.services.protected_search import (
+    protected_document_marker,
+    protected_index_digests,
+    protected_tokens,
+)
 
 
 def _scope_idempotency_key(workspace_id: UUID, key: str | None) -> str | None:
@@ -1638,15 +1642,16 @@ class PostgresMemoryLedger:
         """Provide a durable lexical fallback until the optional vector index is enabled."""
         query_terms = self._terms(query.text)
         candidates: list[Candidate] = []
-        items = (
-            self._search_unencrypted_workspace(query)
-            if not self._text_encryption_enabled
-            else self.list_for_workspace(
+        if not self._text_encryption_enabled:
+            items = self._search_unencrypted_workspace(query)
+        elif self._protected_search_index_is_complete(query):
+            items = self._search_protected_workspace(query)
+        else:
+            items = self.list_for_workspace(
                 query.tenant_id,
                 query.workspace_id,
                 layers=query.layers,
             )
-        )
         superseded_ids = {
             item.supersedes_id for item in items if item.supersedes_id is not None
         }
@@ -1677,6 +1682,110 @@ class PostgresMemoryLedger:
                 )
         candidates.sort(key=lambda row: (row.lexical, row.item.created_at), reverse=True)
         return tuple(candidates[: query.top_k * 3])
+
+    def _protected_search_index_is_complete(self, query: RecallQuery) -> bool:
+        """Use token index only after every active row proves index coverage."""
+        if self._protected_search_index_mode != "hmac-v1":
+            return False
+        if not protected_tokens(query.text, self._protected_search_index_key):
+            return False
+        marker = protected_document_marker(self._protected_search_index_key)
+        with self._connection() as connection:
+            self._set_tenant(connection, query.tenant_id)
+            row = connection.execute(
+                """
+                select not exists (
+                  select 1
+                  from memory_items m
+                  where m.workspace_id = %s
+                    and m.deleted_at is null
+                    and not exists (
+                      select 1
+                      from memory_search_tokens t
+                      where t.tenant_id = m.tenant_id
+                        and t.workspace_id = m.workspace_id
+                        and t.memory_item_id = m.id
+                        and t.key_version = %s
+                        and t.digest = %s
+                    )
+                ) as complete
+                """,
+                (query.workspace_id, self._protected_search_index_key_version, marker),
+            ).fetchone()
+        return bool(row and row["complete"])
+
+    def _search_protected_workspace(self, query: RecallQuery) -> tuple[MemoryItem, ...]:
+        """Bound pgcrypto recall through HMAC terms after coverage verification."""
+        digests = list(protected_tokens(query.text, self._protected_search_index_key))
+        if not digests:
+            return ()
+        with self._connection() as connection:
+            self._set_tenant(connection, query.tenant_id)
+            params: list[Any] = [query.workspace_id]
+            layer_filter = ""
+            if query.layers:
+                layer_filter = "and m.layer = any(%s)"
+                params.append([layer.value for layer in query.layers])
+            thread_filter = "and m.scope <> 'thread'"
+            if query.thread_id is not None:
+                thread_filter = "and (m.scope <> 'thread' or m.thread_id = %s)"
+                params.append(query.thread_id)
+            private_filter = "and m.scope <> 'private'"
+            if query.agent_id is not None:
+                private_filter = "and (m.scope <> 'private' or m.agent_id = %s)"
+                params.append(query.agent_id)
+            label_filter = ""
+            if query.labels:
+                label_filter = "and m.labels @> %s"
+                params.append(list(query.labels))
+            validity_filter = ""
+            if query.valid_at is not None:
+                validity_filter = (
+                    "and (m.valid_from is null or m.valid_from <= %s) "
+                    "and (m.valid_to is null or m.valid_to >= %s)"
+                )
+                params.extend((query.valid_at, query.valid_at))
+            params.extend(
+                (
+                    self._protected_search_index_key_version,
+                    digests,
+                    max(1, query.top_k * 3),
+                )
+            )
+            rows = connection.execute(
+                f"""
+                select {_ITEM_COLUMNS}
+                from memory_items m
+                join memory_provenance p on p.memory_item_id = m.id
+                where m.workspace_id = %s
+                  and m.deleted_at is null
+                  and m.status not in ('rejected', 'archived')
+                  and not exists (
+                    select 1 from memory_items child
+                    where child.supersedes_id = m.id and child.deleted_at is null
+                  )
+                  {layer_filter}
+                  {thread_filter}
+                  {private_filter}
+                  {label_filter}
+                  {validity_filter}
+                  and (
+                    m.layer in ('core', 'working')
+                    or exists (
+                      select 1 from memory_search_tokens t
+                      where t.tenant_id = m.tenant_id
+                        and t.workspace_id = m.workspace_id
+                        and t.memory_item_id = m.id
+                        and t.key_version = %s
+                        and t.digest = any(%s)
+                    )
+                  )
+                order by m.created_at desc, m.id desc
+                limit %s
+                """,
+                params,
+            ).fetchall()
+        return tuple(self._to_item(row) for row in rows)
 
     def _search_unencrypted_workspace(self, query: RecallQuery) -> tuple[MemoryItem, ...]:
         """Use PostgreSQL FTS to bound plaintext lexical candidates before decoding.
@@ -2243,7 +2352,7 @@ class PostgresMemoryLedger:
         """Dual-write blind-index terms in the canonical item transaction."""
         if self._protected_search_index_mode != "hmac-v1":
             return
-        for digest in protected_tokens(item.text, self._protected_search_index_key):
+        for digest in protected_index_digests(item.text, self._protected_search_index_key):
             connection.execute(
                 """
                 insert into memory_search_tokens (

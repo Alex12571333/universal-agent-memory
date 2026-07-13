@@ -43,9 +43,33 @@ workspace scan, so rollout cannot cause recall loss.
 - `hmac-v1` dual-writes tokens during canonical retention and supersession in
   the same PostgreSQL transaction. Startup requires a separate key and a
   positive `UAM_PROTECTED_SEARCH_INDEX_KEY_VERSION`.
-- The indexed recall reader, batch backfill, rotation executor and query-plan
-  release evidence are deliberately not implemented yet. Existing recall keeps
-  its authorized fallback, so enabling dual-write cannot reduce recall.
+- The reader uses HMAC terms only after a scoped SQL coverage check sees a
+  per-document marker for every non-deleted item at the active key version.
+  Missing, partial or tokenless backfill always retains the authorized fallback;
+  no configuration flag can force indexed-only recall.
+- Batch backfill is restart-safe. Rotation execution and query-plan release
+  evidence are still outstanding gates.
+
+### Backfill operation
+
+Run one tenant/workspace at a time with the same restricted runtime role used
+by the memory server. The state file contains only an `(created_at, item_id)`
+cursor and is atomically updated after each committed batch; it contains no
+canonical text or token digests.
+
+```bash
+UAM_PROTECTED_SEARCH_INDEX=hmac-v1 \
+UAM_PROTECTED_SEARCH_INDEX_KEY_FILE=/run/secrets/protected_search_index_key \
+PYTHONPATH=src python scripts/backfill_protected_search_tokens.py \
+  --tenant-id <tenant-uuid> --workspace-id <workspace-uuid> \
+  --state-file ./ops/protected-search-<workspace-uuid>.state.json \
+  --report ./ops/protected-search-<workspace-uuid>.report.json \
+  --batch-size 500
+```
+
+Do not treat a backfill report as a rotation approval. Retain the final report,
+verify `complete: true`, perform a scoped count/restart drill, then capture the
+reader's separate query-plan evidence before relying on the capacity benefit.
 
 ## Rollback
 
