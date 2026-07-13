@@ -11,8 +11,6 @@ import subprocess
 import sys
 import tempfile
 import time
-import urllib.error
-import urllib.request
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -21,6 +19,7 @@ from backup_encryption import BackupEncryptionError, encrypt_file, key_fingerpri
 
 from memory_plane.config.database import read_database_dsn
 from memory_plane.config.secrets import read_secret_env
+from memory_plane.services.alerting import send_alert
 
 ROOT = Path(__file__).resolve().parents[1]
 BUNDLE_FORMAT = "obelisk-backup-bundle-v1"
@@ -63,6 +62,11 @@ def main() -> int:
         "--alert-webhook",
         default=read_secret_env("UAM_BACKUP_ALERT_WEBHOOK"),
         help="Optional HTTP webhook called when the job fails",
+    )
+    parser.add_argument(
+        "--alert-command",
+        default=os.getenv("UAM_ALERT_COMMAND", ""),
+        help="Optional local command receiving the JSON failure report on stdin",
     )
     parser.add_argument(
         "--encryption-key",
@@ -241,6 +245,8 @@ def main() -> int:
     )
     if not success and args.alert_webhook:
         _send_alert(args.alert_webhook, report)
+    if not success and args.alert_command:
+        send_alert(report, command=args.alert_command, user_agent="obelisk-memory-scheduled-backup")
     print(f"scheduled_backup={'PASS' if success else 'FAIL'} report={report_path}")
     return 0 if success else 1
 
@@ -462,20 +468,7 @@ def _skipped_step(name: str, reason: str) -> dict[str, Any]:
 
 def _send_alert(webhook: str, report: dict[str, Any]) -> None:
     """Send a best-effort JSON alert for failed scheduled backup jobs."""
-    payload = json.dumps(report, ensure_ascii=False).encode("utf-8")
-    request = urllib.request.Request(
-        webhook,
-        data=payload,
-        headers={
-            "Content-Type": "application/json",
-            "User-Agent": "obelisk-memory-scheduled-backup",
-        },
-        method="POST",
-    )
-    try:
-        urllib.request.urlopen(request, timeout=10).close()
-    except urllib.error.URLError as exc:
-        print(f"backup_alert=FAIL reason={exc}", file=sys.stderr)
+    send_alert(report, webhook=webhook, user_agent="obelisk-memory-scheduled-backup")
 
 
 if __name__ == "__main__":

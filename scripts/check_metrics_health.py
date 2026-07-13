@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from memory_plane.config.secrets import read_secret_env
+from memory_plane.services.alerting import send_alert
 
 DEFAULT_URL = "http://localhost:6798/metrics"
 
@@ -47,6 +48,7 @@ def main() -> int:
     )
     parser.add_argument("--report", default=os.getenv("UAM_METRICS_REPORT"))
     parser.add_argument("--alert-webhook", default=read_secret_env("UAM_METRICS_ALERT_WEBHOOK"))
+    parser.add_argument("--alert-command", default=os.getenv("UAM_ALERT_COMMAND", ""))
     parser.add_argument("--max-outbox-pending", type=float, default=100)
     parser.add_argument("--max-outbox-dead-letter", type=float, default=0)
     parser.add_argument("--max-outbox-lag-seconds", type=float, default=300)
@@ -109,6 +111,8 @@ def main() -> int:
         )
     if not ok and args.alert_webhook:
         _send_alert(args.alert_webhook, report)
+    if not ok and args.alert_command:
+        send_alert(report, command=args.alert_command, user_agent="obelisk-memory-metrics-health")
     print(json.dumps(report, ensure_ascii=False, sort_keys=True))
     return 0 if ok else 1
 
@@ -193,20 +197,8 @@ def _read_metrics(metrics_file: str | None, metrics_url: str, api_key: str | Non
 
 
 def _send_alert(webhook: str, report: dict[str, Any]) -> None:
-    payload = json.dumps(report, ensure_ascii=False).encode("utf-8")
-    request = urllib.request.Request(
-        webhook,
-        data=payload,
-        headers={
-            "Content-Type": "application/json",
-            "User-Agent": "obelisk-memory-metrics-health",
-        },
-        method="POST",
-    )
-    try:
-        urllib.request.urlopen(request, timeout=10).close()
-    except urllib.error.URLError as exc:
-        print(f"metrics_alert=FAIL reason={exc}", file=sys.stderr)
+    """Compatibility wrapper for the webhook transport."""
+    send_alert(report, webhook=webhook, user_agent="obelisk-memory-metrics-health")
 
 
 if __name__ == "__main__":
