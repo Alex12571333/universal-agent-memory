@@ -98,6 +98,11 @@ The desired settings endpoint can persist JSON when
 `UAM_MODEL_SETTINGS_PATH=/path/to/settings.json` is set. Without that variable,
 settings are kept in memory for the current server process.
 
+The supplied local `docker-compose.yml` sets this path to a dedicated named
+volume by default. A desired provider/model configuration therefore survives a
+`memory-server` restart. The file is owned by the unprivileged server user and
+written with mode `0600`; it contains no provider API key.
+
 Provider secrets are never written to this JSON file. A key entered in the UI
 is held only by the current server process so the endpoint can be tested; after
 a restart it must come from `UAM_EMBEDDING_API_KEY_FILE` (or another deployment
