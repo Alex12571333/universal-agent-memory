@@ -48,6 +48,7 @@ from memory_plane.contracts.dto import (
     RetainCommand,
     SupersedeMemoryCommand,
 )
+from memory_plane.domain.audit import AuditEvent
 from memory_plane.domain.checkpoint import Checkpoint, StaleRevisionError
 from memory_plane.domain.conflict import (
     ConflictCase,
@@ -1715,6 +1716,16 @@ def create_app(
     @app.post("/v1/memory/retain", status_code=201)
     def retain(body: RetainBody, request: Request) -> dict[str, Any]:
         """Append memory and return its canonical identity and outbox status."""
+        principal = _principal_from_request(request)
+        audit_event = AuditEvent(
+            tenant_id=body.tenant_id,
+            workspace_id=body.workspace_id,
+            action="memory.retain",
+            actor=principal.name,
+            actor_type=_audit_actor_type(principal),
+            resource_type="memory_item",
+            metadata={"layer": body.layer.value, "status": body.status.value, "source_kind": body.source_kind},
+        )
         try:
             result = services.retention.retain(
                 RetainCommand(
@@ -1732,24 +1743,11 @@ def create_app(
                     confidence=body.confidence,
                     status=body.status,
                     idempotency_key=body.idempotency_key,
-                )
+                ),
+                audit_event=audit_event,
             )
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
-        record_audit(
-            request,
-            tenant_id=body.tenant_id,
-            workspace_id=body.workspace_id,
-            action="memory.retain",
-            resource_type="memory_item",
-            resource_id=str(result.item.id),
-            metadata={
-                "created": result.created,
-                "layer": result.item.layer.value,
-                "status": result.item.status.value,
-                "source_kind": body.source_kind,
-            },
-        )
         return _memory_write_response(result)
 
     @app.post("/v1/conversations/turns", status_code=201)

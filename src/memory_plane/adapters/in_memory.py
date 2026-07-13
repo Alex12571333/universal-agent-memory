@@ -152,12 +152,15 @@ class InMemoryMemoryStore:
         item: MemoryItem,
         event: IntegrationEvent,
         idempotency_key: str | None = None,
+        audit_event: AuditEvent | None = None,
     ) -> tuple[MemoryItem, bool]:
         """Atomically append canonical memory and its outbox event."""
         with self._lock:
             stored, created = self.append(item, idempotency_key)
             if created:
                 self.publish(event)
+                if audit_event is not None:
+                    self.append_audit_event(audit_event)
             return stored, created
 
     def supersede_if_current(
