@@ -74,3 +74,19 @@ temporary restored ledger indexed and verified 75 points with
 `jina-embeddings-v4` at dimension `2048`; `qdrant_hybrid` returned the
 restored candidate.  The backup, audit bundle and detailed reports remain
 local operational artifacts and are not committed to the public repository.
+
+## Installed scheduler verification — 2026-07-13
+
+The installed macOS `launchd` wrappers were run manually after the recovery
+fix, using their actual private operator environment rather than a hand-built
+shell command. `backup.zsh` completed its encrypted backup, restore drill,
+audit export and signed-bundle path with `ok: true`. The following
+`semantic-recovery.zsh` selected that fresh backup and completed the isolated
+recovery evidence with `ok: true`.
+
+The restored-ledger probe indexed and verified 78 points, reported no
+canonical vault-health errors, and found the test candidate through
+`qdrant_hybrid`. The daily metrics wrapper was also run immediately after the
+drill: outbox pending, dead-letter, lag and in-flight counters were all zero.
+Reports remain in the mode-restricted local evidence directory; this document
+contains only their non-secret outcome.
