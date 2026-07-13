@@ -117,6 +117,7 @@ def main() -> int:
     audit_root = Path(args.audit_dir)
     report_path = Path(args.report)
     backup_path = backup_dir / f"obelisk-memory-{timestamp}.dump.enc"
+    restore_report_path = backup_dir / f"obelisk-memory-{timestamp}.restore.json"
     audit_path = audit_root / timestamp
     bundle_manifest_path = backup_dir / f"obelisk-memory-{timestamp}.bundle.json"
     started = time.time()
@@ -155,6 +156,8 @@ def main() -> int:
                     sys.executable,
                     str(ROOT / "scripts" / "restore_drill.py"),
                     str(backup_path),
+                    "--report",
+                    str(restore_report_path),
                     "--source-database-url",
                     args.database_url,
                 ],
@@ -182,6 +185,7 @@ def main() -> int:
             success &= _write_bundle_manifest_step(
                 steps,
                 backup_path=backup_path,
+                restore_report_path=(None if args.skip_restore_drill else restore_report_path),
                 audit_path=None if args.skip_audit_export else audit_path,
                 target=bundle_manifest_path,
                 timestamp=timestamp,
@@ -216,6 +220,11 @@ def main() -> int:
         "finished_at": datetime.now(UTC).isoformat(),
         "duration_seconds": round(time.time() - started, 3),
         "backup_path": str(backup_path),
+        "restore_drill_report_path": (
+            str(restore_report_path)
+            if not args.skip_restore_drill and restore_report_path.is_file()
+            else None
+        ),
         "backup_encryption": {
             "algorithm": "AES-256-GCM",
             "key_fingerprint": key_fingerprint(encryption_key),
@@ -291,6 +300,7 @@ def _write_bundle_manifest_step(
     steps: list[dict[str, Any]],
     *,
     backup_path: Path,
+    restore_report_path: Path | None,
     audit_path: Path | None,
     target: Path,
     timestamp: str,
@@ -302,6 +312,10 @@ def _write_bundle_manifest_step(
     started = time.time()
     try:
         entries = [_bundle_file_entry(backup_path)]
+        if restore_report_path is not None:
+            if not restore_report_path.is_file():
+                raise FileNotFoundError(f"restore drill report not found: {restore_report_path}")
+            entries.append(_bundle_file_entry(restore_report_path))
         if audit_path is not None:
             audit_manifest = audit_path / "manifest.json"
             if not audit_manifest.is_file():

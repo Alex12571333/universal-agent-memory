@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import secrets
 import shutil
 import subprocess
 import tempfile
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 
 from backup_encryption import BackupEncryptionError, decrypt_file, parse_key
@@ -48,6 +50,8 @@ RLS_TABLES = (
     "audit_events",
     "api_key_registry",
 )
+
+REPORT_FORMAT = "obelisk-restore-drill-v1"
 
 
 def main() -> int:
@@ -89,6 +93,11 @@ def main() -> int:
         "--source-docker-service",
         default=os.getenv("UAM_BACKUP_DOCKER_SERVICE", "postgres"),
         help="Compose PostgreSQL service used for source parity when host psql is unavailable",
+    )
+    parser.add_argument(
+        "--report",
+        type=Path,
+        help="Optional JSON report path for the successful isolated restore drill",
     )
     args = parser.parse_args()
 
@@ -160,6 +169,10 @@ def main() -> int:
         )
         _verify_schema(container, dsn)
         _verify_rls(container, dsn)
+        checks = [
+            {"name": "required-schema", "ok": True},
+            {"name": "forced-tenant-rls", "ok": True},
+        ]
         if args.source_database_url:
             _verify_row_parity(
                 args.source_database_url,
@@ -167,6 +180,9 @@ def main() -> int:
                 dsn,
                 source_docker_service=args.source_docker_service,
             )
+            checks.append({"name": "source-row-parity", "ok": True})
+        if args.report:
+            _write_report(args.report, checks)
         print(f"restore_drill=PASS container={container} volume={volume}")
         return 0
     finally:
@@ -376,6 +392,21 @@ def _parse_counts(output: str) -> dict[str, int]:
         if (parts := line.strip().split("|", 1)) and len(parts) == 2
         for table, count in [parts]
     }
+
+
+def _write_report(path: Path, checks: list[dict[str, object]]) -> None:
+    """Persist non-secret success evidence that can be bound into a backup bundle."""
+    payload = {
+        "format": REPORT_FORMAT,
+        "ok": all(check.get("ok") is True for check in checks),
+        "completed_at": datetime.now(UTC).isoformat(),
+        "checks": checks,
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+    )
 
 
 def _run(

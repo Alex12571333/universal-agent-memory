@@ -773,6 +773,7 @@ def test_restore_drill_uses_temporary_docker_target(
 ) -> None:
     backup_file = tmp_path / "obelisk.dump"
     backup_file.write_bytes(b"PGDMP")
+    report_path = tmp_path / "restore-drill.json"
     commands: list[list[str]] = []
     tokens = iter(("abcd1234", "passwordseed"))
 
@@ -791,7 +792,10 @@ def test_restore_drill_uses_temporary_docker_target(
 
     monkeypatch.setattr(restore_drill.subprocess, "run", fake_run)
     monkeypatch.setattr(restore_drill.secrets, "token_hex", lambda _: next(tokens))
-    monkeypatch.setattr("sys.argv", ["restore_drill.py", str(backup_file)])
+    monkeypatch.setattr(
+        "sys.argv",
+        ["restore_drill.py", str(backup_file), "--report", str(report_path)],
+    )
 
     assert restore_drill.main() == 0
 
@@ -804,6 +808,13 @@ def test_restore_drill_uses_temporary_docker_target(
     assert any(command[:4] == ["docker", "exec", container, "psql"] for command in commands)
     assert commands[-2] == ["docker", "rm", "-f", container]
     assert commands[-1] == ["docker", "volume", "rm", "-f", volume]
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["format"] == "obelisk-restore-drill-v1"
+    assert report["ok"] is True
+    assert report["checks"] == [
+        {"name": "required-schema", "ok": True},
+        {"name": "forced-tenant-rls", "ok": True},
+    ]
 
 
 def test_restore_drill_rejects_missing_tenant_isolation(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1385,6 +1396,18 @@ def test_scheduled_backup_runs_backup_drill_audit_and_writes_report(
         capture_output: bool = True,
     ) -> subprocess.CompletedProcess[str]:
         commands.append(command)
+        if "restore_drill.py" in command[1]:
+            restore_report = Path(command[command.index("--report") + 1])
+            restore_report.write_text(
+                json.dumps(
+                    {
+                        "format": "obelisk-restore-drill-v1",
+                        "ok": True,
+                        "checks": [{"name": "required-schema", "ok": True}],
+                    }
+                ),
+                encoding="utf-8",
+            )
         if "export_audit.py" in command[1]:
             audit_dir = Path(command[2])
             audit_dir.mkdir(parents=True, exist_ok=True)
@@ -1426,6 +1449,9 @@ def test_scheduled_backup_runs_backup_drill_audit_and_writes_report(
     names = [step["name"] for step in payload["steps"]]
     assert payload["ok"] is True
     assert payload["backup_path"].endswith("obelisk-memory-20260710T120000Z.dump.enc")
+    assert payload["restore_drill_report_path"].endswith(
+        "obelisk-memory-20260710T120000Z.restore.json"
+    )
     assert payload["backup_encryption"]["algorithm"] == "AES-256-GCM"
     assert names == [
         "backup",
@@ -1438,7 +1464,7 @@ def test_scheduled_backup_runs_backup_drill_audit_and_writes_report(
     bundle = json.loads(Path(payload["bundle_manifest_path"]).read_text(encoding="utf-8"))
     assert bundle["format"] == "obelisk-backup-bundle-v1"
     assert bundle["signature"] is None
-    assert len(bundle["files"]) == 2
+    assert len(bundle["files"]) == 3
     assert "backup.py" in commands[0][1]
     assert "restore_drill.py" in commands[1][1]
     assert "export_audit.py" in commands[2][1]
@@ -1454,6 +1480,18 @@ def test_scheduled_backup_signs_encrypted_bundle_manifest(
         text: bool = True,
         capture_output: bool = True,
     ) -> subprocess.CompletedProcess[str]:
+        if "restore_drill.py" in command[1]:
+            restore_report = Path(command[command.index("--report") + 1])
+            restore_report.write_text(
+                json.dumps(
+                    {
+                        "format": "obelisk-restore-drill-v1",
+                        "ok": True,
+                        "checks": [{"name": "required-schema", "ok": True}],
+                    }
+                ),
+                encoding="utf-8",
+            )
         if "export_audit.py" in command[1]:
             audit_dir = Path(command[2])
             audit_dir.mkdir(parents=True, exist_ok=True)
