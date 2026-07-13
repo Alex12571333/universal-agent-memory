@@ -241,8 +241,11 @@ static readiness script are green.
    failure leaves no transcript. Graph-edge creation now commits edge and
    `graph.edge.create` audit atomically; audit failure leaves no edge. Denied
    requests, reflect,
-   reindex and checkpoints still need
-   complete status-aware and, where applicable, transactional audit coverage.
+   reindex still needs complete status-aware and transactional audit coverage.
+   Checkpoint save/update now append actor-bound audit events in the same
+   PostgreSQL transaction as their CAS revision; failure injection proves an
+   audit error leaves no checkpoint revision. Checkpoint compaction audit
+   coverage remains outstanding.
 8. The application role is now granted `SELECT/INSERT` by default, with only
    explicit operational mutations (outbox, idempotency, staging, proposal,
    agent/thread, review and checkpoint retention) re-granted. It cannot update

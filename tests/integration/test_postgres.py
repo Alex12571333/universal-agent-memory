@@ -863,6 +863,46 @@ class PostgresMemoryLedgerTest(unittest.TestCase):
 
         self.assertEqual(["saved", "stale"], sorted(results))
 
+    def test_checkpoint_audit_failure_rolls_back_checkpoint_revision(self) -> None:
+        agent_id = uuid4()
+        thread_id = uuid4()
+        self.store.provision_agent_thread(
+            AgentIdentity(
+                id=agent_id,
+                tenant_id=self.tenant,
+                workspace_id=self.workspace,
+                name="Checkpoint audit agent",
+                role="test",
+            ),
+            thread_id=thread_id,
+        )
+        checkpoint = Checkpoint(
+            tenant_id=self.tenant,
+            workspace_id=self.workspace,
+            thread_id=thread_id,
+            revision=1,
+            state={"checkpoint": "must roll back"},
+        )
+        audit = AuditEvent(
+            tenant_id=self.tenant,
+            workspace_id=self.workspace,
+            action="checkpoint.save",
+            actor="integration",
+            actor_type="system",
+            resource_type="checkpoint",
+        )
+        checkpoint_store = PostgresCheckpointStore(self.store)
+
+        with patch.object(
+            self.store,
+            "_insert_audit_event",
+            side_effect=RuntimeError("audit unavailable"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "audit unavailable"):
+                checkpoint_store.save_if_head(checkpoint, 0, audit_event=audit)
+
+        self.assertIsNone(checkpoint_store.get_head(self.tenant, thread_id))
+
     def test_conflict_override_atomically_controls_canonical_recall(self) -> None:
         selected = self._item("Release Alpha is July 15.")
         newer = self._item("Release Alpha is July 16.")
