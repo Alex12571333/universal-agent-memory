@@ -307,6 +307,23 @@ Production deployments should run this on a fixed schedule and ship
 outside the Docker host. The repository provides the runner and alert hook; the
 actual cron/systemd/orchestrator schedule is an environment-level control.
 
+After at least two full scheduled runs, validate the retained recovery history
+before treating the schedule as release evidence. This verifies every selected
+bundle's encrypted-dump hash, HMAC signature, successful restore drill and
+audit manifest without decrypting or printing memory data:
+
+```bash
+PYTHONPATH=src:scripts python scripts/verify_backup_history.py \
+  --backup-dir ./backups \
+  --min-runs 2 \
+  --report ./backups/backup-history-report.json \
+  --require-signature
+```
+
+When a new recorded schedule epoch starts, add
+`--since YYYYmmddTHHMMSSZ`; preserve the resulting report with the artifacts.
+Do not use the boundary to exclude a failed run from that same epoch.
+
 For a destructive production restore, verify the signed bundle before
 `pg_restore`; the restore command refuses to proceed if the selected encrypted
 dump is not the exact signed artifact:

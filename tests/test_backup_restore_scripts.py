@@ -80,6 +80,7 @@ def test_maintenance_retention_never_selects_pending_outbox() -> None:
     assert count == 7
     assert "published_at is not null or dead_lettered_at is not null" in connection.calls[0][0]
 scheduled_backup = _load_script("scheduled_backup")
+backup_history = _load_script("verify_backup_history")
 deployment_preflight = _load_script("deployment_preflight")
 observability_preflight = _load_script("observability_preflight")
 export_vault = _load_script("export_vault")
@@ -1628,6 +1629,70 @@ def test_scheduled_backup_signs_encrypted_bundle_manifest(
     )
     assert verified is False
     assert "digest mismatch" in detail
+
+
+def test_backup_history_requires_multiple_complete_signed_runs(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    signing_key = "backup-history-signing-key"
+    backup_dir = tmp_path / "backups"
+    audit_dir = tmp_path / "audit"
+    for timestamp in ("20260713T010101Z", "20260713T020202Z"):
+        dump = backup_dir / f"obelisk-memory-{timestamp}.dump.enc"
+        restore_report = backup_dir / f"obelisk-memory-{timestamp}.restore.json"
+        audit_manifest = audit_dir / timestamp / "manifest.json"
+        dump.parent.mkdir(parents=True, exist_ok=True)
+        audit_manifest.parent.mkdir(parents=True, exist_ok=True)
+        dump.write_bytes(b"encrypted-backup-" + timestamp.encode())
+        restore_report.write_text(
+            json.dumps({"format": "obelisk-restore-drill-v1", "ok": True}),
+            encoding="utf-8",
+        )
+        audit_manifest.write_text('{"format":"obelisk-audit-export-v1"}', encoding="utf-8")
+        manifest = {
+            "format": "obelisk-backup-bundle-v1",
+            "created_at": "2026-07-13T00:00:00Z",
+            "timestamp": timestamp,
+            "files": [
+                {
+                    "path": str(item),
+                    "bytes": item.stat().st_size,
+                    "sha256": hashlib.sha256(item.read_bytes()).hexdigest(),
+                }
+                for item in (dump, restore_report, audit_manifest)
+            ],
+            "signature": None,
+        }
+        manifest["signature"] = {
+            "algorithm": "hmac-sha256",
+            "key_id": "test-key",
+            "value": scheduled_backup._sign_bundle_manifest(manifest, signing_key),
+        }
+        (backup_dir / f"obelisk-memory-{timestamp}.bundle.json").write_text(
+            json.dumps(manifest), encoding="utf-8"
+        )
+
+    report = tmp_path / "history.json"
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "verify_backup_history.py",
+            "--backup-dir", str(backup_dir),
+            "--min-runs", "2",
+            "--report", str(report),
+            "--signing-key", signing_key,
+            "--require-signature",
+        ],
+    )
+
+    assert backup_history.main() == 0
+    payload = json.loads(report.read_text(encoding="utf-8"))
+    assert payload["ok"] is True
+    assert payload["verified_runs"] == 2
+    assert all(run["restore_drill"] == "passed" for run in payload["runs"])
+
+    (backup_dir / "obelisk-memory-20260713T020202Z.restore.json").unlink()
+    assert backup_history.main() == 1
 
 
 def test_scheduled_backup_alerts_on_failure(
