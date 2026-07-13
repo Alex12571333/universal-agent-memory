@@ -75,14 +75,6 @@ DOCS = (
         "Hermes подключается через Python plugin hooks: prefetch памяти перед turn, "
         "sync_turn после ответа и session summary при завершении.",
     ),
-    MemoryDoc(
-        "superseded-audit-retention",
-        "Устаревшая политика: хранить audit events 30 дней.",
-    ),
-    MemoryDoc(
-        "current-audit-retention",
-        "Актуальная политика: хранить audit events 365 дней.",
-    ),
 )
 
 
@@ -106,11 +98,6 @@ CASES = (
         "hermes integration",
         "как hermes будет синхронизировать память после ответа?",
         "hermes-plugin",
-    ),
-    Case(
-        "freshness preference",
-        "какой актуальный срок хранения audit events?",
-        "current-audit-retention",
     ),
 )
 

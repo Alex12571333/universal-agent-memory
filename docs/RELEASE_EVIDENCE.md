@@ -168,6 +168,14 @@ python scripts/real_embedding_eval.py \
   --dimension "$UAM_EMBEDDING_DIM" \
   --json-report ./ops/embedding.json
 
+# Freshness is an application invariant, not an embedding-model judgement.
+# This runs a real provider through retain → CAS supersede → index → recall.
+python scripts/real_memory_flow_eval.py \
+  --provider "$UAM_EMBEDDING_PROVIDER" \
+  --base-url "$UAM_EMBEDDING_BASE_URL" \
+  --model "$UAM_EMBEDDING_MODEL" \
+  --dimension "$UAM_EMBEDDING_DIM" | tee ./ops/real-memory-flow.txt
+
 python scripts/real_memory_llm_eval.py \
   --provider "$UAM_MEMORY_LLM_PROVIDER" \
   --base-url "$UAM_MEMORY_LLM_BASE_URL" \

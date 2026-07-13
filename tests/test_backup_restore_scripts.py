@@ -2280,7 +2280,6 @@ def _write_release_evidence_bundle(tmp_path: Path) -> Path:
                 },
                 {"name": "semantic:openclaw integration", "ok": True, "detail": "ok"},
                 {"name": "semantic:hermes integration", "ok": True, "detail": "ok"},
-                {"name": "semantic:freshness preference", "ok": True, "detail": "ok"},
             ],
         },
     )
