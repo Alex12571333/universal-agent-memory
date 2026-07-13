@@ -22,6 +22,27 @@ def test_recall_marks_index_stale_while_embedding_event_is_pending() -> None:
     assert response.json()["index_stale"] is True
 
 
+def test_recall_ignores_pending_embedding_in_other_workspace() -> None:
+    container = build_in_memory_container()
+    client = TestClient(create_app(container))
+    foreign_workspace = uuid4()
+
+    client.post(
+        "/v1/memory/retain",
+        json={
+            "workspace_id": str(foreign_workspace),
+            "layer": "semantic",
+            "scope": "workspace",
+            "kind": "fact",
+            "text": "foreign pending embedding",
+        },
+    )
+    response = client.post("/v1/memory/recall", json={"query": "local workspace"})
+
+    assert response.status_code == 200
+    assert response.json()["index_stale"] is False
+
+
 def test_retrieval_marks_freshness_unknown_as_stale() -> None:
     from memory_plane.contracts.dto import RecallQuery
     container = build_in_memory_container()
