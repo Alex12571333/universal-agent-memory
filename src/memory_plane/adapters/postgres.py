@@ -1370,6 +1370,7 @@ class PostgresMemoryLedger:
         reviewer: str,
         reason: str,
         idempotency_key: str,
+        audit_event: AuditEvent | None = None,
     ) -> tuple[MemoryProposal, MemoryItem, bool]:
         """Atomically accept an open proposal with its memory and outbox event."""
         from psycopg.types.json import Jsonb
@@ -1433,6 +1434,8 @@ class PostgresMemoryLedger:
             ).fetchone()
             if updated is None:
                 raise KeyError("memory proposal not found")
+            if audit_event is not None:
+                self._insert_audit_event(connection, audit_event)
             decoded = connection.execute(
                 f"""
                 select p.id, p.tenant_id, p.workspace_id, p.agent_id, p.thread_id,

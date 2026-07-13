@@ -9,6 +9,7 @@ from uuid import UUID
 
 from memory_plane.contracts.dto import RetainCommand, RetainResult
 from memory_plane.contracts.events import IntegrationEvent
+from memory_plane.domain.audit import AuditEvent
 from memory_plane.domain.models import MemoryItem, MemoryLayer, MemoryScope, Provenance
 from memory_plane.domain.proposal import (
     MemoryProposal,
@@ -57,6 +58,7 @@ class MemoryProposalRepository(Protocol):
         reviewer: str,
         reason: str,
         idempotency_key: str,
+        audit_event: AuditEvent | None = None,
     ) -> tuple[MemoryProposal, MemoryItem, bool]:
         """Atomically accept one proposal and append its canonical memory/event."""
         ...
@@ -270,7 +272,11 @@ class MemoryProposalService:
             limit=limit,
         )
 
-    def accept(self, command: ReviewMemoryProposalCommand) -> ReviewMemoryProposalResult:
+    def accept(
+        self,
+        command: ReviewMemoryProposalCommand,
+        audit_event: AuditEvent | None = None,
+    ) -> ReviewMemoryProposalResult:
         """Accept a proposal and create a recallable memory item."""
         proposal = self._load_for_review(command)
         if proposal.status == MemoryProposalStatus.REJECTED:
@@ -317,6 +323,12 @@ class MemoryProposalService:
         item, event = self._retention.prepare(retain_command)
         atomic_accept = getattr(self._repository, "accept_proposal_with_memory", None)
         if callable(atomic_accept):
+            if audit_event is not None:
+                audit_event = replace(
+                    audit_event,
+                    workspace_id=proposal.workspace_id,
+                    resource_id=str(proposal.id),
+                )
             stored, memory, created = atomic_accept(
                 proposal,
                 item,
@@ -324,6 +336,7 @@ class MemoryProposalService:
                 reviewer=command.reviewer,
                 reason=command.reason,
                 idempotency_key=retain_command.idempotency_key or f"accept-proposal:{proposal.id}",
+                audit_event=audit_event,
             )
             return ReviewMemoryProposalResult(
                 proposal=stored,
