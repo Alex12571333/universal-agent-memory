@@ -923,7 +923,7 @@ class InMemoryCheckpointStore:
         self._revisions: dict[UUID, list[Checkpoint]] = {}
         self._lock = RLock()
 
-    def save(self, checkpoint: Checkpoint) -> Checkpoint:
+    def save(self, checkpoint: Checkpoint, audit_event: AuditEvent | None = None) -> Checkpoint:
         """Append a new checkpoint revision unconditionally."""
         with self._lock:
             revs = self._revisions.setdefault(checkpoint.thread_id, [])
@@ -931,7 +931,10 @@ class InMemoryCheckpointStore:
             return checkpoint
 
     def save_if_head(
-        self, checkpoint: Checkpoint, expected_revision: int
+        self,
+        checkpoint: Checkpoint,
+        expected_revision: int,
+        audit_event: AuditEvent | None = None,
     ) -> Checkpoint:
         """CAS: append only when current head revision equals *expected_revision*."""
 
@@ -981,7 +984,12 @@ class InMemoryCheckpointStore:
             return tuple(ordered[start:stop])
 
     def compact(
-        self, tenant_id: UUID, thread_id: UUID, *, keep_last: int = 3
+        self,
+        tenant_id: UUID,
+        thread_id: UUID,
+        *,
+        keep_last: int = 3,
+        audit_event: AuditEvent | None = None,
     ) -> int:
         """Delete old revisions keeping *keep_last* most recent ones."""
         with self._lock:

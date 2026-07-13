@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 from uuid import UUID
 
+from memory_plane.domain.audit import AuditEvent
 from memory_plane.domain.checkpoint import Checkpoint, StaleRevisionError
 from memory_plane.ports.checkpoint_store import CheckpointStore
 
@@ -22,6 +24,7 @@ class CheckpointService:
         workspace_id: UUID,
         thread_id: UUID,
         state: dict[str, Any],
+        audit_event: AuditEvent | None = None,
     ) -> Checkpoint:
         """Create or append a new checkpoint revision for *thread_id*.
 
@@ -37,7 +40,13 @@ class CheckpointService:
             revision=new_revision,
             state=state,
         )
-        return self._store.save_if_head(checkpoint, head.revision if head else 0)
+        return self._store.save_if_head(
+            checkpoint,
+            head.revision if head else 0,
+            audit_event=replace(audit_event, resource_id=str(checkpoint.id))
+            if audit_event is not None
+            else None,
+        )
 
     def update(
         self,
@@ -47,6 +56,7 @@ class CheckpointService:
         thread_id: UUID,
         state: dict[str, Any],
         expected_revision: int,
+        audit_event: AuditEvent | None = None,
     ) -> Checkpoint:
         """CAS update: create the next revision only when *expected_revision* is head.
 
@@ -63,7 +73,13 @@ class CheckpointService:
             revision=head.revision + 1,
             state=state,
         )
-        return self._store.save_if_head(checkpoint, expected_revision)
+        return self._store.save_if_head(
+            checkpoint,
+            expected_revision,
+            audit_event=replace(audit_event, resource_id=str(checkpoint.id))
+            if audit_event is not None
+            else None,
+        )
 
     def restore(self, *, tenant_id: UUID, thread_id: UUID) -> Checkpoint | None:
         """Return the latest checkpoint for a thread."""
@@ -82,7 +98,17 @@ class CheckpointService:
         return self._store.list_for_workspace(tenant_id, workspace_id, limit=limit, offset=offset)
 
     def compact(
-        self, *, tenant_id: UUID, thread_id: UUID, keep_last: int = 3
+        self,
+        *,
+        tenant_id: UUID,
+        thread_id: UUID,
+        keep_last: int = 3,
+        audit_event: AuditEvent | None = None,
     ) -> int:
         """Delete old revisions keeping *keep_last* most recent ones."""
-        return self._store.compact(tenant_id, thread_id, keep_last=keep_last)
+        return self._store.compact(
+            tenant_id,
+            thread_id,
+            keep_last=keep_last,
+            audit_event=audit_event,
+        )

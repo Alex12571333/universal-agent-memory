@@ -303,6 +303,7 @@ class CheckpointCompactBody(BaseModel):
     """Compaction request body."""
 
     tenant_id: UUID = DEFAULT_SERVER_ID
+    workspace_id: UUID = DEFAULT_PROJECT_ID
     keep_last: int = Field(default=3, ge=1)
 
 
@@ -2357,9 +2358,34 @@ def create_app(
         }
 
     @app.post("/v1/workspaces/{workspace_id}/reindex", status_code=202)
-    def reindex(workspace_id: UUID, tenant_id: UUID) -> dict[str, Any]:
+    def reindex(workspace_id: UUID, tenant_id: UUID, request: Request) -> dict[str, Any]:
         """Re-generate all embeddings for the workspace."""
-        count = services.embedding.reindex_all(tenant_id, workspace_id)
+        principal = _principal_from_request(request)
+        try:
+            count = services.embedding.reindex_all(tenant_id, workspace_id)
+        except Exception as exc:
+            services.audit.record(
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
+                action="embedding.reindex",
+                actor=principal.name,
+                actor_type=_audit_actor_type(principal),
+                resource_type="workspace_vector_index",
+                resource_id=str(workspace_id),
+                status="failed",
+                metadata={"error_type": type(exc).__name__},
+            )
+            raise
+        services.audit.record(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            action="embedding.reindex",
+            actor=principal.name,
+            actor_type=_audit_actor_type(principal),
+            resource_type="workspace_vector_index",
+            resource_id=str(workspace_id),
+            metadata={"reindexed_count": count, "model": services.embedding.model_name},
+        )
         return {"reindexed_count": count}
 
     @app.get("/v1/workspaces/{workspace_id}/vault")
@@ -2479,14 +2505,24 @@ def create_app(
     # ── Checkpoint endpoints ────────────────────────────────────────
 
     @app.post("/v1/checkpoints", status_code=201)
-    def save_checkpoint(body: CheckpointSaveBody) -> dict[str, Any]:
+    def save_checkpoint(body: CheckpointSaveBody, request: Request) -> dict[str, Any]:
         """Save a new working-memory checkpoint revision."""
+        principal = _principal_from_request(request)
         try:
             cp = services.checkpoint.save(
                 tenant_id=body.tenant_id,
                 workspace_id=body.workspace_id,
                 thread_id=body.thread_id,
                 state=body.state,
+                audit_event=AuditEvent(
+                    tenant_id=body.tenant_id,
+                    workspace_id=body.workspace_id,
+                    action="checkpoint.save",
+                    actor=principal.name,
+                    actor_type=_audit_actor_type(principal),
+                    resource_type="checkpoint",
+                    metadata={"thread_id": str(body.thread_id)},
+                ),
             )
         except StaleRevisionError as exc:
             raise HTTPException(
@@ -2557,8 +2593,11 @@ def create_app(
         return _checkpoint_response(cp)
 
     @app.put("/v1/checkpoints/{thread_id}")
-    def update_checkpoint(thread_id: UUID, body: CheckpointUpdateBody) -> dict[str, Any]:
+    def update_checkpoint(
+        thread_id: UUID, body: CheckpointUpdateBody, request: Request
+    ) -> dict[str, Any]:
         """CAS-update a checkpoint; returns 409 on stale revision."""
+        principal = _principal_from_request(request)
         try:
             cp = services.checkpoint.update(
                 tenant_id=body.tenant_id,
@@ -2566,6 +2605,18 @@ def create_app(
                 thread_id=thread_id,
                 state=body.state,
                 expected_revision=body.expected_revision,
+                audit_event=AuditEvent(
+                    tenant_id=body.tenant_id,
+                    workspace_id=body.workspace_id,
+                    action="checkpoint.update",
+                    actor=principal.name,
+                    actor_type=_audit_actor_type(principal),
+                    resource_type="checkpoint",
+                    metadata={
+                        "thread_id": str(thread_id),
+                        "expected_revision": body.expected_revision,
+                    },
+                ),
             )
         except StaleRevisionError as exc:
             raise HTTPException(
@@ -2580,12 +2631,25 @@ def create_app(
         return _checkpoint_response(cp)
 
     @app.post("/v1/checkpoints/{thread_id}/compact")
-    def compact_checkpoint(thread_id: UUID, body: CheckpointCompactBody) -> dict[str, Any]:
+    def compact_checkpoint(
+        thread_id: UUID, body: CheckpointCompactBody, request: Request
+    ) -> dict[str, Any]:
         """Delete old revisions keeping the most recent *keep_last*."""
+        principal = _principal_from_request(request)
         deleted = services.checkpoint.compact(
             tenant_id=body.tenant_id,
             thread_id=thread_id,
             keep_last=body.keep_last,
+            audit_event=AuditEvent(
+                tenant_id=body.tenant_id,
+                workspace_id=body.workspace_id,
+                action="checkpoint.compact",
+                actor=principal.name,
+                actor_type=_audit_actor_type(principal),
+                resource_type="checkpoint_thread",
+                resource_id=str(thread_id),
+                metadata={"keep_last": body.keep_last},
+            ),
         )
         return {"deleted": deleted}
 

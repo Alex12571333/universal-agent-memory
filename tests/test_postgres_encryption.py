@@ -83,7 +83,7 @@ def test_postgres_dual_writes_only_hmac_digests_for_protected_search(
     ledger._insert_item(connection, item)
 
     token_calls = [call for call in connection.calls if "memory_search_tokens" in call[0]]
-    assert len(token_calls) == 2
+    assert len(token_calls) == 3  # two terms plus the coverage marker
     assert all(call[1][3] == 7 for call in token_calls)
     assert all(isinstance(call[1][4], bytes) and len(call[1][4]) == 32 for call in token_calls)
     assert all(b"secret" not in call[1][4] for call in token_calls)

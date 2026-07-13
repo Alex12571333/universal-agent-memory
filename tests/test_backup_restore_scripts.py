@@ -92,6 +92,48 @@ verify_release_evidence = _load_script("verify_release_evidence")
 generate_release_evidence_manifest = _load_script("generate_release_evidence_manifest")
 generate_release_notes = _load_script("generate_release_notes")
 restore_recovery_evidence = _load_script("restore_recovery_evidence")
+protected_search_backfill = _load_script("backfill_protected_search_tokens")
+protected_search_index_probe = _load_script("protected_search_index_probe")
+retire_protected_search_key = _load_script("retire_protected_search_key")
+
+
+def test_protected_search_backfill_cursor_is_text_free_and_validated(tmp_path: Path) -> None:
+    state = tmp_path / "protected-search-state.json"
+    assert protected_search_backfill._load_cursor(state).created_at is None
+    state.write_text('{"created_at":"2026-07-13T00:00:00Z","memory_item_id":"not-a-uuid"}')
+    with pytest.raises(ValueError):
+        protected_search_backfill._load_cursor(state)
+
+    protected_search_backfill._save_json(
+        state,
+        {"created_at": "2026-07-13T00:00:00Z", "memory_item_id": str(uuid4())},
+    )
+    saved = json.loads(state.read_text())
+    assert set(saved) == {"created_at", "memory_item_id"}
+    assert state.stat().st_mode & 0o777 == 0o600
+
+
+def test_protected_search_probe_redacts_digests_and_extracts_indexes() -> None:
+    plan = [
+        {
+            "Plan": {
+                "Index Name": "memory_search_tokens_lookup_idx",
+                "Filter": "digest = '\\xabc123'",
+            }
+        }
+    ]
+
+    assert protected_search_index_probe._index_names(plan) == ("memory_search_tokens_lookup_idx",)
+    assert "abc123" not in str(protected_search_index_probe._redact_plan(plan))
+
+
+def test_protected_search_key_retirement_requires_explicit_admin_dsn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("UAM_ADMIN_DATABASE_URL", raising=False)
+    monkeypatch.delenv("UAM_ADMIN_DATABASE_USER", raising=False)
+
+    assert retire_protected_search_key._admin_dsn() is None
 
 
 def test_migration_runner_includes_every_versioned_sql_file() -> None:

@@ -5,18 +5,22 @@ from __future__ import annotations
 from typing import Protocol
 from uuid import UUID
 
+from memory_plane.domain.audit import AuditEvent
 from memory_plane.domain.checkpoint import Checkpoint
 
 
 class CheckpointStore(Protocol):
     """Revisioned checkpoint storage with compare-and-swap semantics."""
 
-    def save(self, checkpoint: Checkpoint) -> Checkpoint:
+    def save(self, checkpoint: Checkpoint, audit_event: AuditEvent | None = None) -> Checkpoint:
         """Append a new checkpoint revision unconditionally."""
         ...
 
     def save_if_head(
-        self, checkpoint: Checkpoint, expected_revision: int
+        self,
+        checkpoint: Checkpoint,
+        expected_revision: int,
+        audit_event: AuditEvent | None = None,
     ) -> Checkpoint:
         """CAS: append only if current head revision == expected_revision.
 
@@ -43,7 +47,12 @@ class CheckpointStore(Protocol):
         ...
 
     def compact(
-        self, tenant_id: UUID, thread_id: UUID, *, keep_last: int = 3
+        self,
+        tenant_id: UUID,
+        thread_id: UUID,
+        *,
+        keep_last: int = 3,
+        audit_event: AuditEvent | None = None,
     ) -> int:
         """Delete old revisions keeping the most recent *keep_last*. Returns count deleted."""
         ...

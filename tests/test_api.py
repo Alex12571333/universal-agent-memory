@@ -1129,6 +1129,14 @@ def test_reindex_triggers_embedding_service() -> None:
 
     assert response.status_code == 202
     assert response.json() == {"reindexed_count": 2}
+    events = container.audit.list_events(
+        DEFAULT_SERVER_ID,
+        workspace_id=DEFAULT_PROJECT_ID,
+        action="embedding.reindex",
+    )
+    assert len(events) == 1
+    assert events[0].status == "succeeded"
+    assert events[0].metadata["reindexed_count"] == 2
 
 
 def test_conflict_inbox_endpoint_lists_and_persists_review_decision() -> None:

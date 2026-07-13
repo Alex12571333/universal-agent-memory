@@ -215,11 +215,13 @@ static readiness script are green.
    candidates in SQL before decoding them in Python. The pgcrypto mode keeps a
    correctness-first post-decryption fallback because ciphertext cannot use the
    normal FTS index. The opt-in HMAC blind-index schema is now migrated and
-   canonical retains/supersedes dual-write scoped digests atomically, but its
-   reader, restart-safe backfill, key-rotation execution and query-plan evidence
-   remain required before it can serve recall. Production pagination for several
-   list/export paths also remains required. [RFC 0013](rfcs/0013-pgcrypto-protected-lexical-index.md)
-   defines the leakage boundary and release gates.
+   canonical retains/supersedes dual-write scoped digests atomically. A
+   restart-safe backfill and reader are now available; the reader proves a
+   marker for every non-deleted workspace item and otherwise preserves the
+   fallback. Key-rotation execution, query-plan evidence and production
+   pagination for several list/export paths remain required.
+   [RFC 0013](rfcs/0013-pgcrypto-protected-lexical-index.md) defines the
+   leakage boundary and release gates.
 7. `memory.retain` and `memory.supersede` audit records are now committed in
    the same PostgreSQL transaction as their canonical item, idempotency key and
    outbox event. Failure injection proves an audit insert error rolls back the
@@ -239,8 +241,12 @@ static readiness script are green.
    failure leaves no transcript. Graph-edge creation now commits edge and
    `graph.edge.create` audit atomically; audit failure leaves no edge. Denied
    requests, reflect,
-   reindex and checkpoints still need
-   complete status-aware and, where applicable, transactional audit coverage.
+   reindex still needs complete status-aware and transactional audit coverage.
+   Checkpoint save/update now append actor-bound audit events in the same
+   PostgreSQL transaction as their CAS revision; failure injection proves an
+   audit error leaves no checkpoint revision. Checkpoint compaction uses the
+   same atomic audit path; failure injection proves it preserves all historical
+   revisions when the audit write fails.
 8. The application role is now granted `SELECT/INSERT` by default, with only
    explicit operational mutations (outbox, idempotency, staging, proposal,
    agent/thread, review and checkpoint retention) re-granted. It cannot update
