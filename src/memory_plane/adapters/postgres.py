@@ -1854,7 +1854,9 @@ class PostgresMemoryLedger:
             ).fetchall()
         return tuple(self._to_item(row) for row in rows)
 
-    def save(self, observation: Observation) -> Observation:
+    def save(
+        self, observation: Observation, audit_event: AuditEvent | None = None
+    ) -> Observation:
         """Store an evidence-grounded observation and its immutable links."""
         with self._connection() as connection:
             self._set_tenant(connection, observation.tenant_id)
@@ -1885,6 +1887,8 @@ class PostgresMemoryLedger:
                     """,
                     (observation.tenant_id, observation.id, evidence_id),
                 )
+            if audit_event is not None:
+                self._insert_audit_event(connection, audit_event)
         return observation
 
     def save_conflict_review(
@@ -2657,8 +2661,8 @@ class PostgresObservationRepository:
     def __init__(self, store: PostgresMemoryLedger) -> None:
         self._store = store
 
-    def save(self, observation: Observation) -> Observation:
-        return self._store.save(observation)
+    def save(self, observation: Observation, audit_event: AuditEvent | None = None) -> Observation:
+        return self._store.save(observation, audit_event=audit_event)
 
     def list_for_workspace(
         self, tenant_id: UUID, workspace_id: UUID, *, limit: int | None = None, offset: int = 0

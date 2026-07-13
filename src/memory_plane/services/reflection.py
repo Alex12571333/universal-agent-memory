@@ -7,6 +7,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from uuid import NAMESPACE_URL, UUID, uuid5
 
+from memory_plane.domain.audit import AuditEvent
 from memory_plane.domain.models import MemoryItem, MemoryLayer, Observation
 from memory_plane.ports.repositories import MemoryLedger, ObservationRepository
 
@@ -36,7 +37,14 @@ class ReflectionService:
         self._ledger = ledger
         self._observations = observations
 
-    def reflect(self, tenant_id: UUID, workspace_id: UUID) -> tuple[Observation, ...]:
+    def reflect(
+        self,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        *,
+        actor: str = "maintenance",
+        actor_type: str = "system",
+    ) -> tuple[Observation, ...]:
         """Create deterministic observations for repeated or conflicting beliefs."""
         items = self._ledger.list_for_workspace(
             tenant_id, workspace_id, layers=(MemoryLayer.SEMANTIC,)
@@ -83,7 +91,24 @@ class ReflectionService:
                     confidence=self._confidence(rows, conflict=len(by_value) > 1),
                     stale=stale,
                 )
-                created.append(self._observations.save(observation))
+                created.append(
+                    self._observations.save(
+                        observation,
+                        audit_event=AuditEvent(
+                            tenant_id=tenant_id,
+                            workspace_id=workspace_id,
+                            action="reflection.observation.create",
+                            actor=actor,
+                            actor_type=actor_type,
+                            resource_type="observation",
+                            resource_id=str(observation.id),
+                            metadata={
+                                "evidence_count": len(observation.evidence_ids),
+                                "stale": observation.stale,
+                            },
+                        ),
+                    )
+                )
                 existing_keys.add(key)
         return tuple(created)
 

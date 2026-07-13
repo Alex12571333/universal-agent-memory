@@ -724,10 +724,12 @@ class InMemoryMemoryStore:
             self._api_keys[key_id] = updated
             return updated
 
-    def save(self, observation: Observation) -> Observation:
+    def save(self, observation: Observation, audit_event: AuditEvent | None = None) -> Observation:
         """Store a derived observation without mutating evidence."""
         with self._lock:
             self._observations.setdefault(observation.id, observation)
+            if audit_event is not None:
+                self.append_audit_event(audit_event)
             return self._observations[observation.id]
 
     def list_observations(
@@ -847,9 +849,9 @@ class InMemoryObservationRepository:
         """Retain a shared store while avoiding protocol method-name collision."""
         self._store = store
 
-    def save(self, observation: Observation) -> Observation:
+    def save(self, observation: Observation, audit_event: AuditEvent | None = None) -> Observation:
         """Delegate observation persistence."""
-        return self._store.save(observation)
+        return self._store.save(observation, audit_event=audit_event)
 
     def list_for_workspace(
         self, tenant_id: UUID, workspace_id: UUID, *, limit: int | None = None, offset: int = 0
