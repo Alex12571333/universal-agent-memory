@@ -227,7 +227,9 @@ The drill creates a temporary PostgreSQL Docker container and volume, restores
 the dump inside it, verifies required production tables, source/restore row
 counts (when a source DSN is supplied), and forced tenant RLS policies, then
 removes the temporary resources. Use `--keep` only when you need manual
-forensic inspection.
+forensic inspection. On macOS, if host `psql` is unavailable and the source is
+the local Compose database (`127.0.0.1:6548`), the drill automatically runs the
+source count query through `docker compose exec postgres`.
 
 ### Recovery semantic verification
 
@@ -279,6 +281,24 @@ Production deployments should run this on a fixed schedule and ship
 `latest-backup-report.json`, encrypted backup artifacts, and audit bundles to durable storage
 outside the Docker host. The repository provides the runner and alert hook; the
 actual cron/systemd/orchestrator schedule is an environment-level control.
+
+For a destructive production restore, verify the signed bundle before
+`pg_restore`; the restore command refuses to proceed if the selected encrypted
+dump is not the exact signed artifact:
+
+```bash
+PYTHONPATH=src python scripts/restore.py \
+  ./backups/obelisk-memory-<timestamp>.dump.enc \
+  --bundle-manifest ./backups/obelisk-memory-<timestamp>.bundle.json \
+  --bundle-signing-key "$UAM_BACKUP_SIGNING_KEY" \
+  --require-bundle-signature \
+  --database-url "$UAM_RESTORE_DATABASE_URL" \
+  --clean
+```
+
+Use a separately held backup signing key, never the encryption key. The
+low-level restore command still supports explicitly unsigned dumps for drills
+and migrations; that mode is not a production recovery procedure.
 
 Preserve machine-readable schedule evidence before a full-production release:
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import os
 import secrets
+import shutil
 import subprocess
 import tempfile
 import time
@@ -84,6 +85,11 @@ def main() -> int:
         default=os.getenv("UAM_BACKUP_DATABASE_URL") or os.getenv("UAM_DATABASE_URL"),
         help="Optional source PostgreSQL URL used to verify restored row counts",
     )
+    parser.add_argument(
+        "--source-docker-service",
+        default=os.getenv("UAM_BACKUP_DOCKER_SERVICE", "postgres"),
+        help="Compose PostgreSQL service used for source parity when host psql is unavailable",
+    )
     args = parser.parse_args()
 
     backup = Path(args.backup)
@@ -155,7 +161,12 @@ def main() -> int:
         _verify_schema(container, dsn)
         _verify_rls(container, dsn)
         if args.source_database_url:
-            _verify_row_parity(args.source_database_url, container, dsn)
+            _verify_row_parity(
+                args.source_database_url,
+                container,
+                dsn,
+                source_docker_service=args.source_docker_service,
+            )
         print(f"restore_drill=PASS container={container} volume={volume}")
         return 0
     finally:
@@ -233,16 +244,19 @@ def _verify_schema(container: str, dsn: str) -> None:
     print("restore_drill_verified_tables=" + ",".join(REQUIRED_TABLES))
 
 
-def _verify_row_parity(source_dsn: str, container: str, restored_dsn: str) -> None:
+def _verify_row_parity(
+    source_dsn: str,
+    container: str,
+    restored_dsn: str,
+    *,
+    source_docker_service: str,
+) -> None:
     """Reject a restore that lost rows from critical durable tables."""
     tables = tuple(table for table in REQUIRED_TABLES if table != "schema_migrations")
     sql = "\n".join(
         f"select '{table}', count(*) from {table};" for table in tables
     )
-    source = _run(
-        ["psql", "--tuples-only", "--no-align", f"--dbname={source_dsn}", "--command", sql],
-        capture_output=True,
-    )
+    source = _query_source_counts(source_dsn, sql, source_docker_service)
     restored = _run(
         [
             "docker", "exec", container, "psql", "--tuples-only", "--no-align",
@@ -257,6 +271,48 @@ def _verify_row_parity(source_dsn: str, container: str, restored_dsn: str) -> No
             f"restore drill row parity failed: source={source_counts} restored={restored_counts}"
         )
     print("restore_drill_row_parity=PASS")
+
+
+def _query_source_counts(
+    source_dsn: str,
+    sql: str,
+    docker_service: str,
+) -> subprocess.CompletedProcess[str]:
+    """Query source rows with host psql or the local Compose PostgreSQL fallback."""
+    psql_args = ["psql", "--tuples-only", "--no-align"]
+    if shutil.which("psql"):
+        return _run(
+            [*psql_args, f"--dbname={source_dsn}", "--command", sql],
+            capture_output=True,
+        )
+    if not docker_service or any(character.isspace() for character in docker_service):
+        raise ValueError("source Docker service must be a non-empty Compose service name")
+    return _run(
+        [
+            "docker",
+            "compose",
+            "exec",
+            "-T",
+            docker_service,
+            *psql_args,
+            f"--dbname={_compose_source_dsn(source_dsn)}",
+            "--command",
+            sql,
+        ],
+        capture_output=True,
+    )
+
+
+def _compose_source_dsn(source_dsn: str) -> str:
+    """Map the exposed local Compose PostgreSQL port to the service-local port."""
+    for host in ("127.0.0.1", "localhost"):
+        marker = f"@{host}:6548/"
+        if marker in source_dsn:
+            return source_dsn.replace(marker, "@127.0.0.1:5432/", 1)
+    raise ValueError(
+        "host psql is unavailable; Docker fallback supports a local Compose "
+        "source URL at 127.0.0.1:6548 or localhost:6548"
+    )
 
 
 def _verify_rls(container: str, dsn: str) -> None:

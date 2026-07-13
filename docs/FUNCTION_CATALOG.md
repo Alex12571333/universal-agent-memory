@@ -163,7 +163,7 @@
 |---|---|---|
 | `render_prometheus(metrics)` | Numeric mapping → Prometheus text | Stable sort, `uam_` prefix |
 | `backup.py` | Запускает `pg_dump --format=custom` | URL из `UAM_BACKUP_DATABASE_URL`/admin/database env |
-| `restore.py` | Запускает `pg_restore` | Расшифровывает `.dump.enc` в защищённый временный файл; `--clean` opt-in |
+| `restore.py` | Запускает `pg_restore` | Расшифровывает `.dump.enc` в защищённый временный файл; `--clean` opt-in, production-restore проверяет signed backup bundle |
 | `check_branch_protection.py` | Проверяет GitHub release gate для `main` | Требует PR, status checks, strict mode и admin enforcement |
 | `check_metrics_health.py` | `/metrics`/file/stdin → JSON health gate | Fail по outbox lag/dead-letter; webhook alert |
 | `deployment_preflight.py` | Public/backend URLs → JSON deployment-boundary gate | Requires HTTPS public health/security headers and blocked direct backend |

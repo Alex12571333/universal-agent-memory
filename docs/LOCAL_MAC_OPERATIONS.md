@@ -55,4 +55,6 @@ For a production backup job, create a **separate** random signing key (do not
 reuse the encryption key) and set the two `UAM_BACKUP_SIGNING_*` entries above.
 The scheduled runner then writes and immediately verifies a signed
 `*.bundle.json` manifest containing SHA-256 values for the encrypted dump and
-the audit manifest. A restore must be rejected when this verification fails.
+the audit manifest. Production restore commands must pass that manifest with
+`--require-bundle-signature`; restoration is rejected if the selected dump,
+manifest or signature does not verify.
