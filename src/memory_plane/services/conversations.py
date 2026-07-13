@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
 from uuid import UUID
@@ -45,7 +45,10 @@ class ConversationLedger(Protocol):
     """Storage boundary for immutable transcript turns."""
 
     def append_turn(
-        self, turn: ConversationTurn, idempotency_key: str | None = None
+        self,
+        turn: ConversationTurn,
+        idempotency_key: str | None = None,
+        audit_event: AuditEvent | None = None,
     ) -> tuple[ConversationTurn, bool]:
         """Append a raw turn or return the existing turn for an idempotency key."""
         ...
@@ -159,7 +162,11 @@ class ConversationService:
             )
         self._curated_only_ttl_seconds = configured_ttl
 
-    def append_turn(self, command: AppendConversationTurnCommand) -> AppendConversationTurnResult:
+    def append_turn(
+        self,
+        command: AppendConversationTurnCommand,
+        audit_event: AuditEvent | None = None,
+    ) -> AppendConversationTurnResult:
         """Append a redacted raw turn to the immutable conversation ledger."""
         messages = []
         redaction_metadata: dict[str, Any] = {}
@@ -194,7 +201,13 @@ class ConversationService:
             created_at=created_at,
             expires_at=expires_at,
         )
-        stored, created = self._ledger.append_turn(turn, command.idempotency_key)
+        stored, created = self._ledger.append_turn(
+            turn,
+            command.idempotency_key,
+            audit_event=replace(audit_event, resource_id=str(turn.id))
+            if audit_event is not None
+            else None,
+        )
         return AppendConversationTurnResult(turn=stored, created=created)
 
     def list_turns(
