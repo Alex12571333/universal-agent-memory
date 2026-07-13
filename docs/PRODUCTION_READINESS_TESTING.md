@@ -127,7 +127,11 @@ Checks:
 ## 6. Live embedding regression
 
 Run `scripts/real_embedding_eval.py` against the exact provider/model/dimension
-used by the embedding worker and preserve `ops/embedding.json`.
+used by the embedding worker and preserve `ops/embedding.json`. This tests
+semantic distinctions only. Do not use an embedding model to decide which
+contradictory fact is current: run `scripts/real_memory_flow_eval.py` as well.
+It proves the actual safety boundary with the real provider: retain → CAS
+supersede → index → recall of the active head only.
 
 ## 7. Target behavior gates
 

@@ -36,10 +36,8 @@ def _fake_embedding(_base_url: str, _model: str, text: str, _api_key: str | None
     vectors = {
         "storage-postgres": [1.0, 0.0, 0.0, 0.0, 0.0],
         "embedding-release-policy": [0.0, 1.0, 0.0, 0.0, 0.0],
-        "current-audit-retention": [0.0, 0.0, 1.0, 0.0, 0.0],
         "openclaw-plugin": [0.0, 0.0, 0.0, 1.0, 0.0],
         "hermes-plugin": [0.0, 0.0, 0.0, 0.0, 1.0],
-        "superseded-audit-retention": [-1.0, -1.0, -1.0, -1.0, -1.0],
     }
     for doc in real_embedding_eval.DOCS:
         if text == doc.text:
@@ -52,8 +50,6 @@ def _fake_embedding(_base_url: str, _model: str, text: str, _api_key: str | None
         return vectors["openclaw-plugin"]
     if "hermes" in text.lower():
         return vectors["hermes-plugin"]
-    if "срок хранения audit events" in text:
-        return vectors["current-audit-retention"]
     raise AssertionError(text)
 
 
@@ -78,7 +74,6 @@ def test_real_embedding_eval_passes_semantic_contract(monkeypatch) -> None:
         "semantic:production embedding model",
         "semantic:openclaw integration",
         "semantic:hermes integration",
-        "semantic:freshness preference",
     }
 
 

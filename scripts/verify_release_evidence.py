@@ -848,7 +848,6 @@ def _verify_embedding(payload: dict[str, Any]) -> list[EvidenceCheck]:
         "semantic:production embedding model",
         "semantic:openclaw integration",
         "semantic:hermes integration",
-        "semantic:freshness preference",
     }
     missing = sorted(required - names)
     return [
