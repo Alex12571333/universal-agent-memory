@@ -63,7 +63,9 @@ remaining hard requirements.
 - [x] Restore-drill script restores into an isolated PostgreSQL container,
       verifies schema presence, tenant RLS policies and source/restore row-count
       parity.
-- [ ] Verify active-head recall and required Qdrant reindex after restore.
+- [x] Verify active-head recall and required Qdrant reindex after restore in an
+      isolated, empty Qdrant collection; see
+      [TARGET_RECOVERY_VALIDATION_2026_07_12.md](TARGET_RECOVERY_VALIDATION_2026_07_12.md).
 - [x] Scheduler-ready backup runner writes JSON reports and can alert on
       failures.
 - [x] Ops schedule preflight runner writes JSON evidence for installed backup,
