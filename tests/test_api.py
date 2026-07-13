@@ -829,6 +829,41 @@ def test_conversation_turn_endpoint_stores_raw_transcript_separately() -> None:
     assert recalled.json()["results"] == []
 
 
+def test_conversation_turn_listing_supports_stable_cursor_pagination() -> None:
+    client = TestClient(create_app(build_in_memory_container()))
+    for index in range(3):
+        response = client.post(
+            "/v1/conversations/turns",
+            json={
+                "namespace": "pagination-test",
+                "thread_id": str(DEFAULT_THREAD_ID),
+                "messages": [{"role": "user", "content": f"turn {index}"}],
+                "idempotency_key": f"turn-pagination-{index}",
+            },
+        )
+        assert response.status_code == 201
+
+    first = client.get("/v1/conversations/turns?namespace=pagination-test&limit=2")
+
+    assert first.status_code == 200
+    first_body = first.json()
+    assert first_body["count"] == 2
+    assert first_body["has_more"] is True
+    second = client.get(
+        "/v1/conversations/turns",
+        params={
+            "namespace": "pagination-test",
+            "limit": 2,
+            "before_created_at": first_body["next_before_created_at"],
+            "before_turn_id": first_body["next_before_turn_id"],
+        },
+    )
+
+    assert second.status_code == 200
+    assert second.json()["count"] == 1
+    assert second.json()["has_more"] is False
+
+
 def test_conversation_turn_endpoint_applies_privacy_guard() -> None:
     client = TestClient(create_app(build_in_memory_container()))
 

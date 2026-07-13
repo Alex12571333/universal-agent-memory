@@ -64,6 +64,8 @@ class ConversationLedger(Protocol):
         *,
         thread_id: UUID | None = None,
         namespace: str | None = None,
+        before_created_at: datetime | None = None,
+        before_turn_id: UUID | None = None,
         limit: int = 50,
     ) -> tuple[ConversationTurn, ...]:
         """List recent transcript turns under tenant/workspace boundaries."""
@@ -217,6 +219,8 @@ class ConversationService:
         *,
         thread_id: UUID | None = None,
         namespace: str | None = None,
+        before_created_at: datetime | None = None,
+        before_turn_id: UUID | None = None,
         limit: int = 50,
     ) -> tuple[ConversationTurn, ...]:
         """List recent raw transcript turns for operator review or reprocessing."""
@@ -225,6 +229,8 @@ class ConversationService:
             workspace_id,
             thread_id=thread_id,
             namespace=namespace,
+            before_created_at=before_created_at,
+            before_turn_id=before_turn_id,
             limit=limit,
         )
 

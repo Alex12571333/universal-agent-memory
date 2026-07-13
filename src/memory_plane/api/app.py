@@ -1924,6 +1924,8 @@ def create_app(
         thread_id: UUID | None = None,
         namespace: str | None = None,
         limit: int = 50,
+        before_created_at: datetime | None = None,
+        before_turn_id: UUID | None = None,
     ) -> dict[str, Any]:
         """List recent raw transcript turns for operator review."""
         safe_limit = max(1, min(int(limit), 200))
@@ -1932,13 +1934,22 @@ def create_app(
             workspace_id,
             thread_id=thread_id,
             namespace=namespace,
-            limit=safe_limit,
+            before_created_at=before_created_at,
+            before_turn_id=before_turn_id,
+            limit=safe_limit + 1,
         )
+        has_more = len(turns) > safe_limit
+        rows = turns[:safe_limit]
+        cursor = rows[-1] if has_more and rows else None
         return {
             "tenant_id": str(tenant_id),
             "workspace_id": str(workspace_id),
-            "count": len(turns),
-            "turns": [_conversation_turn_response(turn) for turn in turns],
+            "count": len(rows),
+            "limit": safe_limit,
+            "has_more": has_more,
+            "next_before_created_at": cursor.created_at.isoformat() if cursor else None,
+            "next_before_turn_id": str(cursor.id) if cursor else None,
+            "turns": [_conversation_turn_response(turn) for turn in rows],
         }
 
     @app.post("/v1/workspaces/{workspace_id}/conversations/purge-expired")

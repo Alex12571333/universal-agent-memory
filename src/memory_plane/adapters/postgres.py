@@ -1292,6 +1292,8 @@ class PostgresMemoryLedger:
         *,
         thread_id: UUID | None = None,
         namespace: str | None = None,
+        before_created_at: datetime | None = None,
+        before_turn_id: UUID | None = None,
         limit: int = 50,
     ) -> tuple[ConversationTurn, ...]:
         """List recent raw conversation turns with their ordered messages."""
@@ -1322,11 +1324,22 @@ class PostgresMemoryLedger:
                 where t.workspace_id = %s
                   and (%s::uuid is null or t.thread_id = %s::uuid)
                   and (%s::text is null or t.namespace = %s::text)
+                  and (
+                    %s::timestamptz is null
+                    or t.created_at < %s::timestamptz
+                    or (
+                      %s::uuid is not null
+                      and t.created_at = %s::timestamptz
+                      and t.id::text < %s::text
+                    )
+                  )
                 group by t.id
                 order by t.created_at desc, t.id desc
                 limit %s
                 """,
-                (workspace_id, thread_id, thread_id, namespace, namespace, safe_limit),
+                (workspace_id, thread_id, thread_id, namespace, namespace,
+                 before_created_at, before_created_at, before_turn_id,
+                 before_created_at, str(before_turn_id) if before_turn_id else None, safe_limit),
             ).fetchall()
         return tuple(self._to_turn(row) for row in rows)
 
