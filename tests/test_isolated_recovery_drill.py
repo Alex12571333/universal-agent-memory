@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import subprocess
 from argparse import Namespace
 from pathlib import Path
@@ -84,6 +85,106 @@ def test_probe_runs_in_restored_postgres_network_namespace(monkeypatch, tmp_path
         in command
     )
     assert command[-2:] == ["--report", "/evidence/probe.json"]
+
+
+def test_restore_drill_loads_backup_key_from_runtime_env_without_putting_it_in_argv(
+    monkeypatch, tmp_path: Path
+) -> None:
+    drill = _load_drill()
+    runtime_env = tmp_path / ".env"
+    runtime_env.write_text('UAM_BACKUP_ENCRYPTION_KEY="test-backup-key"\n', encoding="utf-8")
+    args = Namespace(
+        backup=tmp_path / "backup.dump.enc",
+        name_prefix="obelisk-isolated-recovery",
+        timeout_seconds=60,
+        source_docker_service="postgres",
+    )
+    calls: list[tuple[list[str], dict[str, str] | None]] = []
+
+    def fake_run(command, *, check=True, capture_output=False, env=None):
+        calls.append((command, env))
+        return subprocess.CompletedProcess(command, 0, stdout="restore_drill=PASS container=x\n")
+
+    monkeypatch.delenv("UAM_BACKUP_ENCRYPTION_KEY", raising=False)
+    monkeypatch.delenv("UAM_BACKUP_ENCRYPTION_KEY_FILE", raising=False)
+    monkeypatch.setattr(drill, "_run", fake_run)
+
+    key = drill._backup_encryption_key(runtime_env)
+    source_database_url = "postgresql://recovery-user:recovery-pass@db/recovery"
+    drill._run_restore_drill(
+        args,
+        "suffix",
+        tmp_path / "restore.json",
+        backup_encryption_key=key,
+        source_database_url=source_database_url,
+        expected_row_counts_report=None,
+    )
+
+    command, environment = calls[0]
+    assert "test-backup-key" not in " ".join(command)
+    assert source_database_url not in " ".join(command)
+    assert environment is not None
+    assert environment["UAM_BACKUP_ENCRYPTION_KEY"] == "test-backup-key"
+    assert environment["UAM_BACKUP_DATABASE_URL"] == source_database_url
+    assert environment is not os.environ
+
+
+def test_backup_snapshot_report_requires_adjacent_counts(tmp_path: Path) -> None:
+    drill = _load_drill()
+    backup = tmp_path / "obelisk-memory-20260713.dump.enc"
+    backup.write_bytes(b"backup")
+    report = backup.with_suffix("").with_suffix(".restore.json")
+    report.write_text('{"source_row_counts":{"memory_items":1}}\n', encoding="utf-8")
+
+    assert drill._backup_snapshot_report(backup) == report
+
+
+def test_backup_encryption_key_reads_relative_secret_file(tmp_path: Path, monkeypatch) -> None:
+    drill = _load_drill()
+    key_file = tmp_path / "backup.key"
+    key_file.write_text("file-backed-key\n", encoding="utf-8")
+    runtime_env = tmp_path / ".env"
+    runtime_env.write_text("UAM_BACKUP_ENCRYPTION_KEY_FILE=backup.key\n", encoding="utf-8")
+    monkeypatch.delenv("UAM_BACKUP_ENCRYPTION_KEY", raising=False)
+    monkeypatch.delenv("UAM_BACKUP_ENCRYPTION_KEY_FILE", raising=False)
+
+    assert drill._backup_encryption_key(runtime_env) == "file-backed-key"
+
+
+def test_materialize_docker_env_file_strips_compose_quotes_and_is_private(tmp_path: Path) -> None:
+    drill = _load_drill()
+    source = tmp_path / ".env"
+    source.write_text(
+        "UAM_MEMORY_LLM_EXTRA_BODY_JSON='{" + '"mode":"compact"' + "}'\n"
+        "UAM_EMBEDDING_MODEL=local-model\n",
+        encoding="utf-8",
+    )
+    target = tmp_path / "docker.env"
+
+    written = drill._materialize_docker_env_file(source, target)
+
+    assert written == target
+    assert target.read_text(encoding="utf-8") == (
+        'UAM_MEMORY_LLM_EXTRA_BODY_JSON={"mode":"compact"}\n'
+        "UAM_EMBEDDING_MODEL=local-model\n"
+    )
+    assert target.stat().st_mode & 0o777 == 0o600
+
+
+def test_source_database_url_reads_admin_url_from_runtime_env(tmp_path: Path, monkeypatch) -> None:
+    drill = _load_drill()
+    runtime_env = tmp_path / ".env"
+    runtime_env.write_text(
+        "UAM_ADMIN_DATABASE_URL=postgresql://admin:secret@localhost/memory\n",
+        encoding="utf-8",
+    )
+    for name in ("UAM_BACKUP_DATABASE_URL", "UAM_ADMIN_DATABASE_URL", "UAM_DATABASE_URL"):
+        monkeypatch.delenv(name, raising=False)
+        monkeypatch.delenv(f"{name}_FILE", raising=False)
+
+    assert drill._source_database_url(None, runtime_env) == (
+        "postgresql://admin:secret@localhost/memory"
+    )
 
 
 def test_failure_report_does_not_include_failure_detail(tmp_path: Path) -> None:

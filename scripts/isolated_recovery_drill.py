@@ -19,10 +19,9 @@ import subprocess
 import sys
 import tempfile
 import time
+from collections.abc import Mapping
 from pathlib import Path
 from urllib.parse import quote
-
-from memory_plane.config.database import read_database_dsn
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_SERVER_IMAGE = "universal-agent-memory-memory-server:latest"
@@ -53,14 +52,7 @@ def main() -> int:
     parser.add_argument("--timeout-seconds", type=int, default=60)
     parser.add_argument(
         "--source-database-url",
-        default=(
-            os.getenv("UAM_BACKUP_DATABASE_URL")
-            or read_database_dsn(
-                "UAM_BACKUP_DATABASE_URL", component_prefix="UAM_BACKUP_DATABASE"
-            )
-            or read_database_dsn("UAM_ADMIN_DATABASE_URL", component_prefix="UAM_ADMIN_DATABASE")
-            or read_database_dsn()
-        ),
+        default=None,
         help="Source PostgreSQL URL used by restore drill for row-parity verification",
     )
     parser.add_argument(
@@ -77,6 +69,16 @@ def main() -> int:
         parser.error(f"backup file does not exist: {args.backup}")
     if not args.runtime_env_file.is_file():
         parser.error(f"runtime env file does not exist: {args.runtime_env_file}")
+    try:
+        backup_encryption_key = _backup_encryption_key(args.runtime_env_file)
+        backup_snapshot_report = _backup_snapshot_report(args.backup)
+        source_database_url = (
+            None
+            if backup_snapshot_report is not None
+            else _source_database_url(args.source_database_url, args.runtime_env_file)
+        )
+    except (OSError, ValueError) as exc:
+        parser.error(str(exc))
 
     suffix = secrets.token_hex(4)
     postgres_container: str | None = None
@@ -87,7 +89,14 @@ def main() -> int:
         probe_report = work_dir / "restored-reindex-probe.json"
         stage = "restore"
         try:
-            restore = _run_restore_drill(args, suffix, restore_report)
+            restore = _run_restore_drill(
+                args,
+                suffix,
+                restore_report,
+                backup_encryption_key=backup_encryption_key,
+                source_database_url=source_database_url,
+                expected_row_counts_report=backup_snapshot_report,
+            )
             postgres_container = _restore_container(restore.stdout)
             password = _postgres_password(postgres_container)
             stage = "qdrant"
@@ -107,6 +116,10 @@ def main() -> int:
             _wait_for_qdrant(postgres_container, args.server_image, args.timeout_seconds)
             stage = "semantic-probe"
             collection = f"recovery_probe_{suffix}"
+            docker_runtime_env = _materialize_docker_env_file(
+                args.runtime_env_file,
+                work_dir / "runtime-for-docker.env",
+            )
             _run_probe(
                 args,
                 postgres_container=postgres_container,
@@ -114,6 +127,7 @@ def main() -> int:
                 collection=collection,
                 output=probe_report,
                 work_dir=work_dir,
+                runtime_env_file=docker_runtime_env,
             )
             persisted_restore, persisted_probe = _persist_evidence(
                 restore_report, probe_report, args.report
@@ -151,8 +165,15 @@ def main() -> int:
 
 
 def _run_restore_drill(
-    args: argparse.Namespace, suffix: str, report: Path
+    args: argparse.Namespace,
+    suffix: str,
+    report: Path,
+    *,
+    backup_encryption_key: str,
+    source_database_url: str | None,
+    expected_row_counts_report: Path | None,
 ) -> subprocess.CompletedProcess[str]:
+    """Run restore with recovery secrets in child environment, never argv/evidence."""
     command = [
         sys.executable,
         str(ROOT / "scripts" / "restore_drill.py"),
@@ -165,11 +186,147 @@ def _run_restore_drill(
         "--report",
         str(report),
     ]
-    if args.source_database_url:
-        command.extend(["--source-database-url", args.source_database_url])
     if args.source_docker_service:
         command.extend(["--source-docker-service", args.source_docker_service])
-    return _run(command, capture_output=True)
+    environment = os.environ.copy()
+    environment["UAM_BACKUP_ENCRYPTION_KEY"] = backup_encryption_key
+    if source_database_url:
+        environment["UAM_BACKUP_DATABASE_URL"] = source_database_url
+    if expected_row_counts_report:
+        command.extend(["--expected-row-counts-report", str(expected_row_counts_report)])
+    return _run(command, capture_output=True, env=environment)
+
+
+def _backup_snapshot_report(backup: Path) -> Path | None:
+    """Return the adjacent report only when it carries a usable count snapshot."""
+    report = backup.with_suffix("").with_suffix(".restore.json")
+    if not report.is_file():
+        return None
+    try:
+        payload = json.loads(report.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return report if isinstance(payload.get("source_row_counts"), dict) else None
+
+
+def _backup_encryption_key(runtime_env_file: Path) -> str:
+    """Load the recovery key from process env or the selected runtime env file.
+
+    The launchd job sources its private ops file, while a manual drill commonly
+    supplies only ``--runtime-env-file``.  Both paths must work.  The key is
+    returned only to populate the nested restore process environment; it is not
+    placed in command-line arguments, reports, or exception details.
+    """
+    direct = os.getenv("UAM_BACKUP_ENCRYPTION_KEY", "").strip()
+    if direct:
+        return direct
+    process_file = os.getenv("UAM_BACKUP_ENCRYPTION_KEY_FILE", "").strip()
+    if process_file:
+        return _read_secret_file(Path(process_file))
+    values = _parse_env_file(runtime_env_file)
+    configured = values.get("UAM_BACKUP_ENCRYPTION_KEY", "").strip()
+    if configured:
+        return configured
+    configured_file = values.get("UAM_BACKUP_ENCRYPTION_KEY_FILE", "").strip()
+    if configured_file:
+        path = Path(configured_file)
+        if not path.is_absolute():
+            path = runtime_env_file.parent / path
+        return _read_secret_file(path)
+    raise ValueError(
+        "encrypted recovery drill requires UAM_BACKUP_ENCRYPTION_KEY or "
+        "UAM_BACKUP_ENCRYPTION_KEY_FILE"
+    )
+
+
+def _source_database_url(explicit: str | None, runtime_env_file: Path) -> str:
+    """Resolve the parity source DSN without putting it in child argv."""
+    if explicit and explicit.strip():
+        return explicit.strip()
+    for name in ("UAM_BACKUP_DATABASE_URL", "UAM_ADMIN_DATABASE_URL", "UAM_DATABASE_URL"):
+        configured = _environment_secret(name)
+        if configured:
+            return configured
+    values = _parse_env_file(runtime_env_file)
+    for name in ("UAM_BACKUP_DATABASE_URL", "UAM_ADMIN_DATABASE_URL", "UAM_DATABASE_URL"):
+        configured = _file_secret(values, runtime_env_file, name)
+        if configured:
+            return configured
+    raise ValueError(
+        "recovery drill requires a source PostgreSQL URL for row-parity verification"
+    )
+
+
+def _environment_secret(name: str) -> str | None:
+    value = os.getenv(name, "").strip()
+    if value:
+        return value
+    file_name = os.getenv(f"{name}_FILE", "").strip()
+    return _read_secret_file(Path(file_name)) if file_name else None
+
+
+def _file_secret(values: dict[str, str], runtime_env_file: Path, name: str) -> str | None:
+    value = values.get(name, "").strip()
+    if value:
+        return value
+    file_name = values.get(f"{name}_FILE", "").strip()
+    if not file_name:
+        return None
+    path = Path(file_name)
+    if not path.is_absolute():
+        path = runtime_env_file.parent / path
+    return _read_secret_file(path)
+
+
+def _parse_env_file(path: Path) -> dict[str, str]:
+    """Read the conservative KEY=VALUE syntax supported by deployment env files."""
+    values: dict[str, str] = {}
+    for line_number, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "=" not in line:
+            raise ValueError(f"{path}:{line_number}: expected KEY=VALUE")
+        key, value = line.split("=", 1)
+        key = key.strip()
+        if not key.replace("_", "").isalnum() or key[:1].isdigit():
+            raise ValueError(f"{path}:{line_number}: invalid env key")
+        values[key] = _strip_env_quotes(value.strip())
+    return values
+
+
+def _strip_env_quotes(value: str) -> str:
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+        return value[1:-1]
+    return value
+
+
+def _read_secret_file(path: Path) -> str:
+    value = path.read_text(encoding="utf-8").strip()
+    if not value:
+        raise ValueError("backup encryption key file is empty")
+    return value
+
+
+def _materialize_docker_env_file(source: Path, target: Path) -> Path:
+    """Translate Compose-style dotenv quoting to Docker ``--env-file`` syntax.
+
+    Docker's raw ``--env-file`` parser retains single quotes, whereas Compose
+    strips them.  That distinction breaks JSON-valued settings such as the
+    Qwen extra-body profile during an isolated recovery probe.  The translated
+    file is mode-0600 inside the temporary recovery directory and is removed
+    with that directory after the drill.
+    """
+    values = _parse_env_file(source)
+    for key, value in values.items():
+        if "\n" in value or "\r" in value:
+            raise ValueError(f"{source}: {key} contains a newline")
+    target.write_text(
+        "".join(f"{key}={value}\n" for key, value in values.items()),
+        encoding="utf-8",
+    )
+    target.chmod(0o600)
+    return target
 
 
 def _restore_container(output: str) -> str:
@@ -233,6 +390,7 @@ def _run_probe(
     collection: str,
     output: Path,
     work_dir: Path,
+    runtime_env_file: Path | None = None,
 ) -> None:
     dsn = "postgresql://memory_admin:{}@127.0.0.1:5432/memory".format(
         quote(postgres_password, safe="")
@@ -244,7 +402,7 @@ def _run_probe(
         "--network",
         f"container:{postgres_container}",
         "--env-file",
-        str(args.runtime_env_file.resolve()),
+        str((runtime_env_file or args.runtime_env_file).resolve()),
         "-e",
         f"UAM_DATABASE_URL={dsn}",
         "-e",
@@ -313,9 +471,19 @@ def _write_failure_report(path: Path, error_type: str, stage: str) -> None:
 
 
 def _run(
-    command: list[str], *, check: bool = True, capture_output: bool = False
+    command: list[str],
+    *,
+    check: bool = True,
+    capture_output: bool = False,
+    env: Mapping[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(command, check=check, text=True, capture_output=capture_output)
+    return subprocess.run(
+        command,
+        check=check,
+        text=True,
+        capture_output=capture_output,
+        env=env,
+    )
 
 
 if __name__ == "__main__":

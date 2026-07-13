@@ -95,6 +95,14 @@ def main() -> int:
         help="Compose PostgreSQL service used for source parity when host psql is unavailable",
     )
     parser.add_argument(
+        "--expected-row-counts-report",
+        type=Path,
+        help=(
+            "Prior restore-drill report for this exact backup; verifies restored "
+            "rows against its non-secret source_row_counts snapshot"
+        ),
+    )
+    parser.add_argument(
         "--report",
         type=Path,
         help="Optional JSON report path for the successful isolated restore drill",
@@ -173,8 +181,13 @@ def main() -> int:
             {"name": "required-schema", "ok": True},
             {"name": "forced-tenant-rls", "ok": True},
         ]
-        if args.source_database_url:
-            _verify_row_parity(
+        source_row_counts: dict[str, int] | None = None
+        if args.expected_row_counts_report:
+            source_row_counts = _expected_row_counts(args.expected_row_counts_report)
+            _verify_expected_row_counts(container, dsn, source_row_counts)
+            checks.append({"name": "source-row-parity", "ok": True})
+        elif args.source_database_url:
+            source_row_counts = _verify_row_parity(
                 args.source_database_url,
                 container,
                 dsn,
@@ -182,7 +195,7 @@ def main() -> int:
             )
             checks.append({"name": "source-row-parity", "ok": True})
         if args.report:
-            _write_report(args.report, checks)
+            _write_report(args.report, checks, source_row_counts=source_row_counts)
         print(f"restore_drill=PASS container={container} volume={volume}")
         return 0
     finally:
@@ -266,7 +279,7 @@ def _verify_row_parity(
     restored_dsn: str,
     *,
     source_docker_service: str,
-) -> None:
+) -> dict[str, int]:
     """Reject a restore that lost rows from critical durable tables."""
     tables = tuple(table for table in REQUIRED_TABLES if table != "schema_migrations")
     sql = "\n".join(
@@ -287,6 +300,48 @@ def _verify_row_parity(
             f"restore drill row parity failed: source={source_counts} restored={restored_counts}"
         )
     print("restore_drill_row_parity=PASS")
+    return source_counts
+
+
+def _verify_expected_row_counts(
+    container: str, restored_dsn: str, expected: dict[str, int]
+) -> None:
+    """Validate an old backup against its snapshot instead of a changing live DB."""
+    tables = tuple(table for table in REQUIRED_TABLES if table != "schema_migrations")
+    sql = "\n".join(f"select '{table}', count(*) from {table};" for table in tables)
+    restored = _run(
+        [
+            "docker", "exec", container, "psql", "--tuples-only", "--no-align",
+            f"--dbname={restored_dsn}", "--command", sql,
+        ],
+        capture_output=True,
+    )
+    restored_counts = _parse_counts(restored.stdout)
+    if expected != restored_counts:
+        raise RuntimeError("restore drill row parity failed against backup snapshot")
+    print("restore_drill_row_parity_snapshot=PASS")
+
+
+def _expected_row_counts(report: Path) -> dict[str, int]:
+    """Read only the numeric source snapshot from a prior successful drill."""
+    try:
+        payload = json.loads(report.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError("expected row-count report is unreadable") from exc
+    counts = payload.get("source_row_counts")
+    tables = tuple(table for table in REQUIRED_TABLES if table != "schema_migrations")
+    if (
+        payload.get("format") != REPORT_FORMAT
+        or payload.get("ok") is not True
+        or not isinstance(counts, dict)
+        or set(counts) != set(tables)
+        or any(
+            not isinstance(value, int) or isinstance(value, bool) or value < 0
+            for value in counts.values()
+        )
+    ):
+        raise ValueError("expected row-count report has no valid backup snapshot")
+    return {table: int(counts[table]) for table in tables}
 
 
 def _query_source_counts(
@@ -394,7 +449,12 @@ def _parse_counts(output: str) -> dict[str, int]:
     }
 
 
-def _write_report(path: Path, checks: list[dict[str, object]]) -> None:
+def _write_report(
+    path: Path,
+    checks: list[dict[str, object]],
+    *,
+    source_row_counts: dict[str, int] | None = None,
+) -> None:
     """Persist non-secret success evidence that can be bound into a backup bundle."""
     payload = {
         "format": REPORT_FORMAT,
@@ -402,6 +462,8 @@ def _write_report(path: Path, checks: list[dict[str, object]]) -> None:
         "completed_at": datetime.now(UTC).isoformat(),
         "checks": checks,
     }
+    if source_row_counts is not None:
+        payload["source_row_counts"] = source_row_counts
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2) + "\n",

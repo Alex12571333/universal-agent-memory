@@ -890,6 +890,27 @@ def test_restore_drill_uses_compose_psql_for_local_source_parity(
     ]
 
 
+def test_restore_drill_reads_non_secret_backup_row_snapshot(tmp_path: Path) -> None:
+    report = tmp_path / "restore.json"
+    counts = {
+        table: index
+        for index, table in enumerate(restore_drill.REQUIRED_TABLES)
+        if table != "schema_migrations"
+    }
+    report.write_text(
+        json.dumps(
+            {
+                "format": restore_drill.REPORT_FORMAT,
+                "ok": True,
+                "source_row_counts": counts,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert restore_drill._expected_row_counts(report) == counts
+
+
 def test_restore_recovery_evidence_fails_without_semantic_recall(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
