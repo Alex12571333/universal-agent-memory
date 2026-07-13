@@ -6,6 +6,7 @@ from dataclasses import replace
 
 from memory_plane.contracts.dto import RetainCommand, RetainResult, SupersedeMemoryCommand
 from memory_plane.contracts.events import IntegrationEvent
+from memory_plane.domain.audit import AuditEvent
 from memory_plane.domain.models import MemoryItem
 from memory_plane.ports.repositories import RetentionStore
 from memory_plane.services.privacy import PrivacyGuard
@@ -23,14 +24,16 @@ class RetentionService:
         self._store = store
         self._privacy = privacy or PrivacyGuard.from_env()
 
-    def retain(self, command: RetainCommand) -> RetainResult:
+    def retain(self, command: RetainCommand, audit_event: AuditEvent | None = None) -> RetainResult:
         """Validate, append and emit one `memory.retained.v1` event.
 
         Extraction, embedding, graph updates and consolidation deliberately stay
         off this hot path. Idempotency is delegated to the ledger transaction.
         """
         item, event = self.prepare(command)
-        stored, created = self._store.retain(item, event, command.idempotency_key)
+        if audit_event is not None:
+            audit_event = replace(audit_event, resource_id=str(item.id))
+        stored, created = self._store.retain(item, event, command.idempotency_key, audit_event)
         if not created:
             return RetainResult(item=stored, created=False, queued_event_ids=())
 

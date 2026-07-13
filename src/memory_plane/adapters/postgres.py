@@ -444,6 +444,7 @@ class PostgresMemoryLedger:
         item: MemoryItem,
         event: IntegrationEvent,
         idempotency_key: str | None = None,
+        audit_event: AuditEvent | None = None,
     ) -> tuple[MemoryItem, bool]:
         """Atomically append memory, provenance, idempotency key and outbox event."""
         idempotency_key = _scope_idempotency_key(item.workspace_id, idempotency_key)
@@ -473,6 +474,8 @@ class PostgresMemoryLedger:
                     (item.tenant_id, idempotency_key, item.id),
                 )
             self._insert_event(connection, event)
+            if audit_event is not None:
+                self._insert_audit_event(connection, audit_event)
             return item, True
 
     def supersede_if_current(
@@ -2229,6 +2232,18 @@ class PostgresMemoryLedger:
                 event.correlation_id,
                 event.occurred_at,
             ),
+        )
+
+    def _insert_audit_event(self, connection: Any, event: AuditEvent) -> None:
+        """Write audit evidence inside an existing canonical transaction."""
+        from psycopg.types.json import Jsonb
+        connection.execute(
+            """insert into audit_events (id, tenant_id, workspace_id, action, actor, actor_type,
+            resource_type, resource_id, status, metadata, created_at)
+            values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+            (event.id,event.tenant_id,event.workspace_id,event.action,event.actor,event.actor_type,
+             event.resource_type,event.resource_id,event.status,
+             Jsonb(self._stored_sensitive_json(connection,event.metadata)),event.created_at),
         )
 
     def _insert_turn(self, connection: Any, turn: ConversationTurn) -> None:

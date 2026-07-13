@@ -99,6 +99,7 @@ class RetentionStore(MemoryLedger, Protocol):
         item: MemoryItem,
         event: IntegrationEvent,
         idempotency_key: str | None = None,
+        audit_event: AuditEvent | None = None,
     ) -> tuple[MemoryItem, bool]:
         """Append memory and event in one transaction, or return an earlier result."""
         ...

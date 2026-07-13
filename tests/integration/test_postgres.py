@@ -613,6 +613,32 @@ class PostgresMemoryLedgerTest(unittest.TestCase):
 
         self.assertIsNone(self.store.get(self.tenant, second.id))
 
+    def test_audit_failure_rolls_back_memory_and_outbox(self) -> None:
+        item = self._item("audit transaction rollback")
+        audit = AuditEvent(
+            tenant_id=self.tenant,
+            workspace_id=self.workspace,
+            action="memory.retain",
+            actor="integration",
+            actor_type="system",
+            resource_type="memory_item",
+            resource_id=str(item.id),
+        )
+        with patch.object(
+            self.store, "_insert_audit_event", side_effect=RuntimeError("audit down")
+        ):
+            with self.assertRaisesRegex(RuntimeError, "audit down"):
+                self.store.retain(item, self._event(item), audit_event=audit)
+
+        self.assertIsNone(self.store.get(self.tenant, item.id))
+        with self.store._connection() as connection:
+            self.store._set_tenant(connection, self.tenant)
+            count = connection.execute(
+                "select count(*) as count from outbox_events where correlation_id = %s",
+                (item.id,),
+            ).fetchone()["count"]
+        self.assertEqual(0, count)
+
     def test_rls_hides_another_tenants_item(self) -> None:
         item = self._item()
         self.store.retain(item, self._event(item))
