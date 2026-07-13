@@ -327,8 +327,11 @@ def _check_health(api: JsonClient) -> None:
 def _capture_build_identity(api: JsonClient) -> tuple[dict[str, str], CheckResult]:
     started = time.perf_counter()
     try:
-        status = api.request("GET", "/v1/system/status")
-        identity = require_status_build_identity(status)
+        # /ready is intentionally public so native agent credentials cannot
+        # inspect operator-only process telemetry.  It nevertheless carries the
+        # immutable release identity needed to bind this report to a deployment.
+        readiness = api.request("GET", "/ready", auth=False)
+        identity = require_status_build_identity(readiness)
     except Exception as exc:  # noqa: BLE001 - evidence report captures the failure.
         return {}, CheckResult(
             name="build-identity",

@@ -1474,6 +1474,25 @@ def test_system_status_endpoint_reports_real_process_fields(monkeypatch) -> None
     assert "one_minute" in data["load_average"]
 
 
+def test_readiness_endpoint_exposes_release_identity_without_operator_access(monkeypatch) -> None:
+    expected_build = {
+        "version": "1.2.3",
+        "source_commit": "a" * 40,
+        "image_digest": "sha256:" + "b" * 64,
+        "deployment_id": "ready-test",
+        "build_time": "2026-07-10T00:00:00Z",
+    }
+    for field, value in expected_build.items():
+        monkeypatch.setenv(f"UAM_{field.upper()}", value)
+    client = TestClient(create_app(build_in_memory_container(), api_key="secret"))
+
+    response = client.get("/ready")
+
+    assert response.status_code == 200
+    assert response.json()["version"] == expected_build["version"]
+    assert response.json()["build"] == expected_build
+
+
 def test_retain_endpoint_redacts_secret_before_storage() -> None:
     container = build_in_memory_container()
     client = TestClient(create_app(container))

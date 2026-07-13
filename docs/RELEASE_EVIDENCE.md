@@ -28,8 +28,9 @@ export UAM_RELEASE_SIGNING_KEY_FILE=/run/secrets/obelisk_release_signing_key
 load-smoke and UI walkthrough reports. `RELEASE_PUBLIC_URL` must be the HTTPS
 URL recorded by deployment preflight. The deployed server's
 `UAM_SOURCE_COMMIT`, `UAM_IMAGE_DIGEST` and `UAM_DEPLOYMENT_ID` must equal the
-release identity above; the live runners read them back from
-`/v1/system/status` and the verifier rejects mismatches or stale reports.
+release identity above; the agent soak runner reads its public release identity
+from `/ready`, while operator-oriented runners may use `/v1/system/status`.
+The verifier rejects mismatches or stale reports.
 
 ## Seal after all reports exist
 
