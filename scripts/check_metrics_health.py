@@ -18,6 +18,23 @@ from memory_plane.config.secrets import read_secret_env
 DEFAULT_URL = "http://localhost:6798/metrics"
 
 
+def _default_api_key() -> str | None:
+    """Return a direct key or the local operator key from the scoped keyring."""
+    direct = read_secret_env("UAM_API_KEY")
+    if direct:
+        return direct
+    for entry in (read_secret_env("UAM_API_KEYS") or "").split(","):
+        try:
+            _name, secret, scopes = entry.strip().split(":", 2)
+        except ValueError:
+            continue
+        if "operator" in {
+            value.strip().lower() for value in scopes.replace("|", "+").split("+")
+        } and secret.strip():
+            return secret.strip()
+    return None
+
+
 def main() -> int:
     """Read metrics, evaluate thresholds, write report and optionally alert."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -25,7 +42,7 @@ def main() -> int:
     parser.add_argument("--metrics-file", help="Read Prometheus text from a local file")
     parser.add_argument(
         "--api-key",
-        default=read_secret_env("UAM_API_KEY"),
+        default=_default_api_key(),
         help="Bearer key for /metrics",
     )
     parser.add_argument("--report", default=os.getenv("UAM_METRICS_REPORT"))
