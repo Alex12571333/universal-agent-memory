@@ -7,7 +7,7 @@ import hashlib
 import hmac
 import json
 import os
-from dataclasses import asdict, is_dataclass
+from dataclasses import asdict, dataclass, is_dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -21,6 +21,18 @@ from memory_plane.domain.audit import AuditEvent
 from memory_plane.services.audit import AuditLogService
 
 BUNDLE_FORMAT = "obelisk-audit-export-v1"
+
+
+@dataclass(frozen=True)
+class AuditExportStats:
+    """Digest and bounded metadata collected while JSONL is streamed to disk."""
+
+    event_count: int
+    page_count: int
+    byte_count: int
+    sha256: str
+    newest: datetime | None
+    oldest: datetime | None
 
 
 def main() -> int:
@@ -88,19 +100,6 @@ def main() -> int:
     workspace_id = None if args.all_workspaces else args.workspace_id
     created_after = _parse_datetime(args.since)
     created_before = _parse_datetime(args.until)
-    events, page_count = _collect_events(
-        audit,
-        tenant_id=args.tenant_id,
-        workspace_id=workspace_id,
-        action=args.action,
-        resource_type=args.resource_type,
-        created_after=created_after,
-        created_before=created_before,
-        limit=args.limit,
-        batch_size=args.batch_size,
-        all_pages=args.all_pages,
-    )
-
     output = Path(args.output_dir)
     output.mkdir(parents=True, exist_ok=True)
     events_path = output / "audit-events.jsonl"
@@ -108,11 +107,14 @@ def main() -> int:
     manifest_checksum_path = output / "manifest.sha256"
     manifest_signature_path = output / "manifest.sig"
 
-    events_bytes = _jsonl_bytes(events)
-    events_path.write_bytes(events_bytes)
+    stats = _write_events(
+        events_path, audit, tenant_id=args.tenant_id, workspace_id=workspace_id,
+        action=args.action, resource_type=args.resource_type, created_after=created_after,
+        created_before=created_before, limit=args.limit, batch_size=args.batch_size,
+        all_pages=args.all_pages,
+    )
     manifest = _manifest(
-        events=events,
-        events_bytes=events_bytes,
+        stats=stats,
         tenant_id=args.tenant_id,
         workspace_id=workspace_id,
         action=args.action,
@@ -122,7 +124,6 @@ def main() -> int:
         created_before=created_before,
         all_pages=args.all_pages,
         batch_size=args.batch_size,
-        page_count=page_count,
         signed=bool(args.signing_key),
     )
     manifest_bytes = _canonical_json_bytes(manifest)
@@ -139,11 +140,48 @@ def main() -> int:
 
     print(
         "audit_export=PASS "
-        f"events={len(events)} pages={page_count} output={output} "
+        f"events={stats.event_count} pages={stats.page_count} output={output} "
         f"manifest_sha256={_sha256(manifest_bytes)} "
         f"signed={'yes' if args.signing_key else 'no'}"
     )
     return 0
+
+
+def _write_events(
+    path: Path, audit: AuditLogService, *, tenant_id: UUID, workspace_id: UUID | None,
+    action: str | None, resource_type: str | None, created_after: datetime | None,
+    created_before: datetime | None, limit: int, batch_size: int, all_pages: bool,
+) -> AuditExportStats:
+    """Stream cursor pages into JSONL; never retain all exported events in RAM."""
+    page_limit = max(1, min(int(batch_size if all_pages else limit), 500))
+    cursor_created_before, cursor_before_event_id = created_before, None
+    digest, count, pages, byte_count = hashlib.sha256(), 0, 0, 0
+    newest = oldest = None
+    with path.open("wb") as handle:
+        while True:
+            request: dict[str, Any] = {
+                "workspace_id": workspace_id, "action": action,
+                "resource_type": resource_type, "created_after": created_after,
+                "created_before": cursor_created_before, "limit": page_limit,
+            }
+            if cursor_before_event_id is not None:
+                request["before_event_id"] = cursor_before_event_id
+            page = audit.list_events(tenant_id, **request)
+            pages += 1
+            for event in page:
+                line = (json.dumps(_json_ready(event), ensure_ascii=False, sort_keys=True,
+                                  separators=(",", ":")) + "\n").encode()
+                handle.write(line)
+                digest.update(line)
+                count += 1
+                byte_count += len(line)
+                newest = event.created_at if newest is None else max(newest, event.created_at)
+                oldest = event.created_at if oldest is None else min(oldest, event.created_at)
+            if not all_pages or len(page) < page_limit:
+                break
+            last = page[-1]
+            cursor_created_before, cursor_before_event_id = last.created_at, last.id
+    return AuditExportStats(count, pages, byte_count, digest.hexdigest(), newest, oldest)
 
 
 def _collect_events(
@@ -212,8 +250,7 @@ def _jsonl_bytes(events: tuple[AuditEvent, ...]) -> bytes:
 
 def _manifest(
     *,
-    events: tuple[AuditEvent, ...],
-    events_bytes: bytes,
+    stats: AuditExportStats,
     tenant_id: UUID,
     workspace_id: UUID | None,
     action: str | None,
@@ -223,11 +260,9 @@ def _manifest(
     created_before: datetime | None,
     all_pages: bool,
     batch_size: int,
-    page_count: int,
     signed: bool,
 ) -> dict[str, Any]:
     """Build the tamper-evident manifest for one export bundle."""
-    created_values = [event.created_at for event in events]
     return {
         "format": BUNDLE_FORMAT,
         "exported_at": datetime.now(UTC).isoformat(),
@@ -242,18 +277,18 @@ def _manifest(
             "created_before": created_before.isoformat() if created_before else None,
             "all_pages": all_pages,
             "batch_size": max(1, min(int(batch_size), 500)),
-            "page_count": page_count,
+            "page_count": stats.page_count,
         },
-        "event_count": len(events),
+        "event_count": stats.event_count,
         "created_at_range": {
-            "newest": max(created_values).isoformat() if created_values else None,
-            "oldest": min(created_values).isoformat() if created_values else None,
+            "newest": stats.newest.isoformat() if stats.newest else None,
+            "oldest": stats.oldest.isoformat() if stats.oldest else None,
         },
         "files": [
             {
                 "path": "audit-events.jsonl",
-                "bytes": len(events_bytes),
-                "sha256": _sha256(events_bytes),
+                "bytes": stats.byte_count,
+                "sha256": stats.sha256,
             }
         ],
         "checksum_algorithm": "sha256",
