@@ -247,7 +247,7 @@ class ConflictReviewRepository(Protocol):
 class GraphRepository(Protocol):
     """Storage boundary for typed memory graph edges."""
 
-    def save_edge(self, edge: MemoryEdge) -> MemoryEdge:
+    def save_edge(self, edge: MemoryEdge, audit_event: AuditEvent | None = None) -> MemoryEdge:
         """Persist one graph edge idempotently by edge id."""
         ...
 

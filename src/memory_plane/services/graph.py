@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
+from memory_plane.domain.audit import AuditEvent
 from memory_plane.domain.graph import MemoryEdge, MemoryEdgeType
 from memory_plane.ports.repositories import GraphRepository, MemoryLedger
 
@@ -26,6 +27,7 @@ class GraphService:
         edge_type: MemoryEdgeType,
         weight: float = 1.0,
         provenance_item_id: UUID | None = None,
+        audit_event: AuditEvent | None = None,
     ) -> MemoryEdge:
         """Create a graph edge only when both endpoint memories exist."""
         src = self._ledger.get(tenant_id, src_id)
@@ -43,7 +45,7 @@ class GraphService:
             weight=weight,
             provenance_item_id=provenance_item_id,
         )
-        return self._graph.save_edge(edge)
+        return self._graph.save_edge(edge, audit_event=audit_event)
 
     def neighbors(
         self,

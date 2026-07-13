@@ -807,10 +807,12 @@ class InMemoryMemoryStore:
             if row.tenant_id == tenant_id and row.workspace_id == workspace_id
         )
 
-    def save_edge(self, edge: MemoryEdge) -> MemoryEdge:
+    def save_edge(self, edge: MemoryEdge, audit_event: AuditEvent | None = None) -> MemoryEdge:
         """Persist one memory graph edge."""
         with self._lock:
             self._edges.setdefault(edge.id, edge)
+            if audit_event is not None:
+                self.append_audit_event(audit_event)
             return self._edges[edge.id]
 
     def list_neighbors(
@@ -892,9 +894,9 @@ class InMemoryGraphRepository:
         """Retain shared edge storage."""
         self._store = store
 
-    def save_edge(self, edge: MemoryEdge) -> MemoryEdge:
+    def save_edge(self, edge: MemoryEdge, audit_event: AuditEvent | None = None) -> MemoryEdge:
         """Delegate edge persistence."""
-        return self._store.save_edge(edge)
+        return self._store.save_edge(edge, audit_event=audit_event)
 
     def list_neighbors(
         self,
