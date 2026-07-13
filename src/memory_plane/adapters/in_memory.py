@@ -855,6 +855,23 @@ class InMemoryMemoryStore:
         ]
         return tuple(sorted(rows, key=lambda row: (row.created_at, row.id)))
 
+    def list_edges_for_workspace(
+        self, tenant_id: UUID, workspace_id: UUID
+    ) -> tuple[MemoryEdge, ...]:
+        """List all graph edges inside a tenant-scoped workspace."""
+        with self._lock:
+            return tuple(
+                sorted(
+                    (
+                        edge
+                        for edge in self._edges.values()
+                        if edge.tenant_id == tenant_id
+                        and edge.workspace_id == workspace_id
+                    ),
+                    key=lambda row: (row.created_at, row.id),
+                )
+            )
+
     @staticmethod
     def _terms(text: str) -> set[str]:
         """Tokenize text for a dependency-free lexical fallback."""
@@ -934,6 +951,12 @@ class InMemoryGraphRepository:
             item_id,
             edge_type=edge_type,
         )
+
+    def list_for_workspace(
+        self, tenant_id: UUID, workspace_id: UUID
+    ) -> tuple[MemoryEdge, ...]:
+        """Delegate workspace edge listing with tenant isolation."""
+        return self._store.list_edges_for_workspace(tenant_id, workspace_id)
 
 
 class InMemoryCheckpointStore:

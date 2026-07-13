@@ -6,6 +6,7 @@ from memory_plane.services.reflection import ReflectionService
 from memory_plane.services.retention import RetentionService
 from memory_plane.services.retrieval import RetrievalService
 from memory_plane.services.vault import VaultExporter
+from memory_plane.services.vault_health import VaultHealthService
 
 __all__ = [
     "ContextCompiler",

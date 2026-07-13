@@ -2115,6 +2115,39 @@ class PostgresMemoryLedger:
             for row in rows
         )
 
+    def list_edges_for_workspace(
+        self, tenant_id: UUID, workspace_id: UUID
+    ) -> tuple[MemoryEdge, ...]:
+        """List all graph edges for one workspace under RLS."""
+        with self._connection() as connection:
+            self._set_tenant(connection, tenant_id)
+            rows = connection.execute(
+                """
+                select id, tenant_id, workspace_id, src_id, dst_id, edge_type, weight,
+                  valid_from, valid_to, provenance_item_id, created_at
+                from memory_edges
+                where workspace_id = %s
+                order by created_at, id
+                """,
+                (workspace_id,),
+            ).fetchall()
+        return tuple(
+            MemoryEdge(
+                id=row["id"],
+                tenant_id=row["tenant_id"],
+                workspace_id=row["workspace_id"],
+                src_id=row["src_id"],
+                dst_id=row["dst_id"],
+                edge_type=MemoryEdgeType(row["edge_type"]),
+                weight=row["weight"],
+                valid_from=row["valid_from"],
+                valid_to=row["valid_to"],
+                provenance_item_id=row["provenance_item_id"],
+                created_at=row["created_at"],
+            )
+            for row in rows
+        )
+
     def list_observations(
         self, tenant_id: UUID, workspace_id: UUID
     ) -> tuple[Observation, ...]:
@@ -2789,6 +2822,12 @@ class PostgresGraphRepository:
             item_id,
             edge_type=edge_type,
         )
+
+    def list_for_workspace(
+        self, tenant_id: UUID, workspace_id: UUID
+    ) -> tuple[MemoryEdge, ...]:
+        """Delegate workspace edge listing under the current tenant scope."""
+        return self._store.list_edges_for_workspace(tenant_id, workspace_id)
 
 
 class PostgresCheckpointStore:
