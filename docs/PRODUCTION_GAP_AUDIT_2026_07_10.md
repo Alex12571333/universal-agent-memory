@@ -18,7 +18,7 @@ under failure.
 | Data model | Append-only memory, CAS supersede, atomic conflict-winner revisions, canonical active-head recall, provenance, statuses and pgcrypto for canonical text plus application JSON exist | Legacy migration evidence, storage-volume controls and backup-destination encryption remain deployment gates |
 | Conversation capture | Raw ledger, proposal-first curation, `curated_only` purge, bounded staging TTL, stable identities and live pipeline runner exist | The purge schedule and installed agent hooks still require target evidence |
 | Embeddings | Provider-neutral endpoints, async worker, fail-soft recall, scoped sync and immutable collection identity exist | Target outage/migration evidence remains required |
-| Memory LLM | Provider-neutral OpenAI-compatible contract, deterministic fallback, proposal-first curation and live runner exist | Target failure/concurrency evidence and quality evaluation remain required; generated content never becomes recallable until an operator accepts its proposal |
+| Memory LLM | Provider-neutral OpenAI-compatible contract, deterministic fallback, proposal-first curation and live runner exist | Target failure/concurrency evidence and quality evaluation remain required; only the narrow evidence-quoted, non-temporal auto-policy may accept a proposal, all other generated content remains review-only |
 | OpenClaw/Hermes | Native adapters and a standalone live soak evaluator | OpenClaw native hook and Hermes/Qwen one-shot recall were revalidated on `.14`; Hermes requires the documented Qwen `enable_thinking=false` profile setting. Multi-hour native-runtime soak evidence remains required. |
 | UI | React dashboard supports signed HttpOnly operator sessions, CSRF, memory/vault editing, conflict decisions, exact-origin model probe policy and a JSON walkthrough runner | Target HTTPS session/egress evidence and secret-manager integration evidence remain required |
 | Testing | Unit/API tests, live PostgreSQL/Qdrant isolation/failure tests, benchmark scripts, web build and load runner exist | Target chaos/security evidence is still missing |
@@ -180,10 +180,13 @@ static readiness script are green.
    backlog or worker failure cannot retain staging transcripts indefinitely.
 
 12. **Proposal/LLM boundary needs target failure evidence.**
-    `ConversationCurator` now emits an evidence-linked proposal and never makes
-    LLM output recallable by itself. PostgreSQL proposal acceptance now locks
-    the proposal and writes canonical memory, idempotency, outbox and accepted
-    status in one transaction. A live target concurrent-accept check on
+    `ConversationCurator` now emits an evidence-linked proposal before any
+    canonical write. Its default auto-policy accepts only high-confidence
+    source-quoted, non-temporal preference/decision/task/procedure proposals;
+    deterministic fallback, temporal claims and every other target remain
+    review-only. PostgreSQL proposal acceptance now locks the proposal and
+    writes canonical memory, idempotency, outbox and accepted status in one
+    transaction. A live target concurrent-accept check on
     2026-07-12 returned the same memory ID to both requests with exactly one
     creation. A live runtime-role PostgreSQL failure-injection test then forced
     outbox insertion to fail and proved that the transaction left the proposal

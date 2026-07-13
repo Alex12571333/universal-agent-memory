@@ -98,12 +98,15 @@ maintenance endpoint `POST /v1/workspaces/{workspace_id}/conversations/purge-exp
 `purged_after_expiry`; вызов безопасен для повторов и фиксируется в audit log.
 Production scheduler обязан вызывать его чаще заданного TTL.
 
-`ConversationCurator.curate_turn` не создаёт recallable memory в production
-composition. Даже при включённом LLM он создаёт evidence-backed `MemoryProposal`
-с `source_turn_id`, а `/v1/memory/recall` его не видит. Только отдельный
-operator/policy accept может создать `MemoryItem` через normal retention path.
-Так LLM классифицирует и суммирует, но не становится источником автоматически
-принятой истины.
+`ConversationCurator.curate_turn` сначала создаёт evidence-backed
+`MemoryProposal` с `source_turn_id`, а `/v1/memory/recall` его не видит. По
+умолчанию API включает узкую автоматическую policy: она может принять только
+high-confidence preference/decision/task/procedure с literal evidence quote,
+без temporal markers и без deterministic fallback. Все остальные результаты
+остаются открытыми proposal для review. Так LLM не становится источником
+автоматически принятой истины: автоматизация допускается лишь при проверяемой
+связи с конкретным исходным turn. Передайте `auto_accept: false`, чтобы всегда
+оставлять proposal на ручную проверку.
 
 `MemoryProposalService.submit` хранит предлагаемое изменение памяти отдельно от
 `MemoryItem`. Запись в `/v1/memory/proposals` не попадает в recall и не запускает

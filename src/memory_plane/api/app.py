@@ -209,7 +209,12 @@ class ConversationTurnBody(BaseModel):
 
 
 class CurateConversationTurnBody(BaseModel):
-    """Create curated memory from one raw transcript turn."""
+    """Create curated memory from one raw transcript turn.
+
+    The default enables the narrow evidence-grounded auto-policy.  It accepts
+    only high-confidence, source-quoted, non-temporal proposal types; every
+    other result remains an open proposal for review.
+    """
 
     tenant_id: UUID = DEFAULT_SERVER_ID
     layer: MemoryLayer = MemoryLayer.EPISODIC
@@ -217,6 +222,7 @@ class CurateConversationTurnBody(BaseModel):
     labels: list[str] = Field(default_factory=list)
     importance: float = Field(default=0.4, ge=0, le=1)
     confidence: float = Field(default=0.65, ge=0, le=1)
+    auto_accept: bool = True
     idempotency_key: str | None = None
 
 
@@ -1882,6 +1888,7 @@ def create_app(
                     labels=tuple(body.labels),
                     importance=body.importance,
                     confidence=body.confidence,
+                    auto_accept=body.auto_accept,
                     idempotency_key=body.idempotency_key,
                 ),
                 audit_event=audit_event,

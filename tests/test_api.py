@@ -16,6 +16,7 @@ from memory_plane.api.app import (
     create_app,
 )
 from memory_plane.bootstrap import build_in_memory_container
+from memory_plane.services.conversations import CurateConversationTurnCommand
 
 
 def test_standalone_api_uses_default_server_and_project_ids() -> None:
@@ -859,6 +860,33 @@ def test_conversation_curate_endpoint_creates_reviewable_proposal_before_memory(
     assert recalled_after_accept.json()["results"][0]["id"] == accepted.json()["memory"]["id"]
     assert "Conversation turn summary" in recalled_after_accept.json()["results"][0]["text"]
     assert "Интерфейс должен быть на русском" in recalled_after_accept.json()["results"][0]["text"]
+
+
+def test_conversation_curate_enables_strict_auto_policy_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    container = build_in_memory_container()
+    original = container.curator.curate_turn
+    observed: list[bool] = []
+
+    def capture(command: CurateConversationTurnCommand, audit_event: object | None = None):
+        observed.append(command.auto_accept)
+        return original(command, audit_event=audit_event)
+
+    monkeypatch.setattr(container.curator, "curate_turn", capture)
+    client = TestClient(create_app(container))
+    turn = client.post(
+        "/v1/conversations/turns",
+        json={
+            "thread_id": str(DEFAULT_THREAD_ID),
+            "messages": [{"role": "user", "content": "Запомни предпочтение ответа."}],
+        },
+    )
+
+    response = client.post(f"/v1/conversations/turns/{turn.json()['id']}/curate", json={})
+
+    assert response.status_code == 201
+    assert observed == [True]
 
 
 def test_curated_only_policy_purges_raw_text_after_successful_curation() -> None:
