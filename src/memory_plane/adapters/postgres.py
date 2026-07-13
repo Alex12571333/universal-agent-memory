@@ -485,6 +485,7 @@ class PostgresMemoryLedger:
         *,
         expected_revision: int,
         idempotency_key: str | None = None,
+        audit_event: AuditEvent | None = None,
     ) -> tuple[MemoryItem, bool]:
         """CAS append a replacement and its outbox event in one transaction."""
         idempotency_key = _scope_idempotency_key(item.workspace_id, idempotency_key)
@@ -501,12 +502,20 @@ class PostgresMemoryLedger:
                 if existing is not None:
                     return existing, False
 
+            # The runtime application role intentionally has no UPDATE grant on
+            # memory_items. A row-level FOR UPDATE lock would therefore fail in
+            # a hardened deployment. Serialise replacements for the immutable
+            # root ID with a transaction-scoped advisory lock instead, then
+            # re-read the current chain while the lock is held.
+            connection.execute(
+                "select pg_advisory_xact_lock(hashtextextended(%s::text, 0))",
+                (item.supersedes_id,),
+            )
             parent = connection.execute(
                 """
                 select id, revision
                 from memory_items
                 where id = %s and deleted_at is null
-                for update
                 """,
                 (item.supersedes_id,),
             ).fetchone()
@@ -551,6 +560,8 @@ class PostgresMemoryLedger:
                     (item.tenant_id, idempotency_key, item.id),
                 )
             self._insert_event(connection, event)
+            if audit_event is not None:
+                self._insert_audit_event(connection, audit_event)
             return item, True
 
     def claim_outbox(

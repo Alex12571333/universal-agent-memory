@@ -170,6 +170,7 @@ class InMemoryMemoryStore:
         *,
         expected_revision: int,
         idempotency_key: str | None = None,
+        audit_event: AuditEvent | None = None,
     ) -> tuple[MemoryItem, bool]:
         """CAS append a replacement and enqueue its derived-work event."""
         idempotency_key = _scope_idempotency_key(item.workspace_id, idempotency_key)
@@ -196,6 +197,8 @@ class InMemoryMemoryStore:
             if idempotency_key:
                 self._idempotency[(item.tenant_id, idempotency_key)] = item.id
             self.publish(event)
+            if audit_event is not None:
+                self.append_audit_event(audit_event)
             return item, True
 
     def get(self, tenant_id: UUID, item_id: UUID) -> MemoryItem | None:
