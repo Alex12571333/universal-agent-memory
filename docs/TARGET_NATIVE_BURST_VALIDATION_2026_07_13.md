@@ -26,6 +26,15 @@ in parallel within a pair.
 The status log records only UTC timestamps, round number, agent name and exit
 code. It remains in the target's local restricted evidence directory.
 
+The canonical audit trail was also queried read-only after the burst start. It
+contained at least six `conversation.turn.append` and six `memory.recall`
+events for each native agent, plus at least six OpenClaw `memory.retain`
+events. A concurrent longer soak had already started another round, so the
+observed aggregate was seven for those actions; this document deliberately
+claims only the six events attributable to the completed burst. This confirms
+that successful CLI exits were accompanied by real Obelisk lifecycle calls,
+rather than a fail-soft no-memory path.
+
 ## Boundary
 
 This proves repeated real native lifecycle invocations and a clean server queue
