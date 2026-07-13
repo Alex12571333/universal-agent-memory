@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import nullcontext
 from uuid import uuid4
 
 import pytest
@@ -28,6 +29,22 @@ class _FakeRowConnection:
 
     def fetchone(self) -> dict[str, str]:
         return {"encrypted_text": "enc:pgcrypto:v1:ciphertext"}
+
+
+def test_postgres_get_audit_event_uses_alias_required_by_encrypted_metadata_sql(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression: audit metadata SQL references ``a.metadata`` by design."""
+    ledger = PostgresMemoryLedger("postgresql://example/memory")
+    connection = _FakeRowConnection()
+    monkeypatch.setattr(ledger, "_connection", lambda: nullcontext(connection))
+    monkeypatch.setattr(ledger, "_set_tenant", lambda _connection, _tenant: None)
+    monkeypatch.setattr(ledger, "_to_audit_event", lambda _row: None)
+
+    assert ledger.get_audit_event(uuid4(), uuid4()) is None
+    sql, _ = connection.calls[0]
+    assert "from audit_events a" in sql
+    assert "a.metadata" in sql
 
 
 def test_postgres_pgcrypto_mode_requires_key(monkeypatch: pytest.MonkeyPatch) -> None:

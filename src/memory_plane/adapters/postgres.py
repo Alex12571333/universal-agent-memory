@@ -981,7 +981,7 @@ class PostgresMemoryLedger:
                 f"""
                 select id, tenant_id, workspace_id, action, actor, actor_type,
                   resource_type, resource_id, status, {_AUDIT_METADATA_SQL} as metadata, created_at
-                from audit_events
+                from audit_events a
                 where id = %s
                 """,
                 (event_id,),
