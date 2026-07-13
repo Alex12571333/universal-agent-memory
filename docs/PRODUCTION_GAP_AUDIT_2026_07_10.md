@@ -13,7 +13,7 @@ under failure.
 | Architecture | PostgreSQL source of truth, Qdrant index, outbox, NATS workers, vault, API, UI | Good foundation |
 | Docker | Local self-hosted compose keeps infra ports internal in production topology; database secrets use dedicated mounts; deployment preflight writes boundary evidence | Fresh role provisioning still needs clean target-boot evidence |
 | API auth | Bearer keys, route capabilities, strict principal bindings, env validation and non-secret key registry exist; `/health` is public | Identity isolation is implemented and locally proven; target-deployment evidence remains required |
-| Audit trail | `audit_events`, export/signing and retention tools exist; retain, CAS supersede, raw conversation append, proposal submission/reviews, curation proposals, graph edges and conflict decisions share their canonical write transaction | Coverage is incomplete for reflection, reindex and checkpoints |
+| Audit trail | `audit_events`, export/signing and retention tools exist; retain, CAS supersede, raw conversation append, proposal submission/reviews, curation proposals, reflection observations, graph edges, conflict decisions and checkpoints share their canonical write transaction; reindex writes a durable intent before touching Qdrant and a terminal status afterwards | Qdrant is external, so reindex cannot be one atomic database transaction; target failure/recovery evidence remains required |
 | Browser/API hardening | Security headers are enforced by middleware and tests | Baseline present |
 | Data model | Append-only memory, CAS supersede, atomic conflict-winner revisions, canonical active-head recall, provenance, statuses and pgcrypto for canonical text plus application JSON exist | Legacy migration evidence, storage-volume controls and backup-destination encryption remain deployment gates |
 | Conversation capture | Raw ledger, proposal-first curation, `curated_only` purge, bounded staging TTL, stable identities and live pipeline runner exist | The purge schedule and installed agent hooks still require target evidence |
@@ -245,9 +245,14 @@ static readiness script are green.
    proposal. Raw conversation append now commits its encrypted transcript,
    idempotency record and `conversation.turn.append` audit together; audit
    failure leaves no transcript. Graph-edge creation now commits edge and
-   `graph.edge.create` audit atomically; audit failure leaves no edge. Denied
-   requests, reflect,
-   reindex still needs complete status-aware and transactional audit coverage.
+   `graph.edge.create` audit atomically; audit failure leaves no edge.
+   Reflection persists `reflection.observation.create` in the same transaction
+   as every observation. Reindex records `embedding.reindex.intent` before its
+   external Qdrant mutation and records a succeeded or failed terminal event
+   linked to that intent; an intent-audit failure prevents mutation. Because
+   Qdrant is external, the terminal audit write is necessarily best-effort if
+   the audit store fails after a vector-side outcome, so recovery evidence is
+   still required. Denied requests are not currently durable audit events.
    Checkpoint save/update now append actor-bound audit events in the same
    PostgreSQL transaction as their CAS revision; failure injection proves an
    audit error leaves no checkpoint revision. Checkpoint compaction uses the
