@@ -85,10 +85,12 @@ def main() -> int:
         work_dir = Path(temporary)
         restore_report = work_dir / "restore-drill.json"
         probe_report = work_dir / "restored-reindex-probe.json"
+        stage = "restore"
         try:
             restore = _run_restore_drill(args, suffix, restore_report)
             postgres_container = _restore_container(restore.stdout)
             password = _postgres_password(postgres_container)
+            stage = "qdrant"
             qdrant_container = f"{args.name_prefix}-qdrant-{suffix}"
             _run(
                 [
@@ -103,6 +105,7 @@ def main() -> int:
                 ]
             )
             _wait_for_qdrant(postgres_container, args.server_image, args.timeout_seconds)
+            stage = "semantic-probe"
             collection = f"recovery_probe_{suffix}"
             _run_probe(
                 args,
@@ -115,12 +118,16 @@ def main() -> int:
             persisted_restore, persisted_probe = _persist_evidence(
                 restore_report, probe_report, args.report
             )
+            stage = "bind-evidence"
             _bind_evidence(persisted_restore, persisted_probe, args.report)
             print(args.report.read_text(encoding="utf-8").strip())
             return 0
         except Exception as exc:  # noqa: BLE001 - emit non-secret failure evidence.
-            _write_failure_report(args.report, type(exc).__name__)
-            print(f"isolated_recovery_drill=FAIL error_type={type(exc).__name__}", file=sys.stderr)
+            _write_failure_report(args.report, type(exc).__name__, stage)
+            print(
+                f"isolated_recovery_drill=FAIL stage={stage} error_type={type(exc).__name__}",
+                file=sys.stderr,
+            )
             return 1
         finally:
             if not args.keep:
@@ -288,7 +295,7 @@ def _persist_evidence(restore_report: Path, probe_report: Path, target: Path) ->
     return persisted_restore, persisted_probe
 
 
-def _write_failure_report(path: Path, error_type: str) -> None:
+def _write_failure_report(path: Path, error_type: str, stage: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         json.dumps(
@@ -296,6 +303,7 @@ def _write_failure_report(path: Path, error_type: str) -> None:
                 "format": "obelisk-isolated-semantic-recovery-drill-v1",
                 "ok": False,
                 "error_type": error_type,
+                "stage": stage,
             },
             sort_keys=True,
         )

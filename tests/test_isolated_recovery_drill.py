@@ -90,11 +90,12 @@ def test_failure_report_does_not_include_failure_detail(tmp_path: Path) -> None:
     drill = _load_drill()
     report = tmp_path / "failed.json"
 
-    drill._write_failure_report(report, "CalledProcessError")
+    drill._write_failure_report(report, "CalledProcessError", "semantic-probe")
 
     assert report.read_text(encoding="utf-8") == (
         '{"error_type": "CalledProcessError", '
-        '"format": "obelisk-isolated-semantic-recovery-drill-v1", "ok": false}\n'
+        '"format": "obelisk-isolated-semantic-recovery-drill-v1", "ok": false, '
+        '"stage": "semantic-probe"}\n'
     )
 
 

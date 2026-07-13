@@ -11,6 +11,8 @@ OBELISK_PYTHON=/absolute/path/to/universal-agent-memory/.venv/bin/python
 OBELISK_EVIDENCE_DIR=/Users/<user>/.local/share/obelisk-memory/evidence
 OBELISK_BACKUP_DIR=/Users/<user>/.local/share/obelisk-memory/backups
 OBELISK_AUDIT_DIR=/Users/<user>/.local/share/obelisk-memory/audit
+# Optional: defaults to <workspace>/.env when omitted.
+OBELISK_RUNTIME_ENV_FILE=/absolute/path/to/universal-agent-memory/.env
 UAM_BACKUP_DATABASE_URL=postgresql://... 
 UAM_MAINTENANCE_DATABASE_URL=postgresql://...
 UAM_BACKUP_ENCRYPTION_KEY_FILE=/Users/<user>/.config/obelisk-memory/backup_encryption_key
@@ -31,18 +33,27 @@ python scripts/install_launchd_ops.py \
   --workspace "$PWD" \
   --env-file ~/.config/obelisk-memory/ops.env
 
-for job in conversation-retention backup maintenance metrics; do
+for job in conversation-retention backup maintenance semantic-recovery metrics; do
   launchctl bootstrap "gui/$(id -u)" \
     "$HOME/Library/LaunchAgents/com.obelisk-memory.$job.plist"
 done
 ```
 
 Schedules are conversation staging purge daily at 02:47, backup at 03:23,
-operational retention at 03:37, and metrics daily at 09:17. Generated wrappers and logs live under
+operational retention at 03:37, semantic recovery every Sunday at 04:13, and
+metrics daily at 09:17. Generated wrappers and logs live under
 `~/Library/LaunchAgents/obelisk-memory/`; reports are under
 `OBELISK_EVIDENCE_DIR`. `launchctl print gui/$(id -u)/com.obelisk-memory.metrics`
 shows the last exit code. Keep backup artifacts on an encrypted external disk
 or another operator-controlled durable local volume.
+
+`OBELISK_RUNTIME_ENV_FILE` is read only by the isolated semantic recovery
+probe and defaults to `<workspace>/.env` when omitted. It must contain the
+local pgcrypto and embedding configuration that the running appliance uses;
+keep this file mode `0600`. The weekly job selects the latest encrypted dump,
+restores it into temporary PostgreSQL/Qdrant containers, proves dense recall
+from the restored ledger, saves timestamped evidence, then removes the
+temporary resources.
 
 On 2026-07-12 the three jobs were installed and manually smoke-tested on the
 reference local appliance: metrics and maintenance exited `0`, and the backup
