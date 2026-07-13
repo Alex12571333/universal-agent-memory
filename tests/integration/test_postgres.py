@@ -903,6 +903,56 @@ class PostgresMemoryLedgerTest(unittest.TestCase):
 
         self.assertIsNone(checkpoint_store.get_head(self.tenant, thread_id))
 
+    def test_checkpoint_compaction_audit_failure_preserves_history(self) -> None:
+        agent_id = uuid4()
+        thread_id = uuid4()
+        self.store.provision_agent_thread(
+            AgentIdentity(
+                id=agent_id,
+                tenant_id=self.tenant,
+                workspace_id=self.workspace,
+                name="Checkpoint compaction audit agent",
+                role="test",
+            ),
+            thread_id=thread_id,
+        )
+        checkpoint_store = PostgresCheckpointStore(self.store)
+        for revision in (1, 2):
+            checkpoint_store.save_if_head(
+                Checkpoint(
+                    tenant_id=self.tenant,
+                    workspace_id=self.workspace,
+                    thread_id=thread_id,
+                    revision=revision,
+                    state={"revision": revision},
+                ),
+                revision - 1,
+            )
+        audit = AuditEvent(
+            tenant_id=self.tenant,
+            workspace_id=self.workspace,
+            action="checkpoint.compact",
+            actor="integration",
+            actor_type="system",
+            resource_type="checkpoint_thread",
+        )
+
+        with patch.object(
+            self.store,
+            "_insert_audit_event",
+            side_effect=RuntimeError("audit unavailable"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "audit unavailable"):
+                checkpoint_store.compact(
+                    self.tenant,
+                    thread_id,
+                    keep_last=1,
+                    audit_event=audit,
+                )
+
+        self.assertIsNotNone(checkpoint_store.get_revision(self.tenant, thread_id, 1))
+        self.assertIsNotNone(checkpoint_store.get_revision(self.tenant, thread_id, 2))
+
     def test_conflict_override_atomically_controls_canonical_recall(self) -> None:
         selected = self._item("Release Alpha is July 15.")
         newer = self._item("Release Alpha is July 16.")

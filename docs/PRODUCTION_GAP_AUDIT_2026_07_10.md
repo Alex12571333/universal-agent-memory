@@ -244,8 +244,9 @@ static readiness script are green.
    reindex still needs complete status-aware and transactional audit coverage.
    Checkpoint save/update now append actor-bound audit events in the same
    PostgreSQL transaction as their CAS revision; failure injection proves an
-   audit error leaves no checkpoint revision. Checkpoint compaction audit
-   coverage remains outstanding.
+   audit error leaves no checkpoint revision. Checkpoint compaction uses the
+   same atomic audit path; failure injection proves it preserves all historical
+   revisions when the audit write fails.
 8. The application role is now granted `SELECT/INSERT` by default, with only
    explicit operational mutations (outbox, idempotency, staging, proposal,
    agent/thread, review and checkpoint retention) re-granted. It cannot update
