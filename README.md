@@ -364,7 +364,9 @@ UAM_API_KEY=... python scripts/agent_soak_eval.py \
 
 The report must show `ok: true`. It verifies OpenClaw/Hermes-style writes,
 recall, idempotent retries, and cross-workspace leakage checks. It is runtime
-evidence, not a substitute for installing the native plugins.
+evidence, not a substitute for installing the native plugins. The report binds
+itself to the release identity returned by public `/ready`; operator-only
+process telemetry remains available only from `/v1/system/status`.
 
 Detailed integration guide:
 [docs/AGENT_INTEGRATION.md](docs/AGENT_INTEGRATION.md).

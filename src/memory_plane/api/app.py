@@ -1306,6 +1306,11 @@ def create_app(
             status_code=200 if canonical_ready else 503,
             content={
                 "status": status,
+                # Release identity is deliberately public: agents and probes must
+                # be able to bind their evidence to the exact local deployment
+                # without receiving operator-only process telemetry.
+                "version": app.version,
+                "build": build_info.public_dict(),
                 "canonical_store": "healthy" if canonical_ready else "failed",
                 "retrieval_sources": sources,
             },

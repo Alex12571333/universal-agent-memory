@@ -55,7 +55,7 @@ class FakeSoakApi:
         if method == "GET" and path == "/health":
             assert expect_status == 200
             return {"status": "ok"}
-        if method == "GET" and path == "/v1/system/status":
+        if method == "GET" and path == "/ready":
             return {"status": "ok", "version": "0.1.0", "build": self._build_identity}
         if method == "POST" and path == "/v1/memory/retain":
             return self._retain(body or {}, expect_status=expect_status)

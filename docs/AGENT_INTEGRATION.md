@@ -228,6 +228,11 @@ workspace, and probes the opposite workspace for leakage. A production rollout
 must preserve the JSON report as evidence after running it through the deployed
 OpenClaw and Hermes runtime hooks against the release server.
 
+The runner obtains immutable release identity from public `GET /ready`, so it
+does not need access to operator process telemetry at `GET /v1/system/status`.
+The key still needs permission for the workspaces selected by the soak run;
+provisioning new soak identities remains an explicit operator action.
+
 This runner validates the memory server side of the contract. It does not prove
 that OpenClaw/Hermes loaded the plugin correctly unless it is run as part of the
 agent deployment and the native plugin logs show the lifecycle hooks firing.
