@@ -35,7 +35,9 @@ def main() -> int:
 
     api_key = _read_secret(args.api_key_env)
     if not api_key:
-        raise SystemExit(f"missing operator credential in {args.api_key_env} or {args.api_key_env}_FILE")
+        raise SystemExit(
+            f"missing operator credential in {args.api_key_env} or {args.api_key_env}_FILE"
+        )
     if args.timeout_seconds <= 0:
         raise SystemExit("--timeout-seconds must be positive")
 
@@ -109,7 +111,9 @@ def main() -> int:
         result["completed_at"] = datetime.now(UTC).isoformat()
         if args.report:
             args.report.parent.mkdir(parents=True, exist_ok=True)
-            args.report.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            args.report.write_text(
+                json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+            )
         print(json.dumps(result, sort_keys=True))
 
 

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 from base64 import b64encode
 from dataclasses import replace
@@ -103,14 +102,12 @@ class NatsPullWorker:
         """Process one bounded batch and return its acknowledged count."""
         if self._subscription is None:
             raise RuntimeError("NATS worker is not connected")
-        from nats.errors import TimeoutError as NatsTimeoutError
-
         try:
             messages = await self._subscription.fetch(batch_size, timeout=timeout)
         # nats-py has used both its own TimeoutError and asyncio.TimeoutError
         # across client versions. An empty pull is normal polling, never a
         # worker crash/restart condition.
-        except (NatsTimeoutError, asyncio.TimeoutError):
+        except TimeoutError:
             return 0
         acknowledged = 0
         for message in messages:

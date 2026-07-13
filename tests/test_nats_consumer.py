@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import unittest
 from types import SimpleNamespace
 
@@ -62,4 +61,4 @@ class DeadLetterJetStream:
 
 class AsyncioTimeoutSubscription:
     async def fetch(self, *args, **kwargs) -> list[object]:
-        raise asyncio.TimeoutError
+        raise TimeoutError
