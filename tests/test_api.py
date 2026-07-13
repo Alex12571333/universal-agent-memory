@@ -1539,12 +1539,14 @@ def test_system_status_endpoint_reports_real_process_fields(monkeypatch) -> None
         "unhealthy",
         "unavailable",
         "misconfigured",
+        "not_configured",
     }
     assert data["runtime_dependencies"]["embedding_worker"]["status"] in {
         "healthy",
         "unhealthy",
         "unavailable",
         "misconfigured",
+        "not_configured",
     }
 
 
