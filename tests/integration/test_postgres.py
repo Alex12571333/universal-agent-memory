@@ -69,6 +69,8 @@ def _load_script(name: str) -> ModuleType:
 protected_search_backfill = _load_script("backfill_protected_search_tokens")
 BackfillCursor = protected_search_backfill.BackfillCursor
 backfill_workspace = protected_search_backfill.backfill_workspace
+protected_search_index_probe = _load_script("protected_search_index_probe")
+capture_protected_search_probe = protected_search_index_probe.capture_probe
 
 DATABASE_URL = os.getenv("UAM_TEST_DATABASE_URL")
 if DATABASE_URL:
@@ -309,10 +311,18 @@ class PostgresMemoryLedgerTest(unittest.TestCase):
                 workspace_id=self.workspace,
                 batch_size=10,
             )
+            probe = capture_protected_search_probe(
+                protected,
+                tenant_id=self.tenant,
+                workspace_id=self.workspace,
+                query=query.text,
+            )
             with patch.object(protected, "list_for_workspace", side_effect=AssertionError):
                 indexed = protected.search(query)
 
         self.assertEqual(item.id, indexed[0].item.id)
+        self.assertTrue(probe["coverage_complete"])
+        self.assertTrue(probe["index_used"])
 
     def test_pgcrypto_protects_noncanonical_memory_fields_and_round_trips(self) -> None:
         """Operational evidence must not leave quotes, summaries or state in plaintext."""
