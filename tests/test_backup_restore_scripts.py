@@ -108,6 +108,8 @@ def test_migration_runner_includes_every_versioned_sql_file() -> None:
         "010_conflict_resolution_memory.sql",
         "011_conversation_staging_retention.sql",
         "012_outbox_retry_schedule.sql",
+        "013_protected_search_tokens.sql",
+        "014_protected_search_scope_integrity.sql",
     }
     configured = {path.name for path in migrate.MIGRATIONS}
 

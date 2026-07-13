@@ -36,6 +36,17 @@ workspace scan, so rollout cannot cause recall loss.
    canonical lifecycle handling.
 4. Require a complete backfill report before enabling indexed-only operation.
 
+## Implementation status
+
+- Migrations 013/014 install the RLS-scoped token table and enforce that every
+  token row has the same tenant/workspace as its canonical memory item.
+- `hmac-v1` dual-writes tokens during canonical retention and supersession in
+  the same PostgreSQL transaction. Startup requires a separate key and a
+  positive `UAM_PROTECTED_SEARCH_INDEX_KEY_VERSION`.
+- The indexed recall reader, batch backfill, rotation executor and query-plan
+  release evidence are deliberately not implemented yet. Existing recall keeps
+  its authorized fallback, so enabling dual-write cannot reduce recall.
+
 ## Rollback
 
 Disable `UAM_PROTECTED_SEARCH_INDEX`; recall reverts to the current fallback.

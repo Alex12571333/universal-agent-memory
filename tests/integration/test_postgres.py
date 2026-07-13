@@ -144,6 +144,52 @@ class PostgresMemoryLedgerTest(unittest.TestCase):
             ).fetchone()["count"]
         self.assertEqual(1, count)
 
+    def test_protected_search_dual_write_is_scoped_and_uses_runtime_role(self) -> None:
+        key = "integration-blind-index-" + "a" * 40
+        with patch.dict(
+            os.environ,
+            {
+                "UAM_PROTECTED_SEARCH_INDEX": "hmac-v1",
+                "UAM_PROTECTED_SEARCH_INDEX_KEY": key,
+                "UAM_PROTECTED_SEARCH_INDEX_KEY_VERSION": "3",
+            },
+            clear=False,
+        ):
+            protected = PostgresMemoryLedger(DATABASE_URL or "")
+            item = self._item("Sensitive preference is stored as blind tokens")
+            protected.retain(item, self._event(item), "protected-search-dual-write")
+
+        with self.store._connection() as connection:
+            self.store._set_tenant(connection, self.tenant)
+            rows = connection.execute(
+                """
+                select key_version, digest
+                from memory_search_tokens
+                where memory_item_id = %s
+                """,
+                (item.id,),
+            ).fetchall()
+        self.assertGreater(len(rows), 0)
+        self.assertTrue(all(row["key_version"] == 3 for row in rows))
+        self.assertTrue(all(len(row["digest"]) == 32 for row in rows))
+
+        other_workspace = uuid4()
+        with self.store._connection() as connection:
+            self.store._set_tenant(connection, self.tenant)
+            connection.execute(
+                "insert into workspaces (id, tenant_id, name) values (%s, %s, %s)",
+                (other_workspace, self.tenant, "other-workspace"),
+            )
+            with self.assertRaises(PostgresError):
+                connection.execute(
+                    """
+                    insert into memory_search_tokens (
+                      tenant_id, workspace_id, memory_item_id, key_version, digest
+                    ) values (%s, %s, %s, %s, %s)
+                    """,
+                    (self.tenant, other_workspace, item.id, 3, b"x" * 32),
+                )
+
     def test_pgcrypto_protects_noncanonical_memory_fields_and_round_trips(self) -> None:
         """Operational evidence must not leave quotes, summaries or state in plaintext."""
         key = "integration-pgcrypto-" + "a" * 40

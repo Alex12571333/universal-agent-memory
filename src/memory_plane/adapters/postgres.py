@@ -41,6 +41,7 @@ from memory_plane.domain.proposal import (
     MemoryProposalStatus,
     MemoryProposalTarget,
 )
+from memory_plane.services.protected_search import protected_tokens
 
 
 def _scope_idempotency_key(workspace_id: UUID, key: str | None) -> str | None:
@@ -209,6 +210,9 @@ class PostgresMemoryLedger:
         self._protected_search_index_key = (
             read_secret_env("UAM_PROTECTED_SEARCH_INDEX_KEY") or ""
         )
+        protected_search_key_version_raw = os.getenv(
+            "UAM_PROTECTED_SEARCH_INDEX_KEY_VERSION", "1"
+        )
         self._text_encryption_scopes = _parse_text_encryption_scopes(
             os.getenv("UAM_MEMORY_TEXT_ENCRYPTION_SCOPES", "all")
         )
@@ -235,6 +239,20 @@ class PostgresMemoryLedger:
                     "UAM_PROTECTED_SEARCH_INDEX_KEY must differ from "
                     "UAM_MEMORY_TEXT_ENCRYPTION_KEY"
                 )
+            try:
+                self._protected_search_index_key_version = int(
+                    protected_search_key_version_raw
+                )
+            except ValueError as error:
+                raise ValueError(
+                    "UAM_PROTECTED_SEARCH_INDEX_KEY_VERSION must be a positive integer"
+                ) from error
+            if not 0 < self._protected_search_index_key_version <= 32767:
+                raise ValueError(
+                    "UAM_PROTECTED_SEARCH_INDEX_KEY_VERSION must be between 1 and 32767"
+                )
+        else:
+            self._protected_search_index_key_version = 1
 
     def connect(self) -> None:
         """Check that PostgreSQL is reachable and the schema is installed."""
@@ -2199,6 +2217,7 @@ class PostgresMemoryLedger:
                 item.created_at,
             ),
         )
+        self._insert_protected_search_tokens(connection, item)
         provenance = item.provenance
         connection.execute(
             """
@@ -2219,6 +2238,27 @@ class PostgresMemoryLedger:
                 provenance.extraction_version,
             ),
         )
+
+    def _insert_protected_search_tokens(self, connection: Any, item: MemoryItem) -> None:
+        """Dual-write blind-index terms in the canonical item transaction."""
+        if self._protected_search_index_mode != "hmac-v1":
+            return
+        for digest in protected_tokens(item.text, self._protected_search_index_key):
+            connection.execute(
+                """
+                insert into memory_search_tokens (
+                  tenant_id, workspace_id, memory_item_id, key_version, digest
+                ) values (%s, %s, %s, %s, %s)
+                on conflict do nothing
+                """,
+                (
+                    item.tenant_id,
+                    item.workspace_id,
+                    item.id,
+                    self._protected_search_index_key_version,
+                    digest,
+                ),
+            )
 
     def _stored_memory_text(self, connection: Any, item: MemoryItem) -> str:
         """Return plaintext or pgcrypto ciphertext for memory_items.text."""

@@ -49,6 +49,47 @@ def test_protected_search_requires_distinct_hmac_key(monkeypatch: pytest.MonkeyP
         PostgresMemoryLedger("postgresql://example/memory")
 
 
+@pytest.mark.parametrize("key_version", ["0", "-1", "32768", "not-a-number"])
+def test_protected_search_rejects_invalid_key_version(
+    monkeypatch: pytest.MonkeyPatch, key_version: str
+) -> None:
+    monkeypatch.setenv("UAM_PROTECTED_SEARCH_INDEX", "hmac-v1")
+    monkeypatch.setenv("UAM_PROTECTED_SEARCH_INDEX_KEY", "blind-index-" + "a" * 40)
+    monkeypatch.setenv("UAM_PROTECTED_SEARCH_INDEX_KEY_VERSION", key_version)
+
+    with pytest.raises(ValueError, match="KEY_VERSION"):
+        PostgresMemoryLedger("postgresql://example/memory")
+
+
+def test_postgres_dual_writes_only_hmac_digests_for_protected_search(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    key = "blind-index-" + "a" * 40
+    monkeypatch.setenv("UAM_PROTECTED_SEARCH_INDEX", "hmac-v1")
+    monkeypatch.setenv("UAM_PROTECTED_SEARCH_INDEX_KEY", key)
+    monkeypatch.setenv("UAM_PROTECTED_SEARCH_INDEX_KEY_VERSION", "7")
+    ledger = PostgresMemoryLedger("postgresql://example/memory")
+    connection = _FakeRowConnection()
+    item = MemoryItem(
+        tenant_id=uuid4(),
+        workspace_id=uuid4(),
+        layer=MemoryLayer.SEMANTIC,
+        scope=MemoryScope.WORKSPACE,
+        kind="fact",
+        text="Secret secret preference",
+        provenance=Provenance(source_kind="test"),
+    )
+
+    ledger._insert_item(connection, item)
+
+    token_calls = [call for call in connection.calls if "memory_search_tokens" in call[0]]
+    assert len(token_calls) == 2
+    assert all(call[1][3] == 7 for call in token_calls)
+    assert all(isinstance(call[1][4], bytes) and len(call[1][4]) == 32 for call in token_calls)
+    assert all(b"secret" not in call[1][4] for call in token_calls)
+    assert all("Secret secret preference" not in str(call[1]) for call in token_calls)
+
+
 def test_postgres_encrypts_memory_text_before_insert(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("UAM_MEMORY_TEXT_ENCRYPTION", "pgcrypto")
     monkeypatch.setenv("UAM_MEMORY_TEXT_ENCRYPTION_KEY", "memtext_" + "a" * 40)
