@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from base64 import b64encode
 from dataclasses import replace
@@ -106,7 +107,10 @@ class NatsPullWorker:
 
         try:
             messages = await self._subscription.fetch(batch_size, timeout=timeout)
-        except NatsTimeoutError:
+        # nats-py has used both its own TimeoutError and asyncio.TimeoutError
+        # across client versions. An empty pull is normal polling, never a
+        # worker crash/restart condition.
+        except (NatsTimeoutError, asyncio.TimeoutError):
             return 0
         acknowledged = 0
         for message in messages:

@@ -48,6 +48,10 @@ services:
       UAM_MEMORY_LLM_MAX_TOKENS: ${UAM_MEMORY_LLM_MAX_TOKENS:-1200}
       UAM_MEMORY_LLM_EXTRA_BODY_JSON: ${UAM_MEMORY_LLM_EXTRA_BODY_JSON:-}
       UAM_MODEL_ENDPOINT_ALLOWLIST: ${UAM_MODEL_ENDPOINT_ALLOWLIST:-}
+      # Disabled by default so the basic local profile stays fail-soft when the
+      # optional advanced services are absent. Set true for an advanced runtime
+      # verification or an appliance deployment with NATS and the worker.
+      UAM_RUNTIME_DEPENDENCY_PROBES: ${UAM_RUNTIME_DEPENDENCY_PROBES:-false}
     ports: ["6798:8080"]
     depends_on:
       migrate:
@@ -134,6 +138,12 @@ services:
       UAM_ENFORCE_RUNTIME_DB_ACL: "true"
       UAM_SERVER_ID: 00000000-0000-0000-0000-000000000001
       UAM_NATS_URL: nats://nats:4222
+      # The relay reads canonical outbox payloads. It needs the same pgcrypto
+      # configuration as API and consumers before it can publish an event.
+      UAM_MEMORY_TEXT_ENCRYPTION: ${UAM_MEMORY_TEXT_ENCRYPTION:-off}
+      UAM_MEMORY_TEXT_ENCRYPTION_SCOPES: ${UAM_MEMORY_TEXT_ENCRYPTION_SCOPES:-all}
+      UAM_MEMORY_TEXT_ENCRYPTION_KEY: ${UAM_MEMORY_TEXT_ENCRYPTION_KEY:-}
+      UAM_MEMORY_TEXT_ENCRYPTION_KEY_FILE: ${UAM_MEMORY_TEXT_ENCRYPTION_KEY_FILE:-}
     depends_on:
       migrate:
         condition: service_completed_successfully
