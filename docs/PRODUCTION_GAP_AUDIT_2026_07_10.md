@@ -215,7 +215,8 @@ static readiness script are green.
    candidates in SQL before decoding them in Python. The pgcrypto mode keeps a
    correctness-first post-decryption fallback because ciphertext cannot use the
    normal FTS index; a protected searchable index and production pagination for
-   several list/export paths remain required.
+   several list/export paths remain required. [RFC 0013](rfcs/0013-pgcrypto-protected-lexical-index.md)
+   defines the opt-in blind-index contract, migration and leakage boundary.
 7. `memory.retain` and `memory.supersede` audit records are now committed in
    the same PostgreSQL transaction as their canonical item, idempotency key and
    outbox event. Failure injection proves an audit insert error rolls back the
