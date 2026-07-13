@@ -1137,6 +1137,40 @@ def test_reindex_triggers_embedding_service() -> None:
     assert len(events) == 1
     assert events[0].status == "succeeded"
     assert events[0].metadata["reindexed_count"] == 2
+    intents = container.audit.list_events(
+        DEFAULT_SERVER_ID,
+        workspace_id=DEFAULT_PROJECT_ID,
+        action="embedding.reindex.intent",
+    )
+    assert len(intents) == 1
+    assert events[0].metadata["intent_event_id"] == str(intents[0].id)
+
+
+def test_reindex_refuses_to_mutate_when_durable_intent_audit_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    container = build_in_memory_container()
+    client = TestClient(create_app(container))
+    called = False
+
+    def refuse_audit(**_kwargs: object) -> object:
+        raise RuntimeError("audit unavailable")
+
+    def should_not_reindex(*_args: object) -> int:
+        nonlocal called
+        called = True
+        return 0
+
+    monkeypatch.setattr(container.audit, "record", refuse_audit)
+    monkeypatch.setattr(container.embedding, "reindex_all", should_not_reindex)
+    client = TestClient(create_app(container), raise_server_exceptions=False)
+
+    response = client.post(
+        f"/v1/workspaces/{DEFAULT_PROJECT_ID}/reindex?tenant_id={DEFAULT_SERVER_ID}"
+    )
+
+    assert response.status_code == 500
+    assert called is False
 
 
 def test_conflict_inbox_endpoint_lists_and_persists_review_decision() -> None:
