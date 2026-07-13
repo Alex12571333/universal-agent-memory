@@ -14,11 +14,16 @@ from pathlib import Path
 LABEL_PREFIX = "com.obelisk-memory"
 
 
-def _job(label: str, script: Path, hour: int, minute: int) -> dict[object, object]:
+def _job(
+    label: str, script: Path, hour: int, minute: int, weekday: int | None = None
+) -> dict[object, object]:
+    interval: dict[str, int] = {"Hour": hour, "Minute": minute}
+    if weekday is not None:
+        interval["Weekday"] = weekday
     return {
         "Label": label,
         "ProgramArguments": ["/bin/zsh", str(script)],
-        "StartCalendarInterval": {"Hour": hour, "Minute": minute},
+        "StartCalendarInterval": interval,
         "RunAtLoad": False,
         "ProcessType": "Background",
         "StandardOutPath": str(script.with_suffix(".out.log")),
@@ -50,6 +55,16 @@ def _wrapper(workspace: Path, env_file: Path, task: str) -> str:
             '--tenant-id "$UAM_SERVER_ID" --workspace-id "$UAM_PROJECT_ID" '
             '> "$OBELISK_EVIDENCE_DIR/conversation-retention.json"'
         ),
+        "semantic-recovery": (
+            'latest_backup="$(find "$OBELISK_BACKUP_DIR" -maxdepth 1 -type f '
+            '-name "*.dump.enc" -print | sort | tail -n 1)"\n'
+            '[[ -n "$latest_backup" ]]\n'
+            'stamp="$(date -u +%Y%m%dT%H%M%SZ)"\n'
+            'runtime_env="${OBELISK_RUNTIME_ENV_FILE:-$PWD/.env}"\n'
+            '"$OBELISK_PYTHON" scripts/isolated_recovery_drill.py "$latest_backup" '
+            '--runtime-env-file "$runtime_env" '
+            '--report "$OBELISK_EVIDENCE_DIR/isolated-semantic-recovery-${stamp}.json"'
+        ),
     }
     return "\n".join(
         (
@@ -72,19 +87,22 @@ def install(*, workspace: Path, env_file: Path, launch_agents: Path) -> list[Pat
     install_dir = launch_agents / "obelisk-memory"
     install_dir.mkdir(parents=True, exist_ok=True)
     schedule = {
-        "conversation-retention": (2, 47),
-        "backup": (3, 23),
-        "maintenance": (3, 37),
-        "metrics": (9, 17),
+        "conversation-retention": (2, 47, None),
+        "backup": (3, 23, None),
+        "maintenance": (3, 37, None),
+        "semantic-recovery": (4, 13, 0),
+        "metrics": (9, 17, None),
     }
     result: list[Path] = []
-    for task, (hour, minute) in schedule.items():
+    for task, (hour, minute, weekday) in schedule.items():
         wrapper = install_dir / f"{task}.zsh"
         wrapper.write_text(_wrapper(workspace, env_file, task), encoding="utf-8")
         wrapper.chmod(0o700)
         plist = launch_agents / f"{LABEL_PREFIX}.{task}.plist"
         with plist.open("wb") as handle:
-            plistlib.dump(_job(f"{LABEL_PREFIX}.{task}", wrapper, hour, minute), handle)
+            plistlib.dump(
+                _job(f"{LABEL_PREFIX}.{task}", wrapper, hour, minute, weekday), handle
+            )
         plist.chmod(0o600)
         result.append(plist)
     return result
