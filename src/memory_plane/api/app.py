@@ -127,6 +127,13 @@ def _disk_usage_response(path: str = "/app") -> dict[str, Any]:
 
 def _private_dependency_health(url: str) -> dict[str, str]:
     """Probe a fixed operator-configured dependency without leaking its URL."""
+    if os.getenv("UAM_RUNTIME_DEPENDENCY_PROBES", "false").strip().lower() not in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }:
+        return {"status": "not_configured"}
     try:
         parsed = urlsplit(url)
         if parsed.scheme not in {"http", "https"} or not parsed.hostname:
