@@ -86,8 +86,8 @@ def run_preflight(
             metrics_schedule_file,
             ("check_metrics_health.py", "--report"),
         ),
-        _configured_check(values, "UAM_BACKUP_ALERT_WEBHOOK"),
-        _configured_check(values, "UAM_METRICS_ALERT_WEBHOOK"),
+        _alert_route_check(values, "UAM_BACKUP_ALERT_WEBHOOK"),
+        _alert_route_check(values, "UAM_METRICS_ALERT_WEBHOOK"),
         _artifact_root_check(
             "backup-artifact-root",
             backup_artifact_root,
@@ -148,6 +148,19 @@ def _schedule_checks(
             ),
         },
     ]
+
+
+def _alert_route_check(values: dict[str, str], webhook_name: str) -> dict[str, Any]:
+    """Accept an external webhook or the explicitly configured local command route."""
+    if values.get(webhook_name, "").strip():
+        return _configured_check(values, webhook_name)
+    if values.get("UAM_ALERT_COMMAND", "").strip():
+        return {
+            "name": f"{webhook_name}:configured",
+            "ok": True,
+            "detail": "local alert command configured",
+        }
+    return _configured_check(values, webhook_name)
 
 
 def _configured_check(values: dict[str, str], key: str) -> dict[str, Any]:
