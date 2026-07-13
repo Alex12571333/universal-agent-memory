@@ -1534,6 +1534,18 @@ def test_system_status_endpoint_reports_real_process_fields(monkeypatch) -> None
     assert data["storage"]["used_bytes"] > 0
     assert data["process"]["pid"] > 0
     assert "one_minute" in data["load_average"]
+    assert data["runtime_dependencies"]["nats"]["status"] in {
+        "healthy",
+        "unhealthy",
+        "unavailable",
+        "misconfigured",
+    }
+    assert data["runtime_dependencies"]["embedding_worker"]["status"] in {
+        "healthy",
+        "unhealthy",
+        "unavailable",
+        "misconfigured",
+    }
 
 
 def test_readiness_endpoint_exposes_release_identity_without_operator_access(monkeypatch) -> None:

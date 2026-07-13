@@ -19,7 +19,10 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
+from urllib.error import URLError
 from urllib.parse import urlsplit
+from urllib.request import Request as UrlRequest
+from urllib.request import urlopen
 from uuid import UUID
 
 from fastapi import FastAPI, HTTPException, Request
@@ -120,6 +123,19 @@ def _disk_usage_response(path: str = "/app") -> dict[str, Any]:
         "free_bytes": usage.free,
         "used_percent": round((usage.used / usage.total) * 100, 1) if usage.total else None,
     }
+
+
+def _private_dependency_health(url: str) -> dict[str, str]:
+    """Probe a fixed operator-configured dependency without leaking its URL."""
+    try:
+        parsed = urlsplit(url)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            return {"status": "misconfigured"}
+        request = UrlRequest(url, method="GET")
+        with urlopen(request, timeout=0.5) as response:  # noqa: S310 - operator config only.
+            return {"status": "healthy" if response.status == 200 else "unhealthy"}
+    except (OSError, URLError, ValueError):
+        return {"status": "unavailable"}
 
 
 class RetainBody(BaseModel):
@@ -1669,6 +1685,17 @@ def create_app(
                 "fifteen_minutes": load_average[2] if load_average else None,
             },
             "memory_llm": MemoryLLMConfig.from_env().public_dict(),
+            "runtime_dependencies": {
+                "nats": _private_dependency_health(
+                    os.getenv("UAM_NATS_HEALTH_URL", "http://nats:8222/healthz")
+                ),
+                "embedding_worker": _private_dependency_health(
+                    os.getenv(
+                        "UAM_EMBEDDING_WORKER_HEALTH_URL",
+                        "http://embedding-worker:9091/healthz",
+                    )
+                ),
+            },
         }
 
     @app.get("/metrics", response_class=PlainTextResponse)
