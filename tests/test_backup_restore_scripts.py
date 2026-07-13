@@ -691,6 +691,82 @@ def test_restore_decrypts_encrypted_artifact_to_temporary_file(
     assert not temporary.exists()
 
 
+def test_restore_requires_signed_bundle_for_protected_restore(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    dump = tmp_path / "obelisk-memory-20260710T120000Z.dump.enc"
+    dump.write_bytes(b"encrypted-backup")
+    manifest_path = tmp_path / "obelisk-memory-20260710T120000Z.bundle.json"
+    signing_key = "restore-bundle-signing-key"
+    manifest = {
+        "format": "obelisk-backup-bundle-v1",
+        "created_at": "2026-07-10T12:00:00Z",
+        "timestamp": "20260710T120000Z",
+        "files": [
+            {
+                "path": str(dump),
+                "bytes": dump.stat().st_size,
+                "sha256": hashlib.sha256(dump.read_bytes()).hexdigest(),
+            }
+        ],
+        "signature": None,
+    }
+    manifest["signature"] = {
+        "algorithm": "hmac-sha256",
+        "key_id": "restore-test-key",
+        "value": scheduled_backup._sign_bundle_manifest(manifest, signing_key),
+    }
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    restore._verify_restore_bundle(
+        manifest_path,
+        dump,
+        signing_key=signing_key,
+        require_signature=True,
+    )
+
+    dump.write_bytes(b"tampered")
+    with pytest.raises(ValueError, match="byte count|digest"):
+        restore._verify_restore_bundle(
+            manifest_path,
+            dump,
+            signing_key=signing_key,
+            require_signature=True,
+        )
+
+
+def test_restore_rejects_unsigned_bundle_when_signature_is_required(
+    tmp_path: Path,
+) -> None:
+    dump = tmp_path / "obelisk.dump"
+    dump.write_bytes(b"PGDMP")
+    manifest_path = tmp_path / "obelisk.bundle.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "format": "obelisk-backup-bundle-v1",
+                "files": [
+                    {
+                        "path": str(dump),
+                        "bytes": dump.stat().st_size,
+                        "sha256": hashlib.sha256(dump.read_bytes()).hexdigest(),
+                    }
+                ],
+                "signature": None,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="unsigned"):
+        restore._verify_restore_bundle(
+            manifest_path,
+            dump,
+            signing_key=None,
+            require_signature=True,
+        )
+
+
 def test_restore_drill_uses_temporary_docker_target(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -743,6 +819,48 @@ def test_restore_drill_rejects_missing_tenant_isolation(monkeypatch: pytest.Monk
 
     with pytest.raises(RuntimeError, match="RLS verification failed: memory_items"):
         restore_drill._verify_rls("restore-target", "postgresql://example/memory")
+
+
+def test_restore_drill_uses_compose_psql_for_local_source_parity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    commands: list[list[str]] = []
+
+    def fake_run(
+        command: list[str],
+        *,
+        check: bool = True,
+        text: bool = True,
+        capture_output: bool = False,
+    ) -> subprocess.CompletedProcess[str]:
+        commands.append(command)
+        return subprocess.CompletedProcess(command, 0, stdout="memory_items|3\n", stderr="")
+
+    monkeypatch.setattr(restore_drill.shutil, "which", lambda _name: None)
+    monkeypatch.setattr(restore_drill.subprocess, "run", fake_run)
+
+    result = restore_drill._query_source_counts(
+        "postgresql://memory_admin:memory@127.0.0.1:6548/memory",
+        "select 'memory_items', count(*) from memory_items;",
+        "postgres",
+    )
+
+    assert result.stdout == "memory_items|3\n"
+    assert commands == [
+        [
+            "docker",
+            "compose",
+            "exec",
+            "-T",
+            "postgres",
+            "psql",
+            "--tuples-only",
+            "--no-align",
+            "--dbname=postgresql://memory_admin:memory@127.0.0.1:5432/memory",
+            "--command",
+            "select 'memory_items', count(*) from memory_items;",
+        ]
+    ]
 
 
 def test_restore_recovery_evidence_fails_without_semantic_recall(
