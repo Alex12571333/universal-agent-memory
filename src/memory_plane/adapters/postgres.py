@@ -135,6 +135,12 @@ def _encrypted_json_sql(column: str) -> str:
 
 _AUDIT_METADATA_SQL = _encrypted_json_sql("a.metadata")
 _CHECKPOINT_STATE_SQL = _encrypted_json_sql("state")
+_ITEM_METADATA_SQL = _encrypted_json_sql("m.metadata")
+_TURN_METADATA_SQL = _encrypted_json_sql("t.metadata")
+_MESSAGE_METADATA_SQL = _encrypted_json_sql("m.metadata")
+_PROPOSAL_METADATA_SQL = _encrypted_json_sql("p.metadata")
+_OUTBOX_PAYLOAD_SQL = _encrypted_json_sql("o.payload")
+_AGENT_CONFIG_SQL = _encrypted_json_sql("config")
 _ITEM_COLUMNS = f"""
     m.id, m.tenant_id, m.workspace_id, m.agent_id, m.thread_id,
     m.layer, m.scope, m.kind,
@@ -146,7 +152,7 @@ _ITEM_COLUMNS = f"""
       )
       else m.text
     end as text,
-    m.labels, m.metadata, m.status,
+    m.labels, {_ITEM_METADATA_SQL} as metadata, m.status,
     m.importance, m.salience, m.confidence, m.observed_at,
     m.valid_from, m.valid_to, m.created_at, m.revision, m.supersedes_id,
     p.source_kind, p.origin_uri, p.object_key, p.checksum_sha256,
@@ -385,7 +391,7 @@ class PostgresMemoryLedger:
                 raise ValueError("tenant/workspace scope is not provisioned")
             try:
                 agent_row = connection.execute(
-                    """
+                    f"""
                     insert into agents (id, tenant_id, workspace_id, name, role, config)
                     values (%s, %s, %s, %s, %s, %s)
                     on conflict (id) do update set
@@ -394,7 +400,8 @@ class PostgresMemoryLedger:
                       config = excluded.config
                     where agents.tenant_id = excluded.tenant_id
                       and agents.workspace_id = excluded.workspace_id
-                    returning id, tenant_id, workspace_id, name, role, config
+                    returning id, tenant_id, workspace_id, name, role,
+                      {_AGENT_CONFIG_SQL} as config
                     """,
                     (
                         agent.id,
@@ -402,7 +409,7 @@ class PostgresMemoryLedger:
                         agent.workspace_id,
                         agent.name,
                         agent.role,
-                        Jsonb(agent.config),
+                        Jsonb(self._stored_sensitive_json(connection, agent.config)),
                     ),
                 ).fetchone()
             except Exception as exc:
@@ -617,7 +624,7 @@ class PostgresMemoryLedger:
         with self._connection() as connection:
             self._set_tenant(connection, tenant_id)
             rows = connection.execute(
-                """
+                f"""
                 with due as (
                   select id
                   from outbox_events
@@ -637,7 +644,8 @@ class PostgresMemoryLedger:
                 from due
                 where o.id = due.id
                 returning
-                  o.id, o.tenant_id, o.workspace_id, o.name, o.payload,
+                  o.id, o.tenant_id, o.workspace_id, o.name,
+                  {_OUTBOX_PAYLOAD_SQL} as payload,
                   o.correlation_id, o.occurred_at, o.attempts
                 """,
                 (limit, worker_id, lease_seconds),
@@ -1186,15 +1194,16 @@ class PostgresMemoryLedger:
                 f"""
                 select
                   t.id, t.tenant_id, t.workspace_id, t.thread_id, t.agent_id,
-                  t.namespace, t.source_kind, t.retention_policy, t.metadata,
-                  t.created_at, t.expires_at,
+                  t.namespace, t.source_kind, t.retention_policy,
+                  {_TURN_METADATA_SQL} as metadata,
+                  t.raw_content_state, t.created_at, t.expires_at,
                   coalesce(
                     jsonb_agg(
                       jsonb_build_object(
                         'role', m.role,
                         'content', {_CONVERSATION_CONTENT_SQL},
                         'name', m.name,
-                        'metadata', m.metadata
+                        'metadata', {_MESSAGE_METADATA_SQL}
                       )
                       order by m.position
                     ) filter (where m.id is not null),
@@ -1226,15 +1235,16 @@ class PostgresMemoryLedger:
                 f"""
                 select
                   t.id, t.tenant_id, t.workspace_id, t.thread_id, t.agent_id,
-                  t.namespace, t.source_kind, t.retention_policy, t.metadata,
-                  t.created_at, t.expires_at,
+                  t.namespace, t.source_kind, t.retention_policy,
+                  {_TURN_METADATA_SQL} as metadata,
+                  t.raw_content_state, t.created_at, t.expires_at,
                   coalesce(
                     jsonb_agg(
                       jsonb_build_object(
                         'role', m.role,
                         'content', {_CONVERSATION_CONTENT_SQL},
                         'name', m.name,
-                        'metadata', m.metadata
+                        'metadata', {_MESSAGE_METADATA_SQL}
                       )
                       order by m.position
                     ) filter (where m.id is not null),
@@ -1260,8 +1270,7 @@ class PostgresMemoryLedger:
             purged = connection.execute(
                 """
                 update conversation_turns
-                set metadata = metadata ||
-                  '{"retention":{"raw_content":"purged_after_curation"}}'::jsonb
+                set raw_content_state = 'purged_after_curation'
                 where id = %s
                 returning id
                 """,
@@ -1272,9 +1281,7 @@ class PostgresMemoryLedger:
             connection.execute(
                 """
                 update conversation_messages
-                set content = %s,
-                    metadata = metadata ||
-                      '{"retention":{"raw_content":"purged_after_curation"}}'::jsonb
+                set content = %s
                 where turn_id = %s
                 """,
                 (PURGED_CONVERSATION_CONTENT, turn_id),
@@ -1301,23 +1308,19 @@ class PostgresMemoryLedger:
                   where workspace_id = %s
                     and expires_at is not null
                     and expires_at <= %s
-                    and coalesce(metadata #>> '{retention,raw_content}', '')
-                      not in ('purged_after_curation', 'purged_after_expiry')
+                    and raw_content_state = 'active'
                   order by expires_at, id
                   limit %s
                   for update skip locked
                 ), updated_turns as (
                   update conversation_turns t
-                  set metadata = metadata ||
-                    '{"retention":{"raw_content":"purged_after_expiry"}}'::jsonb
+                  set raw_content_state = 'purged_after_expiry'
                   from due
                   where t.id = due.id
                   returning t.id
                 )
                 update conversation_messages m
-                set content = %s,
-                    metadata = metadata ||
-                      '{"retention":{"raw_content":"purged_after_expiry"}}'::jsonb
+                set content = %s
                 from updated_turns u
                 where m.turn_id = u.id
                 returning u.id
@@ -1374,7 +1377,8 @@ class PostgresMemoryLedger:
                 select id, tenant_id, workspace_id, agent_id, thread_id, namespace,
                   requester, target, {_PROPOSAL_TEXT_SQL} as proposal,
                   {_PROPOSAL_EVIDENCE_SQL} as evidence, confidence, importance,
-                  status, metadata, created_at, reviewed_at, reviewer, review_reason
+                  status, {_PROPOSAL_METADATA_SQL} as metadata,
+                  created_at, reviewed_at, reviewer, review_reason
                 from memory_proposals p
                 where id = %s
                 """,
@@ -1403,7 +1407,7 @@ class PostgresMemoryLedger:
                 """,
                 (
                     proposal.status.value,
-                    Jsonb(proposal.metadata),
+                    Jsonb(self._stored_sensitive_json(connection, proposal.metadata)),
                     proposal.reviewed_at,
                     proposal.reviewer,
                     proposal.review_reason,
@@ -1441,7 +1445,8 @@ class PostgresMemoryLedger:
                 select id, tenant_id, workspace_id, agent_id, thread_id, namespace,
                   requester, target, {_PROPOSAL_TEXT_SQL} as proposal,
                   {_PROPOSAL_EVIDENCE_SQL} as evidence, confidence, importance,
-                  status, metadata, created_at, reviewed_at, reviewer, review_reason
+                  status, {_PROPOSAL_METADATA_SQL} as metadata,
+                  created_at, reviewed_at, reviewer, review_reason
                 from memory_proposals p where p.id = %s for update
                 """,
                 (proposal.id,),
@@ -1480,7 +1485,7 @@ class PostgresMemoryLedger:
                 returning id
                 """,
                 (
-                    Jsonb(metadata),
+                    Jsonb(self._stored_sensitive_json(connection, metadata)),
                     datetime.now(UTC),
                     reviewer.strip()[:120] or "operator",
                     reason.strip()[:1000],
@@ -1496,7 +1501,8 @@ class PostgresMemoryLedger:
                 select p.id, p.tenant_id, p.workspace_id, p.agent_id, p.thread_id,
                   p.namespace, p.requester, p.target,
                   {_PROPOSAL_TEXT_SQL} as proposal, {_PROPOSAL_EVIDENCE_SQL} as evidence,
-                  p.confidence, p.importance, p.status, p.metadata, p.created_at,
+                  p.confidence, p.importance, p.status,
+                  {_PROPOSAL_METADATA_SQL} as metadata, p.created_at,
                   p.reviewed_at, p.reviewer, p.review_reason
                 from memory_proposals p where p.id = %s
                 """,
@@ -1524,7 +1530,8 @@ class PostgresMemoryLedger:
                 select id, tenant_id, workspace_id, agent_id, thread_id, namespace,
                   requester, target, {_PROPOSAL_TEXT_SQL} as proposal,
                   {_PROPOSAL_EVIDENCE_SQL} as evidence, confidence, importance,
-                  status, metadata, created_at, reviewed_at, reviewer, review_reason
+                  status, {_PROPOSAL_METADATA_SQL} as metadata,
+                  created_at, reviewed_at, reviewer, review_reason
                 from memory_proposals p
                 where workspace_id = %s
                   and (%s::text is null or namespace = %s::text)
@@ -2167,15 +2174,16 @@ class PostgresMemoryLedger:
             f"""
             select
               t.id, t.tenant_id, t.workspace_id, t.thread_id, t.agent_id,
-              t.namespace, t.source_kind, t.retention_policy, t.metadata,
-              t.created_at, t.expires_at,
+              t.namespace, t.source_kind, t.retention_policy,
+              {_TURN_METADATA_SQL} as metadata,
+              t.raw_content_state, t.created_at, t.expires_at,
               coalesce(
                 jsonb_agg(
                   jsonb_build_object(
                     'role', m.role,
                     'content', {_CONVERSATION_CONTENT_SQL},
                     'name', m.name,
-                    'metadata', m.metadata
+                    'metadata', {_MESSAGE_METADATA_SQL}
                   )
                   order by m.position
                 ) filter (where m.id is not null),
@@ -2199,7 +2207,8 @@ class PostgresMemoryLedger:
             select p.id, p.tenant_id, p.workspace_id, p.agent_id, p.thread_id,
               p.namespace, p.requester, p.target,
               {_PROPOSAL_TEXT_SQL} as proposal, {_PROPOSAL_EVIDENCE_SQL} as evidence,
-              p.confidence, p.importance, p.status, p.metadata, p.created_at,
+              p.confidence, p.importance, p.status,
+              {_PROPOSAL_METADATA_SQL} as metadata, p.created_at,
               p.reviewed_at, p.reviewer, p.review_reason
             from memory_proposal_idempotency_keys i
             join memory_proposals p on p.id = i.proposal_id
@@ -2317,7 +2326,7 @@ class PostgresMemoryLedger:
                 item.kind,
                 stored_text,
                 list(item.labels),
-                Jsonb(item.metadata),
+                Jsonb(self._stored_sensitive_json(connection, item.metadata)),
                 item.status.value,
                 item.importance,
                 item.salience,
@@ -2419,8 +2428,7 @@ class PostgresMemoryLedger:
             return False
         return self._text_encryption_scopes is None or item.scope in self._text_encryption_scopes
 
-    @staticmethod
-    def _insert_event(connection: Any, event: IntegrationEvent) -> None:
+    def _insert_event(self, connection: Any, event: IntegrationEvent) -> None:
         from psycopg.types.json import Jsonb
 
         connection.execute(
@@ -2435,7 +2443,7 @@ class PostgresMemoryLedger:
                 event.tenant_id,
                 event.workspace_id,
                 event.name,
-                Jsonb(event.payload),
+                Jsonb(self._stored_sensitive_json(connection, event.payload)),
                 event.correlation_id,
                 event.occurred_at,
             ),
@@ -2472,7 +2480,7 @@ class PostgresMemoryLedger:
                 turn.namespace,
                 turn.source_kind,
                 turn.retention_policy.value,
-                Jsonb(turn.metadata),
+                Jsonb(self._stored_sensitive_json(connection, turn.metadata)),
                 turn.created_at,
                 turn.expires_at,
             ),
@@ -2491,7 +2499,7 @@ class PostgresMemoryLedger:
                     message.role,
                     message.name,
                     self._stored_sensitive_text(connection, message.content),
-                    Jsonb(message.metadata),
+                    Jsonb(self._stored_sensitive_json(connection, message.metadata)),
                 ),
             )
 
@@ -2520,7 +2528,7 @@ class PostgresMemoryLedger:
                 proposal.confidence,
                 proposal.importance,
                 proposal.status.value,
-                Jsonb(proposal.metadata),
+                Jsonb(self._stored_sensitive_json(connection, proposal.metadata)),
                 proposal.created_at,
                 proposal.reviewed_at,
                 proposal.reviewer,
@@ -2574,6 +2582,10 @@ class PostgresMemoryLedger:
 
     @staticmethod
     def _to_turn(row: dict[str, Any]) -> ConversationTurn:
+        metadata = dict(row["metadata"])
+        raw_content_state = str(row.get("raw_content_state") or "active")
+        if raw_content_state != "active":
+            metadata["retention"] = {"raw_content": raw_content_state}
         return ConversationTurn(
             id=row["id"],
             tenant_id=row["tenant_id"],
@@ -2583,7 +2595,7 @@ class PostgresMemoryLedger:
             namespace=row["namespace"],
             source_kind=row["source_kind"],
             retention_policy=ConversationRetentionPolicy(row["retention_policy"]),
-            metadata=row["metadata"],
+            metadata=metadata,
             created_at=row["created_at"],
             expires_at=row.get("expires_at"),
             messages=tuple(

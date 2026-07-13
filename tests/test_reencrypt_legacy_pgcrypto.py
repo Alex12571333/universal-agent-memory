@@ -64,6 +64,12 @@ def test_reencrypt_legacy_covers_every_supported_plaintext_field(monkeypatch) ->
         "memory_proposals.proposal",
         "memory_proposals.evidence",
         "observations.summary",
+        "agents.config",
+        "memory_items.metadata",
+        "conversation_turns.metadata",
+        "conversation_messages.metadata",
+        "memory_proposals.metadata",
+        "outbox_events.payload",
         "audit_events.metadata",
         "checkpoints.state",
     ]

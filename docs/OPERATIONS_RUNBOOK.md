@@ -97,8 +97,11 @@ restricted runtime database role. Preserve the second report only when
 `complete: true`; rerun the dry run afterwards to prove `pending_after: 0` for
 every field. It encrypts canonical text, provenance quotes, raw conversation
 content, proposal/evidence text, observation summaries, checkpoint state and
-audit metadata. Remaining general JSON metadata is outside this migration's
-scope and must not be described as full-database encryption.
+audit metadata, plus application JSON in canonical-item metadata, agent config,
+conversation turn/message metadata, proposal metadata and outbox payloads.
+Stable routing and lifecycle columns remain intentionally queryable; this is
+application-field encryption, not a claim that every PostgreSQL column or an
+entire disk volume is encrypted.
 
 `check_metrics_health.py` turns Prometheus text into an operator gate. It fails
 when outbox pending, dead-letter, lag or in-flight values exceed configured

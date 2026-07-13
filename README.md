@@ -319,7 +319,12 @@ and provide `UAM_MEMORY_TEXT_ENCRYPTION_KEY` from an external secret manager.
 The application sees normal text after loading from the ledger, while
 canonical text and non-canonical evidence fields (provenance quotes,
 observations, checkpoint state and audit metadata) are stored as
-`enc:pgcrypto:v1:*` ciphertext or an encrypted JSON wrapper.
+`enc:pgcrypto:v1:*` ciphertext or an encrypted JSON wrapper. The same wrapper
+also protects arbitrary application JSON: canonical-item metadata, agent
+configuration, raw-turn/message metadata, proposal metadata and durable outbox
+payloads. Stable routing and lifecycle columns remain queryable; transcript
+purge state therefore lives in a dedicated non-content column rather than in
+metadata.
 By default `UAM_MEMORY_TEXT_ENCRYPTION_SCOPES=all`; operators can use a
 comma-separated scope list such as `private,thread` when only selected
 visibility scopes need row-level ciphertext.

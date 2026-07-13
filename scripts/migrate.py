@@ -28,6 +28,7 @@ MIGRATIONS = (
     ROOT / "migrations/012_outbox_retry_schedule.sql",
     ROOT / "migrations/013_protected_search_tokens.sql",
     ROOT / "migrations/014_protected_search_scope_integrity.sql",
+    ROOT / "migrations/015_encrypt_json_payloads.sql",
 )
 
 

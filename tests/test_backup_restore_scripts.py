@@ -152,6 +152,7 @@ def test_migration_runner_includes_every_versioned_sql_file() -> None:
         "012_outbox_retry_schedule.sql",
         "013_protected_search_tokens.sql",
         "014_protected_search_scope_integrity.sql",
+        "015_encrypt_json_payloads.sql",
     }
     configured = {path.name for path in migrate.MIGRATIONS}
 
