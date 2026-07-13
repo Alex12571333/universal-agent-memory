@@ -1331,7 +1331,9 @@ class PostgresMemoryLedger:
             ).fetchone()
         return None if row is None else self._to_proposal(row)
 
-    def save_proposal_review(self, proposal: MemoryProposal) -> MemoryProposal:
+    def save_proposal_review(
+        self, proposal: MemoryProposal, audit_event: AuditEvent | None = None
+    ) -> MemoryProposal:
         """Persist proposal review fields under RLS."""
         from psycopg.types.json import Jsonb
 
@@ -1357,6 +1359,8 @@ class PostgresMemoryLedger:
                     proposal.id,
                 ),
             ).fetchone()
+            if audit_event is not None:
+                self._insert_audit_event(connection, audit_event)
         if row is None:
             raise KeyError("memory proposal not found")
         return proposal

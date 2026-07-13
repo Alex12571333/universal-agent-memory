@@ -407,6 +407,44 @@ class PostgresMemoryLedgerTest(unittest.TestCase):
         self.assertEqual(MemoryProposalStatus.OPEN, proposal.status)
         self.assertNotIn("accepted_memory_id", proposal.metadata)
 
+    def test_proposal_reject_audit_failure_rolls_back_review_status(self) -> None:
+        service = MemoryProposalService(self.store, RetentionService(self.store))
+        submitted = service.submit(
+            SubmitMemoryProposalCommand(
+                tenant_id=self.tenant,
+                workspace_id=self.workspace,
+                namespace="postgres-reject-audit-failure",
+                requester="integration-test",
+                target=MemoryProposalTarget.FACT,
+                proposal="Reject audit failure must preserve the open proposal.",
+            )
+        )
+        audit = AuditEvent(
+            tenant_id=self.tenant,
+            workspace_id=self.workspace,
+            action="proposal.reject",
+            actor="integration",
+            actor_type="system",
+            resource_type="memory_proposal",
+            resource_id=str(submitted.proposal.id),
+        )
+        with patch.object(
+            self.store, "_insert_audit_event", side_effect=RuntimeError("audit down")
+        ):
+            with self.assertRaisesRegex(RuntimeError, "audit down"):
+                service.reject(
+                    ReviewMemoryProposalCommand(
+                        tenant_id=self.tenant,
+                        proposal_id=submitted.proposal.id,
+                        reviewer="integration-test",
+                    ),
+                    audit_event=audit,
+                )
+        proposal = self.store.get_proposal(self.tenant, submitted.proposal.id)
+        self.assertIsNotNone(proposal)
+        assert proposal is not None
+        self.assertEqual(MemoryProposalStatus.OPEN, proposal.status)
+
     def test_curated_only_raw_content_can_be_purged_without_losing_turn_identity(
         self,
     ) -> None:

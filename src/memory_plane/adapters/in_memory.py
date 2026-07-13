@@ -434,13 +434,17 @@ class InMemoryMemoryStore:
             else None
         )
 
-    def save_proposal_review(self, proposal: MemoryProposal) -> MemoryProposal:
+    def save_proposal_review(
+        self, proposal: MemoryProposal, audit_event: AuditEvent | None = None
+    ) -> MemoryProposal:
         """Persist a reviewed proposal copy."""
         with self._lock:
             current = self.get_proposal(proposal.tenant_id, proposal.id)
             if current is None:
                 raise KeyError("memory proposal not found")
             self._proposals[proposal.id] = proposal
+            if audit_event is not None:
+                self.append_audit_event(audit_event)
             return proposal
 
     def accept_proposal_with_memory(
