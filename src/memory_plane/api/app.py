@@ -2358,9 +2358,34 @@ def create_app(
         }
 
     @app.post("/v1/workspaces/{workspace_id}/reindex", status_code=202)
-    def reindex(workspace_id: UUID, tenant_id: UUID) -> dict[str, Any]:
+    def reindex(workspace_id: UUID, tenant_id: UUID, request: Request) -> dict[str, Any]:
         """Re-generate all embeddings for the workspace."""
-        count = services.embedding.reindex_all(tenant_id, workspace_id)
+        principal = _principal_from_request(request)
+        try:
+            count = services.embedding.reindex_all(tenant_id, workspace_id)
+        except Exception as exc:
+            services.audit.record(
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
+                action="embedding.reindex",
+                actor=principal.name,
+                actor_type=_audit_actor_type(principal),
+                resource_type="workspace_vector_index",
+                resource_id=str(workspace_id),
+                status="failed",
+                metadata={"error_type": type(exc).__name__},
+            )
+            raise
+        services.audit.record(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            action="embedding.reindex",
+            actor=principal.name,
+            actor_type=_audit_actor_type(principal),
+            resource_type="workspace_vector_index",
+            resource_id=str(workspace_id),
+            metadata={"reindexed_count": count, "model": services.embedding.model_name},
+        )
         return {"reindexed_count": count}
 
     @app.get("/v1/workspaces/{workspace_id}/vault")
