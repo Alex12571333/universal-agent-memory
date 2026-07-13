@@ -269,6 +269,9 @@ UAM_QDRANT_COLLECTION=memory_items
 UAM_QDRANT_PAYLOAD_TEXT=false
 UAM_MEMORY_TEXT_ENCRYPTION=pgcrypto
 UAM_MEMORY_TEXT_ENCRYPTION_KEY=...
+UAM_PROTECTED_SEARCH_INDEX=hmac-v1
+UAM_PROTECTED_SEARCH_INDEX_KEY=separate-search-index-key
+UAM_PROTECTED_SEARCH_INDEX_KEY_VERSION=1
 ```
 
 Use `UAM_EMBEDDING_PROVIDER=openai` only for the OpenAI-hosted embeddings
@@ -289,6 +292,7 @@ UAM_API_PRINCIPAL_BINDINGS_JSON_FILE=/run/secrets/uam_principal_bindings
 UAM_MEMORY_LLM_API_KEY_FILE=/run/secrets/model_gateway_key
 UAM_EMBEDDING_API_KEY_FILE=/run/secrets/embedding_gateway_key
 UAM_MEMORY_TEXT_ENCRYPTION_KEY_FILE=/run/secrets/memory_text_key
+UAM_PROTECTED_SEARCH_INDEX_KEY_FILE=/run/secrets/protected_search_index_key
 UAM_AUDIT_SIGNING_KEY_FILE=/run/secrets/audit_signing_key
 UAM_VAULT_SIGNING_KEY_FILE=/run/secrets/vault_signing_key
 UAM_RELEASE_SIGNING_KEY_FILE=/run/secrets/release_signing_key
@@ -319,6 +323,14 @@ observations, checkpoint state and audit metadata) are stored as
 By default `UAM_MEMORY_TEXT_ENCRYPTION_SCOPES=all`; operators can use a
 comma-separated scope list such as `private,thread` when only selected
 visibility scopes need row-level ciphertext.
+
+`UAM_PROTECTED_SEARCH_INDEX` is disabled by default. When explicitly set to
+`hmac-v1`, retain and supersede atomically dual-write HMAC-SHA-256 token
+digests using a key distinct from the pgcrypto key. It is a blind index: it
+leaks equality/frequency information and is not prefix, fuzzy, or semantic
+search. The current recall path remains correctness-first until an indexed
+reader, restart-safe backfill, rotation drill and query-plan evidence are
+released; do not enable indexed-only behavior merely because token rows exist.
 
 ## Agent integration
 

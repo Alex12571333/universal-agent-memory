@@ -26,6 +26,8 @@ MIGRATIONS = (
     ROOT / "migrations/010_conflict_resolution_memory.sql",
     ROOT / "migrations/011_conversation_staging_retention.sql",
     ROOT / "migrations/012_outbox_retry_schedule.sql",
+    ROOT / "migrations/013_protected_search_tokens.sql",
+    ROOT / "migrations/014_protected_search_scope_integrity.sql",
 )
 
 
