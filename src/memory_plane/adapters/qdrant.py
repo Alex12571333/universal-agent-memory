@@ -8,8 +8,10 @@ in-memory stub for unit tests and local development without infrastructure.
 from __future__ import annotations
 
 import re
+from collections import Counter
 from collections.abc import Sequence
 from datetime import datetime
+from hashlib import blake2b
 from math import sqrt
 from threading import RLock
 from typing import TYPE_CHECKING, Protocol, cast
@@ -456,8 +458,9 @@ class QdrantCandidateSource:
         from qdrant_client.models import PointStruct, SparseVector
 
         vectors: dict[str, object] = {"dense": dense_vector}
-        if sparse_indices is not None and sparse_values is not None:
-            vectors["sparse"] = SparseVector(indices=sparse_indices, values=sparse_values)
+        if sparse_indices is None or sparse_values is None:
+            sparse_indices, sparse_values = self._sparse_vector(item.text)
+        vectors["sparse"] = SparseVector(indices=sparse_indices, values=sparse_values)
 
         payload = self._item_to_payload(item, include_text=self._payload_text)
         if model_name:
@@ -491,6 +494,7 @@ class QdrantCandidateSource:
             MatchValue,
             PointIdsList,
             PointStruct,
+            SparseVector,
         )
 
         workspace_filter = Filter(
@@ -520,10 +524,17 @@ class QdrantCandidateSource:
             payload = self._item_to_payload(item, include_text=self._payload_text)
             if model_name:
                 payload["model_name"] = model_name
+            sparse_indices, sparse_values = self._sparse_vector(item.text)
             batch.append(
                 PointStruct(
                     id=str(item.id),
-                    vector={"dense": vector},
+                    vector={
+                        "dense": vector,
+                        "sparse": SparseVector(
+                            indices=sparse_indices,
+                            values=sparse_values,
+                        ),
+                    },
                     payload=payload,
                 )
             )
@@ -585,11 +596,14 @@ class QdrantCandidateSource:
             if query.layers
             else (Filter(must=must_conditions),)
         )
+        sparse_indices, sparse_values = self._sparse_vector(query.text)
         rows = tuple(
             row
             for query_filter in filters
-            for row in self._query_points(
+            for row in self._query_hybrid_points(
                 query_vector=query_vector,
+                sparse_indices=sparse_indices,
+                sparse_values=sparse_values,
                 query_filter=query_filter,
                 limit=max(query.top_k * 3, query.top_k),
             )
@@ -671,6 +685,24 @@ class QdrantCandidateSource:
     def _terms(text: str) -> set[str]:
         """Tokenize text for lexical overlap scoring."""
         return {m.group(0).casefold() for m in _WORD.finditer(text)}
+
+    @staticmethod
+    def _sparse_vector(text: str) -> tuple[list[int], list[float]]:
+        """Create a stable hashed sparse representation without retaining text.
+
+        Qdrant stores only index/value pairs. The deterministic 32-bit hashing
+        is intentionally a retrieval aid, not a security boundary; canonical
+        text and access decisions remain in PostgreSQL.
+        """
+        counts = Counter(m.group(0).casefold() for m in _WORD.finditer(text))
+        weights: dict[int, float] = {}
+        for token, count in counts.items():
+            index = int.from_bytes(
+                blake2b(token.encode("utf-8"), digest_size=4).digest(), "big"
+            )
+            weights[index] = weights.get(index, 0.0) + float(count)
+        indices = sorted(weights)
+        return indices, [weights[index] for index in indices]
 
     @staticmethod
     def _item_to_payload(item: MemoryItem, *, include_text: bool = True) -> dict[str, object]:
@@ -789,3 +821,49 @@ class QdrantCandidateSource:
                 with_payload=True,
             )
         raise RuntimeError("qdrant client exposes neither query_points nor search")
+
+    def _query_hybrid_points(
+        self,
+        *,
+        query_vector: list[float],
+        sparse_indices: list[int],
+        sparse_values: list[float],
+        query_filter: object,
+        limit: int,
+    ) -> Sequence[_ScoredPoint]:
+        """Fuse dense and sparse candidates with RRF when the client supports it."""
+        assert self._client is not None
+        query_points = getattr(self._client, "query_points", None)
+        if not callable(query_points):
+            return self._query_points(
+                query_vector=query_vector, query_filter=query_filter, limit=limit
+            )
+        try:
+            from qdrant_client.models import Fusion, FusionQuery, Prefetch, SparseVector
+        except ImportError:
+            return self._query_points(
+                query_vector=query_vector, query_filter=query_filter, limit=limit
+            )
+        try:
+            response = cast(_QueryPointsClient, self._client).query_points(
+                collection_name=self.collection,
+                prefetch=[
+                    Prefetch(query=query_vector, using="dense", limit=limit),
+                    Prefetch(
+                        query=SparseVector(indices=sparse_indices, values=sparse_values),
+                        using="sparse",
+                        limit=limit,
+                    ),
+                ],
+                query=FusionQuery(fusion=Fusion.RRF),
+                query_filter=query_filter,
+                limit=limit,
+                with_payload=True,
+            )
+            return response.points
+        except TypeError:
+            # Older qdrant-client versions expose query_points but do not yet
+            # implement fusion. Preserve availability rather than failing recall.
+            return self._query_points(
+                query_vector=query_vector, query_filter=query_filter, limit=limit
+            )

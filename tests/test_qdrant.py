@@ -549,8 +549,13 @@ class QdrantAdapterTest(unittest.TestCase):
 
             self.assertEqual(1, len(results))
             self.assertEqual(0.88, results[0].semantic)
-            self.assertEqual([0.9, 0.1, 0.0, 0.0], client.calls[0]["query"])
-            self.assertEqual("dense", client.calls[0]["using"])
+            self.assertEqual(2, mock_models.Prefetch.call_count)
+            self.assertEqual(
+                [0.9, 0.1, 0.0, 0.0],
+                mock_models.Prefetch.call_args_list[0].kwargs["query"],
+            )
+            self.assertEqual("dense", mock_models.Prefetch.call_args_list[0].kwargs["using"])
+            self.assertEqual("sparse", mock_models.Prefetch.call_args_list[1].kwargs["using"])
 
     def test_live_qdrant_search_queries_every_requested_layer(self) -> None:
         """A multi-layer recall must not silently become a first-layer recall."""
