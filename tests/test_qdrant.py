@@ -552,6 +552,47 @@ class QdrantAdapterTest(unittest.TestCase):
             self.assertEqual([0.9, 0.1, 0.0, 0.0], client.calls[0]["query"])
             self.assertEqual("dense", client.calls[0]["using"])
 
+    def test_live_qdrant_search_queries_every_requested_layer(self) -> None:
+        """A multi-layer recall must not silently become a first-layer recall."""
+        from unittest.mock import MagicMock, patch
+
+        mock_models = MagicMock()
+        mock_models.FieldCondition = lambda key, match: ("field", key, match)
+        mock_models.Filter = lambda must: ("filter", must)
+        mock_models.MatchValue = lambda value: ("match", value)
+
+        class QueryPointsClient:
+            def __init__(self) -> None:
+                self.calls: list[dict[str, object]] = []
+
+            def query_points(self, **kwargs: object) -> object:
+                self.calls.append(kwargs)
+                return SimpleNamespace(points=[])
+
+        with patch.dict(
+            "sys.modules",
+            {"qdrant_client": MagicMock(), "qdrant_client.models": mock_models},
+        ):
+            source = QdrantCandidateSource(
+                url="http://localhost:6333",
+                collection="test",
+                dense_dim=4,
+                query_embedding_client=_StaticEmbeddingClient([0.9, 0.1, 0.0, 0.0]),
+            )
+            client = QueryPointsClient()
+            source._client = client
+
+            source.search(
+                RecallQuery(
+                    tenant_id=_T,
+                    workspace_id=_W,
+                    text="qdrant",
+                    layers=(MemoryLayer.CORE, MemoryLayer.SEMANTIC),
+                )
+            )
+
+            self.assertEqual(2, len(client.calls))
+
 
 if __name__ == "__main__":
     unittest.main()
