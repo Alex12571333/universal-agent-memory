@@ -290,10 +290,13 @@ The first deterministic curation bridge is:
 POST /v1/conversations/turns/{turn_id}/curate
 ```
 
-It creates an evidence-backed memory proposal, not a recallable `MemoryItem`.
-Review and accept it through `/v1/memory/proposals/{proposal_id}/accept`; only
-then does it enter the normal retention/outbox pipeline. This keeps model output
-from becoming durable truth without a review boundary.
+It first creates an evidence-backed memory proposal. By default, Obelisk's
+narrow auto-policy may accept only a high-confidence, source-quoted,
+non-temporal preference, decision, task, or procedure; every other proposal
+stays outside recall until reviewed through
+`/v1/memory/proposals/{proposal_id}/accept`. Send `auto_accept: false` to keep
+all curated output review-only. This keeps model output from becoming durable
+truth without an evidence boundary.
 
 Use this split:
 
