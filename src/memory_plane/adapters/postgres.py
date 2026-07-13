@@ -1728,18 +1728,21 @@ class PostgresMemoryLedger:
         return observation
 
     def save_conflict_review(
-        self, decision: ConflictReviewDecision
+        self, decision: ConflictReviewDecision, audit_event: AuditEvent | None = None
     ) -> ConflictReviewDecision:
         """Create or replace a persisted human decision for one conflict case."""
         with self._connection() as connection:
             self._set_tenant(connection, decision.tenant_id)
             self._upsert_conflict_review(connection, decision)
+            if audit_event is not None:
+                self._insert_audit_event(connection, audit_event)
         return decision
 
     def apply_conflict_resolution(
         self,
         decision: ConflictReviewDecision,
         writes: tuple[tuple[MemoryItem, IntegrationEvent, int], ...],
+        audit_event: AuditEvent | None = None,
     ) -> ConflictReviewDecision:
         """Atomically apply all winner/loser revisions, outbox events and review."""
         with self._connection() as connection:
@@ -1779,6 +1782,8 @@ class PostgresMemoryLedger:
                     expected_revision,
                 )
             self._upsert_conflict_review(connection, decision)
+            if audit_event is not None:
+                self._insert_audit_event(connection, audit_event)
         return decision
 
     def list_conflict_reviews(
@@ -2484,17 +2489,20 @@ class PostgresConflictReviewRepository:
         """Retain shared connection configuration."""
         self._store = store
 
-    def save(self, decision: ConflictReviewDecision) -> ConflictReviewDecision:
+    def save(
+        self, decision: ConflictReviewDecision, audit_event: AuditEvent | None = None
+    ) -> ConflictReviewDecision:
         """Delegate decision persistence."""
-        return self._store.save_conflict_review(decision)
+        return self._store.save_conflict_review(decision, audit_event=audit_event)
 
     def apply_resolution(
         self,
         decision: ConflictReviewDecision,
         writes: tuple[tuple[MemoryItem, IntegrationEvent, int], ...],
+        audit_event: AuditEvent | None = None,
     ) -> ConflictReviewDecision:
         """Delegate atomic canonical conflict resolution."""
-        return self._store.apply_conflict_resolution(decision, writes)
+        return self._store.apply_conflict_resolution(decision, writes, audit_event=audit_event)
 
     def list_for_workspace(
         self, tenant_id: UUID, workspace_id: UUID

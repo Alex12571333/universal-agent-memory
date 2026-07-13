@@ -8,6 +8,7 @@ from dataclasses import dataclass, replace
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from memory_plane.contracts.events import IntegrationEvent
+from memory_plane.domain.audit import AuditEvent
 from memory_plane.domain.conflict import (
     ConflictCandidate,
     ConflictCase,
@@ -145,6 +146,7 @@ class ConflictService:
         status: ConflictReviewStatus,
         winner_value: str | None,
         reason: str,
+        audit_event: AuditEvent | None = None,
     ) -> ConflictReviewDecision:
         """Persist review and atomically make its winner canonical when required."""
         if status in (ConflictReviewStatus.ACCEPTED, ConflictReviewStatus.OVERRIDDEN):
@@ -167,15 +169,16 @@ class ConflictService:
             reason=reason,
         )
         if status not in (ConflictReviewStatus.ACCEPTED, ConflictReviewStatus.OVERRIDDEN):
-            return self._reviews.save(decision)
+            return self._reviews.save(decision, audit_event=audit_event)
         assert winner_value is not None
-        return self._apply_winner(case, decision, winner_value.strip())
+        return self._apply_winner(case, decision, winner_value.strip(), audit_event)
 
     def _apply_winner(
         self,
         case: ConflictCase,
         decision: ConflictReviewDecision,
         winner_value: str,
+        audit_event: AuditEvent | None = None,
     ) -> ConflictReviewDecision:
         by_value = {candidate.value: candidate for candidate in case.candidates}
         winner = by_value.get(winner_value)
@@ -250,7 +253,9 @@ class ConflictService:
             )
             writes.append((tombstone, self._resolution_event(tombstone), loser.revision))
         applied_decision = replace(decision, applied_memory_id=applied.id)
-        return self._reviews.apply_resolution(applied_decision, tuple(writes))
+        return self._reviews.apply_resolution(
+            applied_decision, tuple(writes), audit_event=audit_event
+        )
 
     @staticmethod
     def _resolution_event(item: MemoryItem) -> IntegrationEvent:

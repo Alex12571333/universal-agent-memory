@@ -598,6 +598,41 @@ class PostgresMemoryLedgerTest(unittest.TestCase):
         self.assertIsNone(self.store.get(self.tenant, second_tombstone.id))
         self.assertEqual((), reviews.list_for_workspace(self.tenant, self.workspace))
 
+    def test_conflict_resolution_audit_failure_rolls_back_writes_and_review(self) -> None:
+        item = self._item("Conflict audit rollback")
+        self.store.retain(item, self._event(item))
+        tombstone = item.supersede(item.text, status=MemoryStatus.ARCHIVED)
+        decision = ConflictReviewDecision(
+            tenant_id=self.tenant,
+            workspace_id=self.workspace,
+            case_id=uuid4(),
+            status=ConflictReviewStatus.ACCEPTED,
+            winner_value="rollback",
+            applied_memory_id=tombstone.id,
+        )
+        audit = AuditEvent(
+            tenant_id=self.tenant,
+            workspace_id=self.workspace,
+            action="conflict.decide",
+            actor="integration",
+            actor_type="system",
+            resource_type="conflict_case",
+            resource_id=str(decision.case_id),
+        )
+        reviews = PostgresConflictReviewRepository(self.store)
+        with patch.object(
+            self.store, "_insert_audit_event", side_effect=RuntimeError("audit down")
+        ):
+            with self.assertRaisesRegex(RuntimeError, "audit down"):
+                reviews.apply_resolution(
+                    decision,
+                    ((tombstone, self._event(tombstone), item.revision),),
+                    audit_event=audit,
+                )
+        self.assertIsNone(self.store.get(self.tenant, tombstone.id))
+        self.assertTrue(self.store.is_recallable_head(self.tenant, item.id))
+        self.assertEqual((), reviews.list_for_workspace(self.tenant, self.workspace))
+
     def test_supersede_if_current_is_cas_and_idempotent(self) -> None:
         item = self._item("Alpha release is July 15")
         self.store.retain(item, self._event(item))
