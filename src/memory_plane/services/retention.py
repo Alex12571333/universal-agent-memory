@@ -66,7 +66,7 @@ class RetentionService:
             payload={
                 "memory_id": str(item.id),
                 "layer": item.layer.value,
-                "jobs": ["embed", "dedupe", "graph", "reflect"],
+                "jobs": ["embed", "reflect"],
             },
         )
         return item, event
@@ -100,7 +100,7 @@ class RetentionService:
                 "supersedes_id": str(current.id),
                 "revision": replacement.revision,
                 "layer": replacement.layer.value,
-                "jobs": ["embed", "dedupe", "graph", "reflect"],
+                "jobs": ["embed", "reflect"],
             },
         )
         if audit_event is not None:

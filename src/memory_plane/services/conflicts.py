@@ -269,7 +269,7 @@ class ConflictService:
                 "supersedes_id": str(item.supersedes_id),
                 "revision": item.revision,
                 "layer": item.layer.value,
-                "jobs": ["embed", "dedupe", "graph", "reflect"],
+                "jobs": ["embed", "reflect"],
                 "reason": "conflict-resolution",
             },
         )
