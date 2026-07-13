@@ -10,7 +10,7 @@ from threading import RLock
 from typing import Any
 from uuid import UUID
 
-from memory_plane.contracts.dto import Candidate, RecallQuery, RecallResult
+from memory_plane.contracts.dto import Candidate, IndexFreshness, RecallQuery, RecallResult
 from memory_plane.domain.models import MemoryScope, MemoryStatus
 from memory_plane.ports.repositories import CandidateSource
 
@@ -32,7 +32,7 @@ class RetrievalService:
         sources: tuple[CandidateSource, ...],
         weights: dict[str, float] | None = None,
         required_sources: frozenset[str] | None = None,
-        staleness_check: Callable[[RecallQuery], bool] | None = None,
+        staleness_check: Callable[[RecallQuery], bool | IndexFreshness] | None = None,
     ) -> None:
         """Configure candidate sources and an explicit, inspectable score formula."""
         if not sources:
@@ -87,20 +87,25 @@ class RetrievalService:
         ranked = [self._fuse(rows) for rows in grouped.values()]
         ranked = [row for row in ranked if row.final_score >= query.minimum_score]
         ranked.sort(key=lambda row: (row.final_score, row.item.created_at), reverse=True)
+        freshness = self._index_freshness(query)
         return RecallResult(
             candidates=tuple(ranked[: query.top_k]),
             sources_used=tuple(used),
-            index_stale=self._index_stale(query),
+            index_stale=freshness.stale if freshness is not None else False,
+            index_freshness=freshness,
         )
 
-    def _index_stale(self, query: RecallQuery) -> bool:
-        """Return a conservative freshness flag for asynchronous vector indexing."""
+    def _index_freshness(self, query: RecallQuery) -> IndexFreshness | None:
+        """Return durable vector-delivery detail, failing closed when unknown."""
         if self._staleness_check is None:
-            return False
+            return None
         try:
-            return bool(self._staleness_check(query))
+            value = self._staleness_check(query)
+            if isinstance(value, IndexFreshness):
+                return value
+            return IndexFreshness(stale_memory_count=1 if bool(value) else 0)
         except Exception:  # noqa: BLE001 - unknown freshness must not be reported as fresh.
-            return True
+            return IndexFreshness(stale_memory_count=1, missing_delivery_memory_count=1)
 
     def record_success(self, source_name: str) -> None:
         """Mark a candidate source healthy after a completed operation."""

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
+from memory_plane.contracts.dto import IndexFreshness
 from memory_plane.domain.audit import AuditEvent
 from memory_plane.ports.repositories import MemoryLedger
 from memory_plane.services.audit import AuditLogService
@@ -32,6 +33,7 @@ class RecallReplay:
     candidate_count: int
     sources_used: tuple[str, ...]
     index_stale: bool
+    index_freshness: IndexFreshness | None
     context_budget_tokens: int
     context_used_tokens: int
     trace_ids: tuple[UUID, ...]
@@ -75,6 +77,7 @@ class RecallReplayService:
             candidate_count=_bounded_int(metadata.get("candidate_count")),
             sources_used=_text_tuple(metadata.get("sources_used")),
             index_stale=bool(metadata.get("index_stale", False)),
+            index_freshness=_index_freshness(metadata.get("index_freshness")),
             context_budget_tokens=_bounded_int(metadata.get("context_budget_tokens")),
             context_used_tokens=_bounded_int(metadata.get("context_used_tokens")),
             trace_ids=trace_ids,
@@ -115,3 +118,17 @@ def _bounded_int(value: Any) -> int:
         return max(0, min(int(value), 1_000_000))
     except (TypeError, ValueError):
         return 0
+
+
+def _index_freshness(value: Any) -> IndexFreshness | None:
+    """Decode bounded numeric delivery state from a recall audit event."""
+    if not isinstance(value, dict):
+        return None
+    return IndexFreshness(
+        active_memory_count=_bounded_int(value.get("active_memory_count")),
+        stale_memory_count=_bounded_int(value.get("stale_memory_count")),
+        unpublished_memory_count=_bounded_int(value.get("unpublished_memory_count")),
+        processing_memory_count=_bounded_int(value.get("processing_memory_count")),
+        dead_letter_memory_count=_bounded_int(value.get("dead_letter_memory_count")),
+        missing_delivery_memory_count=_bounded_int(value.get("missing_delivery_memory_count")),
+    )

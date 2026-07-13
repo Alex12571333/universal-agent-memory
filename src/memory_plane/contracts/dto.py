@@ -142,12 +142,30 @@ class Candidate:
 
 
 @dataclass(frozen=True, slots=True)
+class IndexFreshness:
+    """Durable embedding delivery state for active heads in one workspace."""
+
+    active_memory_count: int = 0
+    stale_memory_count: int = 0
+    unpublished_memory_count: int = 0
+    processing_memory_count: int = 0
+    dead_letter_memory_count: int = 0
+    missing_delivery_memory_count: int = 0
+
+    @property
+    def stale(self) -> bool:
+        """Return true whenever a recallable memory lacks a completed index delivery."""
+        return self.stale_memory_count > 0
+
+
+@dataclass(frozen=True, slots=True)
 class RecallResult:
     """Ranked retrieval output with inspectable source diagnostics."""
 
     candidates: tuple[Candidate, ...]
     sources_used: tuple[str, ...]
     index_stale: bool = False
+    index_freshness: IndexFreshness | None = None
 
 
 @dataclass(frozen=True, slots=True)

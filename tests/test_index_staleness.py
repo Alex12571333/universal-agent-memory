@@ -20,6 +20,14 @@ def test_recall_marks_index_stale_while_embedding_event_is_pending() -> None:
 
     assert response.status_code == 200
     assert response.json()["index_stale"] is True
+    assert response.json()["index_freshness"] == {
+        "active_memory_count": 1,
+        "stale_memory_count": 1,
+        "unpublished_memory_count": 1,
+        "processing_memory_count": 0,
+        "dead_letter_memory_count": 0,
+        "missing_delivery_memory_count": 0,
+    }
 
 
 def test_recall_ignores_pending_embedding_in_other_workspace() -> None:
@@ -41,6 +49,8 @@ def test_recall_ignores_pending_embedding_in_other_workspace() -> None:
 
     assert response.status_code == 200
     assert response.json()["index_stale"] is False
+    assert response.json()["index_freshness"]["active_memory_count"] == 0
+    assert response.json()["index_freshness"]["stale_memory_count"] == 0
 
 
 def test_retrieval_marks_freshness_unknown_as_stale() -> None:
@@ -52,3 +62,5 @@ def test_retrieval_marks_freshness_unknown_as_stale() -> None:
     )
 
     assert result.index_stale is True
+    assert result.index_freshness is not None
+    assert result.index_freshness.missing_delivery_memory_count == 1

@@ -152,5 +152,7 @@ raw memory и transport-neutral `stale` для конфликтов.
 - `revision_conflict`;
 - `dependency_unavailable`;
 - `index_stale`.
+- `index_freshness` — durable per-workspace counts of active heads whose
+  `embed-v1` delivery is pending, processing, dead-lettered or missing.
 
 Adapter-specific exceptions не должны выходить через API.
