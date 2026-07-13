@@ -832,6 +832,14 @@ def test_restore_drill_uses_temporary_docker_target(
     ]
 
 
+def test_local_compose_persists_non_secret_model_settings() -> None:
+    compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+
+    assert "UAM_MODEL_SETTINGS_PATH: /var/lib/obelisk/model-settings.json" in compose
+    assert "model_settings_data:/var/lib/obelisk" in compose
+    assert "model-settings-init:" in compose
+
+
 def test_restore_drill_rejects_missing_tenant_isolation(monkeypatch: pytest.MonkeyPatch) -> None:
     def fake_run(
         command: list[str],
