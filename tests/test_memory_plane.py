@@ -407,6 +407,31 @@ class MemoryPlaneTest(unittest.TestCase):
         self.assertEqual((old.item.id,), by_summary[old.item.text].evidence_ids)
         self.assertEqual((new.item.id,), by_summary[new.item.text].evidence_ids)
 
+    def test_russian_preferences_are_reflected_and_exposed_for_review(self) -> None:
+        old = self.retain("Пользователь предпочитает Qwen.")
+        new = self.retain("Пользователь предпочитает Gemma.")
+
+        observations = self.container.reflection.reflect(self.tenant, self.workspace)
+        cases = self.container.conflicts.list_cases(self.tenant, self.workspace)
+
+        self.assertEqual(2, len(observations))
+        self.assertTrue(next(row for row in observations if row.summary == old.item.text).stale)
+        self.assertFalse(next(row for row in observations if row.summary == new.item.text).stale)
+        self.assertEqual(1, len(cases))
+        self.assertEqual("пользователь", cases[0].subject)
+        self.assertEqual("preference", cases[0].predicate)
+        self.assertEqual("gemma", cases[0].suggested_winner_value)
+
+    def test_temporal_preference_transition_is_not_auto_grouped_as_a_conflict(self) -> None:
+        self.retain("Раньше пользователь предпочитал Qwen.")
+        self.retain("Сейчас пользователь предпочитает Gemma.")
+
+        observations = self.container.reflection.reflect(self.tenant, self.workspace)
+        cases = self.container.conflicts.list_cases(self.tenant, self.workspace)
+
+        self.assertEqual((), observations)
+        self.assertEqual((), cases)
+
     def test_conflict_inbox_lists_candidates_and_suggests_active_winner(self) -> None:
         old = self.retain("Release Alpha is July 15.")
         new = self.retain("Release Alpha is July 16.")

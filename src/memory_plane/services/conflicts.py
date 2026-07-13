@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import re
 from collections import defaultdict
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from memory_plane.contracts.events import IntegrationEvent
@@ -22,23 +21,7 @@ from memory_plane.domain.models import (
     Provenance,
 )
 from memory_plane.ports.repositories import ConflictReviewRepository, MemoryLedger
-
-_DATE_SEPARATORS = re.compile(r"[-/,]+")
-_PUNCTUATION = re.compile(r"[^\w\s-]", re.UNICODE)
-
-
-@dataclass(frozen=True, slots=True)
-class _BeliefSlot:
-    """Comparable memory slot."""
-
-    subject: str
-    predicate: str
-    value: str
-
-    @property
-    def key(self) -> str:
-        """Group comparable facts about the same entity/relation."""
-        return f"{self.subject}|{self.predicate}"
+from memory_plane.services.belief_slots import BeliefSlot, extract_belief_slot
 
 
 class ConflictService:
@@ -66,9 +49,9 @@ class ConflictService:
             workspace_id,
             layers=(MemoryLayer.SEMANTIC,),
         )
-        groups: dict[str, list[tuple[_BeliefSlot, MemoryItem]]] = defaultdict(list)
+        groups: dict[str, list[tuple[BeliefSlot, MemoryItem]]] = defaultdict(list)
         for item in items:
-            slot = self._extract_slot(item.text)
+            slot = extract_belief_slot(item.text)
             groups[slot.key].append((slot, item))
 
         reviews = {
@@ -274,41 +257,7 @@ class ConflictService:
             },
         )
 
-    def _extract_slot(self, text: str) -> _BeliefSlot:
-        normalized = self._normalize(text)
-        owner = re.fullmatch(r"(?P<owner>.+?) owns (?P<thing>.+)", normalized)
-        if owner:
-            return _BeliefSlot(
-                subject=self._normalize_entity(owner.group("thing")),
-                predicate="owner",
-                value=self._normalize_entity(owner.group("owner")),
-            )
-
-        release_date = re.fullmatch(
-            r"(?P<subject>.+?) releases? on (?P<value>.+)",
-            normalized,
-        )
-        if release_date:
-            return _BeliefSlot(
-                subject=self._normalize_entity(release_date.group("subject")),
-                predicate="release_date",
-                value=self._normalize_value(release_date.group("value")),
-            )
-
-        state = re.fullmatch(
-            r"(?P<subject>.+?) (?:is|are|was|were|will be) (?P<value>.+)",
-            normalized,
-        )
-        if state:
-            return _BeliefSlot(
-                subject=self._normalize_entity(state.group("subject")),
-                predicate="state",
-                value=self._normalize_value(state.group("value")),
-            )
-
-        return _BeliefSlot(subject=normalized, predicate="statement", value="true")
-
-    def _case_id(self, tenant_id: UUID, workspace_id: UUID, slot: _BeliefSlot) -> UUID:
+    def _case_id(self, tenant_id: UUID, workspace_id: UUID, slot: BeliefSlot) -> UUID:
         return uuid5(
             NAMESPACE_URL,
             f"uam:conflict:{tenant_id}:{workspace_id}:{slot.key}",
@@ -320,14 +269,3 @@ class ConflictService:
         boost = min(0.2, 0.05 * (len(rows) - 1))
         active_boost = 0.05 if is_active else 0.0
         return min(1.0, max(0.0, base + boost + active_boost))
-
-    def _normalize_entity(self, text: str) -> str:
-        return self._normalize(text.removeprefix("the "))
-
-    def _normalize_value(self, text: str) -> str:
-        return _DATE_SEPARATORS.sub(" ", self._normalize(text))
-
-    @staticmethod
-    def _normalize(text: str) -> str:
-        text = _PUNCTUATION.sub(" ", text.casefold().strip())
-        return " ".join(text.split())
