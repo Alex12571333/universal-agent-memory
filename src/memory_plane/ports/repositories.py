@@ -58,6 +58,7 @@ class MemoryLedger(Protocol):
         *,
         expected_revision: int,
         idempotency_key: str | None = None,
+        audit_event: AuditEvent | None = None,
     ) -> tuple[MemoryItem, bool]:
         """Append a replacement only if its parent is still the current head."""
         ...

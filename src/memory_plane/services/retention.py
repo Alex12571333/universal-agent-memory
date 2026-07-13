@@ -71,7 +71,11 @@ class RetentionService:
         )
         return item, event
 
-    def supersede(self, command: SupersedeMemoryCommand) -> RetainResult:
+    def supersede(
+        self,
+        command: SupersedeMemoryCommand,
+        audit_event: AuditEvent | None = None,
+    ) -> RetainResult:
         """Append a replacement item only if the caller observed the current head."""
         current = self._store.get(command.tenant_id, command.item_id)
         if current is None:
@@ -99,11 +103,18 @@ class RetentionService:
                 "jobs": ["embed", "dedupe", "graph", "reflect"],
             },
         )
+        if audit_event is not None:
+            audit_event = replace(
+                audit_event,
+                workspace_id=replacement.workspace_id,
+                resource_id=str(replacement.id),
+            )
         stored, created = self._store.supersede_if_current(
             replacement,
             event,
             expected_revision=command.expected_revision,
             idempotency_key=command.idempotency_key,
+            audit_event=audit_event,
         )
         return RetainResult(
             item=stored,

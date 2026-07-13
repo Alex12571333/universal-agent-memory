@@ -13,7 +13,7 @@ under failure.
 | Architecture | PostgreSQL source of truth, Qdrant index, outbox, NATS workers, vault, API, UI | Good foundation |
 | Docker | Local self-hosted compose keeps infra ports internal in production topology; database secrets use dedicated mounts; deployment preflight writes boundary evidence | Fresh role provisioning still needs clean target-boot evidence |
 | API auth | Bearer keys, route capabilities, strict principal bindings, env validation and non-secret key registry exist; `/health` is public | Identity isolation is implemented and locally proven; target-deployment evidence remains required |
-| Audit trail | `audit_events`, export/signing and retention tools exist | Coverage is incomplete and most audit writes are not atomic with the operation they describe |
+| Audit trail | `audit_events`, export/signing and retention tools exist; retain and CAS supersede audit records share the canonical write transaction | Coverage is incomplete for conversations, proposals, graph, reflection, reindex and checkpoints |
 | Browser/API hardening | Security headers are enforced by middleware and tests | Baseline present |
 | Data model | Append-only memory, CAS supersede, atomic conflict-winner revisions, canonical active-head recall, provenance, statuses and pgcrypto for canonical text, raw conversations and proposals exist | Sensitive-table, legacy-data and backup encryption remain incomplete |
 | Conversation capture | Raw ledger, proposal-first curation, `curated_only` purge, bounded staging TTL, stable identities and live pipeline runner exist | The purge schedule and installed agent hooks still require target evidence |
@@ -212,14 +212,20 @@ static readiness script are green.
    correctness-first post-decryption fallback because ciphertext cannot use the
    normal FTS index; a protected searchable index and production pagination for
    several list/export paths remain required.
-7. Audit events are incomplete and separate from the transaction they describe.
-   Denied requests, raw conversations, proposals, graph writes, reflect,
-   reindex and checkpoints need complete status-aware audit coverage.
+7. `memory.retain` and `memory.supersede` audit records are now committed in
+   the same PostgreSQL transaction as their canonical item, idempotency key and
+   outbox event. Failure injection proves an audit insert error rolls back the
+   memory replacement and outbox event. Denied requests, raw conversations,
+   proposals, graph writes, reflect, reindex and checkpoints still need
+   complete status-aware and, where applicable, transactional audit coverage.
 8. The application role is now granted `SELECT/INSERT` by default, with only
    explicit operational mutations (outbox, idempotency, staging, proposal,
    agent/thread, review and checkpoint retention) re-granted. It cannot update
    or delete `memory_items` or `audit_events`; the server fails closed when
-   `UAM_ENFORCE_RUNTIME_DB_ACL=true` detects stale broad ACLs. The migration job
+   `UAM_ENFORCE_RUNTIME_DB_ACL=true` detects stale broad ACLs. CAS supersede
+   uses a transaction-scoped advisory lock rather than `SELECT FOR UPDATE`, so
+   it remains operational with that least-privilege role; PostgreSQL integration
+   tests cover both CAS/idempotency and audit-insert rollback. The migration job
    must still be rerun during every upgrade and a target privilege report must
    be retained. Database-enforced immutable audit triggers and migration
    checksums remain future hardening.

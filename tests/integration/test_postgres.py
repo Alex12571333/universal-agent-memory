@@ -639,6 +639,40 @@ class PostgresMemoryLedgerTest(unittest.TestCase):
             ).fetchone()["count"]
         self.assertEqual(0, count)
 
+    def test_supersede_audit_failure_rolls_back_replacement_and_outbox(self) -> None:
+        parent = self._item("audit supersede parent")
+        self.store.retain(parent, self._event(parent))
+        replacement = parent.supersede("audit supersede replacement")
+        audit = AuditEvent(
+            tenant_id=self.tenant,
+            workspace_id=self.workspace,
+            action="memory.supersede",
+            actor="integration",
+            actor_type="system",
+            resource_type="memory_item",
+            resource_id=str(replacement.id),
+        )
+        with patch.object(
+            self.store, "_insert_audit_event", side_effect=RuntimeError("audit down")
+        ):
+            with self.assertRaisesRegex(RuntimeError, "audit down"):
+                self.store.supersede_if_current(
+                    replacement,
+                    self._event(replacement),
+                    expected_revision=parent.revision,
+                    audit_event=audit,
+                )
+
+        self.assertIsNone(self.store.get(self.tenant, replacement.id))
+        self.assertTrue(self.store.is_recallable_head(self.tenant, parent.id))
+        with self.store._connection() as connection:
+            self.store._set_tenant(connection, self.tenant)
+            count = connection.execute(
+                "select count(*) as count from outbox_events where correlation_id = %s",
+                (replacement.id,),
+            ).fetchone()["count"]
+        self.assertEqual(0, count)
+
     def test_rls_hides_another_tenants_item(self) -> None:
         item = self._item()
         self.store.retain(item, self._event(item))

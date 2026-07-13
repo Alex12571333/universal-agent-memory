@@ -2007,6 +2007,19 @@ def create_app(
         request: Request,
     ) -> dict[str, Any]:
         """Append a replacement only when the caller's revision is still current."""
+        principal = _principal_from_request(request)
+        audit_event = AuditEvent(
+            tenant_id=body.tenant_id,
+            workspace_id=None,
+            action="memory.supersede",
+            actor=principal.name,
+            actor_type=_audit_actor_type(principal),
+            resource_type="memory_item",
+            metadata={
+                "supersedes_id": str(item_id),
+                "expected_revision": body.expected_revision,
+            },
+        )
         try:
             result = services.retention.supersede(
                 SupersedeMemoryCommand(
@@ -2016,7 +2029,8 @@ def create_app(
                     expected_revision=body.expected_revision,
                     confidence=body.confidence,
                     idempotency_key=body.idempotency_key,
-                )
+                ),
+                audit_event=audit_event,
             )
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="memory item not found") from exc
@@ -2032,19 +2046,6 @@ def create_app(
             ) from exc
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
-        record_audit(
-            request,
-            tenant_id=body.tenant_id,
-            workspace_id=result.item.workspace_id,
-            action="memory.supersede",
-            resource_type="memory_item",
-            resource_id=str(result.item.id),
-            metadata={
-                "created": result.created,
-                "supersedes_id": str(item_id),
-                "expected_revision": body.expected_revision,
-            },
-        )
         return _memory_write_response(result)
 
     @app.post("/v1/memory/recall")
