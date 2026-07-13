@@ -21,10 +21,16 @@ UAM_BACKUP_SIGNING_KEY_ID=local-backup-key-2026
 UAM_API_KEY_FILE=/Users/<user>/.config/obelisk-memory/operator_api_key
 UAM_METRICS_URL=http://127.0.0.1:6798/metrics
 UAM_INTERNAL_BASE_URL=http://127.0.0.1:6798
+# Local notification route; receives a redacted JSON report on stdin.
+UAM_ALERT_COMMAND="/absolute/path/to/universal-agent-memory/.venv/bin/python /absolute/path/to/universal-agent-memory/scripts/macos_alert.py"
 UAM_SERVER_ID=00000000-0000-0000-0000-000000000001
 UAM_PROJECT_ID=00000000-0000-0000-0000-000000000002
 PATH=/usr/local/bin:/opt/homebrew/opt/libpq/bin:/opt/homebrew/bin:/usr/bin:/bin
 ```
+
+`UAM_ALERT_COMMAND` needs neither a domain nor a webhook. On a failed backup or
+metrics gate, `macos_alert.py` renders a native macOS notification. An external
+webhook remains optional for operators who deliberately configure one.
 
 Install the jobs:
 
