@@ -753,6 +753,45 @@ pre {
   gap: 10px;
 }
 
+.vault-health {
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(53, 222, 156, .24);
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(9, 48, 50, .52), rgba(5, 15, 30, .7));
+  padding: 13px 14px;
+}
+
+.vault-health.has-errors {
+  border-color: rgba(251, 113, 133, .46);
+  background: linear-gradient(135deg, rgba(75, 18, 44, .46), rgba(12, 13, 31, .72));
+}
+
+.vault-health-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.vault-health-head div { display: grid; gap: 2px; }
+.vault-health-head small { color: #91a5cb; font-size: 11px; }
+.vault-health-head b { color: #e5f4ff; font-size: 13px; }
+.vault-health-head span {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: rgba(25, 183, 130, .16);
+  color: #62efbd;
+  padding: 5px 8px;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.vault-health.has-errors .vault-health-head span { background: rgba(244, 63, 94, .16); color: #fda4af; }
+.vault-health p { margin: 0; color: #acbddb; font-size: 12px; line-height: 1.45; }
+.vault-health-note { color: #c6b4ff !important; }
+.vault-health ul { display: grid; gap: 4px; margin: 0; padding-left: 17px; color: #ffcad2; font-size: 11px; }
+
 .settings-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

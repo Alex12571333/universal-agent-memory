@@ -72,6 +72,27 @@ export interface VaultResponse {
   files: VaultFile[];
 }
 
+export interface VaultHealthIssue {
+  severity: "error" | "warning";
+  code: string;
+  message: string;
+  item_id: string | null;
+  edge_id: string | null;
+  observation_id: string | null;
+}
+
+export interface VaultHealthResponse {
+  healthy: boolean;
+  memory_count: number;
+  edge_count: number;
+  observation_count: number;
+  recallable_head_count: number;
+  unlinked_head_count: number;
+  error_count: number;
+  warning_count: number;
+  issues: VaultHealthIssue[];
+}
+
 export interface ModelSettings {
   runtime: {
     provider: string;
