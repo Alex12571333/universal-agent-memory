@@ -609,6 +609,51 @@ def test_audit_events_require_operator_scope(monkeypatch) -> None:
     assert event["actor_type"] == "agent"
 
 
+def test_audit_events_support_stable_cursor_pagination() -> None:
+    container = build_in_memory_container()
+    tenant, workspace = uuid4(), uuid4()
+    for index in range(3):
+        container.audit.record(
+            tenant_id=tenant,
+            workspace_id=workspace,
+            action=f"test.audit.{index}",
+            actor="operator",
+            actor_type="operator",
+            resource_type="test",
+        )
+    client = TestClient(create_app(container))
+
+    first = client.get(
+        "/v1/audit/events",
+        params={"tenant_id": str(tenant), "workspace_id": str(workspace), "limit": 2},
+    )
+
+    assert first.status_code == 200
+    first_body = first.json()
+    assert first_body["count"] == 2
+    assert first_body["has_more"] is True
+    assert first_body["next_before_created_at"]
+    assert first_body["next_before_event_id"]
+    first_ids = {event["id"] for event in first_body["events"]}
+    second = client.get(
+        "/v1/audit/events",
+        params={
+            "tenant_id": str(tenant),
+            "workspace_id": str(workspace),
+            "limit": 2,
+            "before_created_at": first_body["next_before_created_at"],
+            "before_event_id": first_body["next_before_event_id"],
+        },
+    )
+
+    assert second.status_code == 200
+    second_body = second.json()
+    assert second_body["count"] == 1
+    assert second_body["has_more"] is False
+    assert second_body["next_before_created_at"] is None
+    assert not (first_ids & {event["id"] for event in second_body["events"]})
+
+
 def test_api_key_registry_tracks_last_used_and_revocation(monkeypatch) -> None:
     monkeypatch.setenv(
         "UAM_API_KEYS",

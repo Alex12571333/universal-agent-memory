@@ -17,6 +17,7 @@ import shutil
 import sys
 import time
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 from urllib.error import URLError
@@ -1459,20 +1460,32 @@ def create_app(
         action: str | None = None,
         resource_type: str | None = None,
         limit: int = 100,
+        before_created_at: datetime | None = None,
+        before_event_id: UUID | None = None,
     ) -> dict[str, Any]:
         """Export recent audit events for operator review and incident response."""
+        safe_limit = max(1, min(int(limit), 500))
         events = services.audit.list_events(
             tenant_id,
             workspace_id=workspace_id,
             action=action,
             resource_type=resource_type,
-            limit=limit,
+            created_before=before_created_at,
+            before_event_id=before_event_id,
+            limit=safe_limit + 1,
         )
+        has_more = len(events) > safe_limit
+        rows = events[:safe_limit]
+        cursor = rows[-1] if has_more and rows else None
         return {
             "tenant_id": str(tenant_id),
             "workspace_id": str(workspace_id) if workspace_id else None,
-            "count": len(events),
-            "events": [_audit_event_response(event) for event in events],
+            "count": len(rows),
+            "limit": safe_limit,
+            "has_more": has_more,
+            "next_before_created_at": cursor.created_at.isoformat() if cursor else None,
+            "next_before_event_id": str(cursor.id) if cursor else None,
+            "events": [_audit_event_response(event) for event in rows],
         }
 
     @app.get("/v1/workspaces/{workspace_id}/replays/{audit_event_id}")
