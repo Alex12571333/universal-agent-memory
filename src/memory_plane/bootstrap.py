@@ -33,6 +33,7 @@ from memory_plane.services.identities import IdentityProvisioningService
 from memory_plane.services.ingestion import IngestionService
 from memory_plane.services.proposals import MemoryProposalService
 from memory_plane.services.reflection import ReflectionService
+from memory_plane.services.replay import RecallReplayService
 from memory_plane.services.retention import RetentionService
 from memory_plane.services.retrieval import RetrievalService
 from memory_plane.services.vault import VaultExporter
@@ -61,6 +62,7 @@ class Container:
     memory_llm: MemoryLLMClient
     vault: VaultExporter
     vault_health: VaultHealthService
+    replay: RecallReplayService
     store: object
 
 
@@ -111,6 +113,7 @@ def build_in_memory_container() -> Container:
         memory_llm=build_memory_llm_client(),
         vault=VaultExporter(store, observations, retention),
         vault_health=VaultHealthService(store, observations, graph),
+        replay=RecallReplayService(AuditLogService(store), store),
         store=store,
     )
 
@@ -221,6 +224,7 @@ def build_postgres_container(
         memory_llm=memory_llm,
         vault=VaultExporter(store, observations, retention),
         vault_health=VaultHealthService(store, observations, graph),
+        replay=RecallReplayService(AuditLogService(store), store),
         store=store,
     )
 

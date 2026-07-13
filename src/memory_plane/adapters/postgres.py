@@ -973,6 +973,21 @@ class PostgresMemoryLedger:
             )
         return event
 
+    def get_audit_event(self, tenant_id: UUID, event_id: UUID) -> AuditEvent | None:
+        """Load one audit event under RLS for an operator replay."""
+        with self._connection() as connection:
+            self._set_tenant(connection, tenant_id)
+            row = connection.execute(
+                f"""
+                select id, tenant_id, workspace_id, action, actor, actor_type,
+                  resource_type, resource_id, status, {_AUDIT_METADATA_SQL} as metadata, created_at
+                from audit_events
+                where id = %s
+                """,
+                (event_id,),
+            ).fetchone()
+        return self._to_audit_event(row) if row is not None else None
+
     def list_audit_events(
         self,
         tenant_id: UUID,

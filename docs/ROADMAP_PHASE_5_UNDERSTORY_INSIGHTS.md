@@ -38,11 +38,12 @@ queue: isolated facts can be correct and useful.
 
 ### Explainable traversal, not a parallel trace store
 
-The UI should eventually replay a recall/curation path: request, candidate
-sources, selected trace IDs, context-package budget, subsequent proposal or
-mutation, and audit event IDs.  It will use Obelisk's existing audit trail and
-trace IDs with retention and tenant isolation.  It must not add a world-readable
-directory of prompts, model outputs, or raw conversation content.
+Recall replay is now backed by Obelisk's existing tenant-scoped audit trail and
+canonical trace IDs.  A successful recall stores a redacted request fingerprint,
+candidate/context metrics, sources and selected IDs, then returns `replay_id`.
+The operator endpoint resolves those IDs against the canonical ledger without
+returning prompt text, memory text or transcripts.  The remaining extension is
+to connect approved proposal/mutation decisions to the same lineage.
 
 ### Bounded seed overview for integrations
 
@@ -81,7 +82,8 @@ used.
 1. Tenant-scoped read-only vault-health lint and API, with in-memory and
    PostgreSQL coverage.
 2. Operator UI health summary and links to actionable diagnostics.
-3. Audit-backed recall/mutation replay UI.
+3. Audit-backed recall replay API and integration contract. Mutation lineage UI
+   remains a later operator feature.
 4. Opt-in bounded integration seed, evaluated against context budgets.
 5. CAS-backed targeted editor patches, including concurrency and reindex tests.
 
