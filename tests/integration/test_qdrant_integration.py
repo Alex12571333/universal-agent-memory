@@ -181,6 +181,51 @@ class QdrantIntegrationTest(unittest.TestCase):
         remaining = client.retrieve(self.collection, ids=[str(existing.id)])
         self.assertEqual([str(existing.id)], [str(point.id) for point in remaining])
 
+    def test_workspace_sync_recovers_after_second_batch_failure(self) -> None:
+        """A retry must converge after Qdrant dies between replacement batches."""
+        stale = _item("pre-crash workspace point")
+        self.source.upsert(stale, dense_vector=[1.0, 0.0, 0.0, 0.0])
+        replacement = [
+            (_item(f"recovery replacement {index}"), [0.0, 1.0, 0.0, 0.0])
+            for index in range(101)
+        ]
+        original_upsert = self.source._client.upsert
+        calls = 0
+
+        def fail_second_upsert(*args, **kwargs):  # type: ignore[no-untyped-def]
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                raise RuntimeError("simulated qdrant crash after first batch")
+            return original_upsert(*args, **kwargs)
+
+        with (
+            patch.object(self.source._client, "upsert", side_effect=fail_second_upsert),
+            self.assertRaisesRegex(RuntimeError, "simulated qdrant crash"),
+        ):
+            self.source.sync_workspace(_T, _W, replacement)
+
+        from qdrant_client import QdrantClient  # type: ignore[import-untyped]
+
+        client = QdrantClient(url=QDRANT_URL)
+        observed_after_failure = client.retrieve(
+            self.collection,
+            ids=[str(stale.id), *(str(item.id) for item, _vector in replacement)],
+        )
+        ids_after_failure = {str(point.id) for point in observed_after_failure}
+        self.assertIn(str(stale.id), ids_after_failure)
+        self.assertEqual(100, len(ids_after_failure - {str(stale.id)}))
+
+        self.source.sync_workspace(_T, _W, replacement)
+        observed_after_retry = client.retrieve(
+            self.collection,
+            ids=[str(stale.id), *(str(item.id) for item, _vector in replacement)],
+        )
+        self.assertEqual(
+            {str(item.id) for item, _vector in replacement},
+            {str(point.id) for point in observed_after_retry},
+        )
+
     def test_collection_has_expected_vectors(self) -> None:
         from qdrant_client import QdrantClient  # type: ignore[import-untyped]
 
