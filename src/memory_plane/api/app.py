@@ -16,7 +16,7 @@ import secrets
 import shutil
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
@@ -1514,6 +1514,9 @@ def create_app(
             "candidate_count": replay.candidate_count,
             "sources_used": list(replay.sources_used),
             "index_stale": replay.index_stale,
+            "index_freshness": None
+            if replay.index_freshness is None
+            else asdict(replay.index_freshness),
             "context_budget_tokens": replay.context_budget_tokens,
             "context_used_tokens": replay.context_used_tokens,
             "trace_ids": [str(item_id) for item_id in replay.trace_ids],
@@ -2261,6 +2264,9 @@ def create_app(
                 "candidate_ids": [str(row.item.id) for row in result.candidates],
                 "sources_used": list(result.sources_used),
                 "index_stale": result.index_stale,
+                "index_freshness": None
+                if result.index_freshness is None
+                else asdict(result.index_freshness),
                 "context_budget_tokens": package.budget_tokens,
                 "context_used_tokens": package.used_tokens,
                 "trace_ids": [str(item_id) for item_id in package.trace_ids],
@@ -2281,6 +2287,9 @@ def create_app(
             ],
             "sources_used": result.sources_used,
             "index_stale": result.index_stale,
+            "index_freshness": None
+            if result.index_freshness is None
+            else asdict(result.index_freshness),
             "context": {
                 "operation": package.operation,
                 "used_tokens": package.used_tokens,

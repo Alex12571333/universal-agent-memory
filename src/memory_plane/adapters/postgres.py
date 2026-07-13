@@ -943,6 +943,90 @@ class PostgresMemoryLedger:
             ).fetchone()
         return bool(row and row["stale"])
 
+    def workspace_embedding_freshness(self, tenant_id: UUID, workspace_id: UUID):
+        """Return exact durable embedding state for recallable heads.
+
+        Outbox and per-consumer completion records are the source of truth. A
+        head with no retained-event delivery is reported as stale rather than
+        guessed fresh, which also surfaces legacy/imported rows that require a
+        scoped reindex.
+        """
+        from memory_plane.contracts.dto import IndexFreshness
+
+        with self._connection() as connection:
+            self._set_tenant(connection, tenant_id)
+            row = connection.execute(
+                """
+                with active_heads as (
+                  select m.id
+                  from memory_items m
+                  where m.workspace_id = %s
+                    and m.deleted_at is null
+                    and m.status not in ('rejected', 'archived')
+                    and not exists (
+                      select 1
+                      from memory_items child
+                      where child.supersedes_id = m.id
+                        and child.deleted_at is null
+                    )
+                ), deliveries as (
+                  select
+                    m.id,
+                    o.id as event_id,
+                    o.published_at,
+                    o.dead_lettered_at,
+                    p.processed_at,
+                    p.lease_until
+                  from active_heads m
+                  left join lateral (
+                    select id, published_at, dead_lettered_at
+                    from outbox_events
+                    where tenant_id = %s
+                      and workspace_id = %s
+                      and name = 'memory.retained.v1'
+                      and correlation_id = m.id
+                    order by occurred_at desc, id desc
+                    limit 1
+                  ) o on true
+                  left join processed_events p
+                    on p.tenant_id = %s
+                   and p.event_id = o.id
+                   and p.consumer = 'embed-v1'
+                )
+                select
+                  count(*) as active_memory_count,
+                  count(*) filter (
+                    where event_id is null
+                       or published_at is null
+                       or dead_lettered_at is not null
+                       or processed_at is null
+                  ) as stale_memory_count,
+                  count(*) filter (
+                    where event_id is not null
+                      and published_at is null
+                      and dead_lettered_at is null
+                  ) as unpublished_memory_count,
+                  count(*) filter (
+                    where event_id is not null
+                      and published_at is not null
+                      and dead_lettered_at is null
+                      and processed_at is null
+                  ) as processing_memory_count,
+                  count(*) filter (where dead_lettered_at is not null) as dead_letter_memory_count,
+                  count(*) filter (where event_id is null) as missing_delivery_memory_count
+                from deliveries
+                """,
+                (workspace_id, tenant_id, workspace_id, tenant_id),
+            ).fetchone()
+        return IndexFreshness(
+            active_memory_count=int(row["active_memory_count"]),
+            stale_memory_count=int(row["stale_memory_count"]),
+            unpublished_memory_count=int(row["unpublished_memory_count"]),
+            processing_memory_count=int(row["processing_memory_count"]),
+            dead_letter_memory_count=int(row["dead_letter_memory_count"]),
+            missing_delivery_memory_count=int(row["missing_delivery_memory_count"]),
+        )
+
     def append_audit_event(self, event: AuditEvent) -> AuditEvent:
         """Append one operator/agent audit event under RLS."""
         from psycopg.types.json import Jsonb

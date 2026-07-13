@@ -1570,6 +1570,54 @@ class PostgresMemoryLedgerTest(unittest.TestCase):
         self.assertTrue(completed)
         self.assertEqual(ConsumerClaim.COMPLETED, duplicate)
 
+    def test_workspace_embedding_freshness_counts_active_heads_by_delivery_state(self) -> None:
+        complete_item = self._item("completed embedding")
+        complete_event = self._event(complete_item)
+        self.store.retain(complete_item, complete_event)
+        self.store.claim_outbox(self.tenant, "relay-complete", limit=1, lease_seconds=30)
+        self.assertTrue(
+            self.store.mark_outbox_published(self.tenant, complete_event.id, "relay-complete")
+        )
+        self.assertEqual(
+            ConsumerClaim.ACQUIRED,
+            self.store.claim_event_processing(
+                self.tenant, complete_event.id, "embed-v1", "worker-complete", lease_seconds=30
+            ),
+        )
+        self.assertTrue(
+            self.store.complete_event_processing(
+                self.tenant, complete_event.id, "embed-v1", "worker-complete"
+            )
+        )
+
+        pending_item = self._item("pending embedding")
+        self.store.retain(pending_item, self._event(pending_item))
+
+        dead_item = self._item("dead letter embedding")
+        dead_event = self._event(dead_item)
+        self.store.retain(dead_item, dead_event)
+        self.store.claim_outbox(self.tenant, "relay-dead", limit=10, lease_seconds=30)
+        self.assertTrue(
+            self.store.release_outbox(
+                self.tenant,
+                dead_event.id,
+                "relay-dead",
+                error="test dead letter",
+                max_attempts=1,
+                retry_delay_seconds=1,
+            )
+        )
+
+        freshness = self.store.workspace_embedding_freshness(self.tenant, self.workspace)
+
+        self.assertEqual(3, freshness.active_memory_count)
+        self.assertTrue(freshness.stale)
+        self.assertEqual(2, freshness.stale_memory_count)
+        self.assertEqual(1, freshness.unpublished_memory_count)
+        self.assertEqual(0, freshness.processing_memory_count)
+        self.assertEqual(1, freshness.dead_letter_memory_count)
+        self.assertEqual(0, freshness.missing_delivery_memory_count)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -59,6 +59,14 @@ def test_recall_replay_is_durable_redacted_and_workspace_scoped() -> None:
     assert replay.json()["query_chars"] == len(secret_query)
     assert len(replay.json()["query_sha256"]) == 64
     assert replay.json()["references"]
+    assert replay.json()["index_freshness"] == {
+        "active_memory_count": 1,
+        "stale_memory_count": 1,
+        "unpublished_memory_count": 1,
+        "processing_memory_count": 0,
+        "dead_letter_memory_count": 0,
+        "missing_delivery_memory_count": 0,
+    }
     assert secret_query not in replay.text
     assert secret_memory not in replay.text
     assert secret_query not in audit.text

@@ -609,6 +609,38 @@ class InMemoryMemoryStore:
                 for event in self.events
             )
 
+    def workspace_embedding_freshness(self, tenant_id: UUID, workspace_id: UUID):
+        """Return conservative in-memory delivery state for active memory heads."""
+        from memory_plane.contracts.dto import IndexFreshness
+
+        with self._lock:
+            active = [
+                item
+                for item in self._items.values()
+                if item.tenant_id == tenant_id
+                and item.workspace_id == workspace_id
+                and item.status not in {MemoryStatus.REJECTED, MemoryStatus.ARCHIVED}
+                and not any(
+                    child.supersedes_id == item.id
+                    for child in self._items.values()
+                )
+            ]
+            pending_ids = {
+                event.correlation_id
+                for event in self.events
+                if event.tenant_id == tenant_id
+                and event.workspace_id == workspace_id
+                and event.name == "memory.retained.v1"
+            }
+        unpublished = sum(item.id in pending_ids for item in active)
+        missing = sum(item.id not in pending_ids for item in active)
+        return IndexFreshness(
+            active_memory_count=len(active),
+            stale_memory_count=unpublished + missing,
+            unpublished_memory_count=unpublished,
+            missing_delivery_memory_count=missing,
+        )
+
     def append_audit_event(self, event: AuditEvent) -> AuditEvent:
         """Append one immutable audit event."""
         with self._lock:
