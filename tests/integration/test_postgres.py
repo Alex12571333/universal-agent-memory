@@ -35,7 +35,12 @@ from memory_plane.domain.models import (
 )
 from memory_plane.domain.proposal import MemoryProposalStatus, MemoryProposalTarget
 from memory_plane.services.conflicts import ConflictService
-from memory_plane.services.conversations import ConversationCurator, CurateConversationTurnCommand
+from memory_plane.services.conversations import (
+    AppendConversationTurnCommand,
+    ConversationCurator,
+    ConversationService,
+    CurateConversationTurnCommand,
+)
 from memory_plane.services.proposals import (
     MemoryProposalService,
     ReviewMemoryProposalCommand,
@@ -438,6 +443,40 @@ class PostgresMemoryLedgerTest(unittest.TestCase):
                 self.tenant,
                 self.workspace,
                 namespace="postgres-curation-audit-failure",
+            ),
+        )
+
+    def test_conversation_append_audit_failure_rolls_back_transcript(self) -> None:
+        service = ConversationService(self.store)
+        thread_id = uuid4()
+        audit = AuditEvent(
+            tenant_id=self.tenant,
+            workspace_id=self.workspace,
+            action="conversation.turn.append",
+            actor="integration",
+            actor_type="system",
+            resource_type="conversation_turn",
+        )
+        with patch.object(
+            self.store, "_insert_audit_event", side_effect=RuntimeError("audit down")
+        ):
+            with self.assertRaisesRegex(RuntimeError, "audit down"):
+                service.append_turn(
+                    AppendConversationTurnCommand(
+                        tenant_id=self.tenant,
+                        workspace_id=self.workspace,
+                        thread_id=thread_id,
+                        namespace="postgres-turn-audit-failure",
+                        messages=(ConversationMessage(role="user", content="audit probe"),),
+                    ),
+                    audit_event=audit,
+                )
+        self.assertEqual(
+            (),
+            self.store.list_turns(
+                self.tenant,
+                self.workspace,
+                namespace="postgres-turn-audit-failure",
             ),
         )
 

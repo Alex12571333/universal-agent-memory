@@ -1751,8 +1751,24 @@ def create_app(
         return _memory_write_response(result)
 
     @app.post("/v1/conversations/turns", status_code=201)
-    def append_conversation_turn(body: ConversationTurnBody) -> dict[str, Any]:
+    def append_conversation_turn(
+        body: ConversationTurnBody, request: Request
+    ) -> dict[str, Any]:
         """Append an immutable raw transcript turn separate from curated memory."""
+        principal = _principal_from_request(request)
+        audit_event = AuditEvent(
+            tenant_id=body.tenant_id,
+            workspace_id=body.workspace_id,
+            action="conversation.turn.append",
+            actor=principal.name,
+            actor_type=_audit_actor_type(principal),
+            resource_type="conversation_turn",
+            metadata={
+                "namespace": body.namespace,
+                "retention_policy": body.retention_policy.value,
+                "message_count": len(body.messages),
+            },
+        )
         try:
             result = services.conversations.append_turn(
                 AppendConversationTurnCommand(
@@ -1774,7 +1790,8 @@ def create_app(
                     ),
                     metadata=body.metadata,
                     idempotency_key=body.idempotency_key,
-                )
+                ),
+                audit_event=audit_event,
             )
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc

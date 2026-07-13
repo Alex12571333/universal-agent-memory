@@ -1107,7 +1107,10 @@ class PostgresMemoryLedger:
             return item, True
 
     def append_turn(
-        self, turn: ConversationTurn, idempotency_key: str | None = None
+        self,
+        turn: ConversationTurn,
+        idempotency_key: str | None = None,
+        audit_event: AuditEvent | None = None,
     ) -> tuple[ConversationTurn, bool]:
         """Append one raw conversation turn and its ordered messages."""
         idempotency_key = _scope_idempotency_key(turn.workspace_id, idempotency_key)
@@ -1130,6 +1133,8 @@ class PostgresMemoryLedger:
                     """,
                     (turn.tenant_id, idempotency_key, turn.id),
                 )
+            if audit_event is not None:
+                self._insert_audit_event(connection, audit_event)
             return turn, True
 
     def get_turn(self, tenant_id: UUID, turn_id: UUID) -> ConversationTurn | None:
