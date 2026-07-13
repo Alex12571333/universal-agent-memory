@@ -59,12 +59,17 @@ services:
       UAM_MEMORY_LLM_EXTRA_BODY_JSON: ${UAM_MEMORY_LLM_EXTRA_BODY_JSON:-}
       UAM_MODEL_ENDPOINT_ALLOWLIST: ${UAM_MODEL_ENDPOINT_ALLOWLIST:?UAM_MODEL_ENDPOINT_ALLOWLIST must be set}
       UAM_RUNTIME_DEPENDENCY_PROBES: "true"
+      # Desired UI settings only; provider credentials are deliberately never
+      # written here and continue to come from environment/secret files.
+      UAM_MODEL_SETTINGS_PATH: /var/lib/obelisk/model-settings.json
     ports:
       - "6798:8080"
     secrets:
       - app_db_password
       - ui_session_signing_key
       - memory_text_key
+    volumes:
+      - model_settings_data:/var/lib/obelisk
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -72,6 +77,8 @@ services:
         condition: service_started
       nats:
         condition: service_healthy
+      model-settings-init:
+        condition: service_completed_successfully
     restart: unless-stopped
     healthcheck:
       test:
@@ -100,6 +107,15 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+
+  model-settings-init:
+    build:
+      context: .
+    user: "0:0"
+    command: ["sh", "-c", "mkdir -p /var/lib/obelisk && chown 10001:10001 /var/lib/obelisk"]
+    volumes:
+      - model_settings_data:/var/lib/obelisk
+    restart: "no"
 
   migrate:
     build:
@@ -281,6 +297,7 @@ volumes:
   qdrant_data:
   nats_data:
   minio_data:
+  model_settings_data:
 
 secrets:
   postgres_password:

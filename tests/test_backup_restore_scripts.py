@@ -519,6 +519,9 @@ def test_production_compose_wires_memory_text_encryption() -> None:
     assert compose.count("UAM_MEMORY_TEXT_ENCRYPTION_SCOPES: ") >= 4
     assert compose.count("UAM_MEMORY_TEXT_ENCRYPTION_KEY_FILE: /run/secrets/memory_text_key") >= 4
     assert "memory_text_key:" in compose
+    assert "UAM_MODEL_SETTINGS_PATH: /var/lib/obelisk/model-settings.json" in compose
+    assert "model-settings-init:" in compose
+    assert "model_settings_data:/var/lib/obelisk" in compose
     assert "UAM_BACKUP_ENCRYPTION_KEY_FILE: /run/secrets/backup_encryption_key" in compose
     assert "backup_encryption_key:" in compose
     assert "UAM_API_KEY_FILE: ${UAM_API_KEY_FILE:-}" in compose
