@@ -346,6 +346,8 @@ class InMemoryMemoryStore:
         *,
         thread_id: UUID | None = None,
         namespace: str | None = None,
+        before_created_at: datetime | None = None,
+        before_turn_id: UUID | None = None,
         limit: int = 50,
     ) -> tuple[ConversationTurn, ...]:
         """List recent raw conversation turns."""
@@ -356,6 +358,15 @@ class InMemoryMemoryStore:
             and turn.workspace_id == workspace_id
             and (thread_id is None or turn.thread_id == thread_id)
             and (namespace is None or turn.namespace == namespace)
+            and (
+                before_created_at is None
+                or turn.created_at < before_created_at
+                or (
+                    before_turn_id is not None
+                    and turn.created_at == before_created_at
+                    and str(turn.id) < str(before_turn_id)
+                )
+            )
         ]
         rows.sort(key=lambda turn: (turn.created_at, turn.id), reverse=True)
         return tuple(rows[:limit])
