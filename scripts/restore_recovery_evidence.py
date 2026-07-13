@@ -38,6 +38,12 @@ def main() -> int:
             item.get("ok") and "semantic" in str(item.get("name", ""))
             for item in semantic.get("checks", [])
         ),
+        "canonical_vault_health": bool(reindex.get("ok"))
+        and any(
+            item.get("name") == "canonical-vault-health" and item.get("ok") is True
+            for item in reindex.get("checks", [])
+            if isinstance(item, dict)
+        ),
         "recovery_probe": probe_valid,
     }
     report = {

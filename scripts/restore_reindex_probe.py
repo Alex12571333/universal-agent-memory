@@ -56,6 +56,15 @@ def run_probe(
     if not items:
         raise RuntimeError("restored workspace has no active memory to reindex and probe")
 
+    vault_health = container.vault_health.inspect(tenant_id, workspace_id)
+    if vault_health.error_count:
+        raise RuntimeError(
+            "restored workspace failed deterministic vault health: "
+            + ", ".join(
+                issue.code for issue in vault_health.issues if issue.severity == "error"
+            )
+        )
+
     indexed = container.embedding.reindex_all(tenant_id, workspace_id)
     verified = container.embedding.indexed_workspace_count(tenant_id, workspace_id)
     if indexed != verified:
@@ -79,6 +88,7 @@ def run_probe(
     dense_used = "qdrant_hybrid" in recall.sources_used
     semantic_ok = bool(candidate and candidate.semantic > 0 and dense_used)
     checks = [
+        {"name": "canonical-vault-health", "ok": vault_health.healthy},
         {"name": "restored-reindex", "ok": indexed == verified},
         {"name": "semantic-recall", "ok": semantic_ok},
     ]
@@ -93,6 +103,8 @@ def run_probe(
         "embedding_dimension": dimension,
         "indexed_points": indexed,
         "verified_points": verified,
+        "vault_health_errors": vault_health.error_count,
+        "vault_health_warnings": vault_health.warning_count,
         "semantic_sources": list(recall.sources_used),
         "semantic_candidate_found": candidate is not None,
         "checks": checks,
