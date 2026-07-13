@@ -1938,6 +1938,16 @@ def create_app(
         request: Request,
     ) -> dict[str, Any]:
         """Accept a proposal and create a durable memory item."""
+        principal = _principal_from_request(request)
+        audit_event = AuditEvent(
+            tenant_id=body.tenant_id,
+            workspace_id=None,
+            action="proposal.accept",
+            actor=principal.name,
+            actor_type=_audit_actor_type(principal),
+            resource_type="memory_proposal",
+            metadata={"reviewer": body.reviewer},
+        )
         try:
             result = services.proposals.accept(
                 ReviewMemoryProposalCommand(
@@ -1949,24 +1959,13 @@ def create_app(
                     kind=body.kind,
                     labels=tuple(body.labels),
                     idempotency_key=body.idempotency_key,
-                )
+                ),
+                audit_event=audit_event,
             )
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="memory proposal not found") from exc
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
-        record_audit(
-            request,
-            tenant_id=body.tenant_id,
-            workspace_id=result.proposal.workspace_id,
-            action="proposal.accept",
-            resource_type="memory_proposal",
-            resource_id=str(proposal_id),
-            metadata={
-                "reviewer": body.reviewer,
-                "memory_item_id": (str(result.retained.item.id) if result.retained else None),
-            },
-        )
         return _memory_proposal_review_response(result)
 
     @app.post("/v1/memory/proposals/{proposal_id}/reject", status_code=200)

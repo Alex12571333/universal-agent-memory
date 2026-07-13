@@ -452,6 +452,7 @@ class InMemoryMemoryStore:
         reviewer: str,
         reason: str,
         idempotency_key: str,
+        audit_event: AuditEvent | None = None,
     ) -> tuple[MemoryProposal, MemoryItem, bool]:
         """Atomically transition an open proposal and append its memory/event."""
         idempotency_key = _scope_idempotency_key(item.workspace_id, idempotency_key)
@@ -483,6 +484,8 @@ class InMemoryMemoryStore:
                 metadata={**current.metadata, "accepted_memory_id": str(item.id)},
             )
             self._proposals[current.id] = reviewed
+            if audit_event is not None:
+                self.append_audit_event(audit_event)
             return reviewed, item, True
 
     def list_proposals(
