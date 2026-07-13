@@ -565,20 +565,34 @@ class QdrantCandidateSource:
             FieldCondition(key="tenant_id", match=MatchValue(value=str(query.tenant_id))),
             FieldCondition(key="workspace_id", match=MatchValue(value=str(query.workspace_id))),
         ]
-        if query.layers:
-            # Qdrant doesn't have IN-filter in simple MatchValue, so use multiple should.
-            # For simplicity, filter by first layer.
-            must_conditions.append(
-                FieldCondition(key="layer", match=MatchValue(value=str(query.layers[0])))
-            )
         if query.labels:
             for label in query.labels:
                 must_conditions.append(FieldCondition(key="labels", match=MatchValue(value=label)))
 
-        rows = self._query_points(
-            query_vector=query_vector,
-            query_filter=Filter(must=must_conditions),
-            limit=max(query.top_k * 3, query.top_k),
+        # Query once per requested layer rather than silently retaining only
+        # the first layer. This works across supported qdrant-client versions
+        # without relying on version-specific MatchAny/MinShould models.
+        filters = (
+            tuple(
+                Filter(
+                    must=[
+                        *must_conditions,
+                        FieldCondition(key="layer", match=MatchValue(value=str(layer))),
+                    ]
+                )
+                for layer in query.layers
+            )
+            if query.layers
+            else (Filter(must=must_conditions),)
+        )
+        rows = tuple(
+            row
+            for query_filter in filters
+            for row in self._query_points(
+                query_vector=query_vector,
+                query_filter=query_filter,
+                limit=max(query.top_k * 3, query.top_k),
+            )
         )
         candidates: list[Candidate] = []
         query_terms = self._terms(query.text)
