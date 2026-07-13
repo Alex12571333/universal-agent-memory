@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 RECOVERY_PROBE_FORMAT = "obelisk-restored-reindex-probe-v1"
+RESTORE_DRILL_FORMAT = "obelisk-restore-drill-v1"
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -29,11 +30,7 @@ def main() -> int:
         and probe_dimension > 0
     )
     checks = {
-        "restore_drill": bool(restore.get("ok"))
-        and any(
-            step.get("name") == "restore_drill" and step.get("ok")
-            for step in restore.get("steps", [])
-        ),
+        "restore_drill": _restore_drill_ok(restore),
         "reindex": bool(reindex.get("ok"))
         and int(reindex.get("indexed_points", -1)) == int(reindex.get("verified_points", -2)),
         "semantic_recall": bool(semantic.get("ok"))
@@ -62,6 +59,36 @@ def main() -> int:
 
 def _read(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _restore_drill_ok(payload: dict) -> bool:
+    """Accept legacy scheduled reports and the bound restore-drill proof.
+
+    The new standalone format is stricter: it must attest to schema, forced
+    tenant RLS and parity against the source ledger.  Legacy scheduled reports
+    remain accepted so pre-existing release evidence can still be verified.
+    """
+    if payload.get("format") == RESTORE_DRILL_FORMAT:
+        checks = payload.get("checks")
+        if not isinstance(checks, list) or not payload.get("ok"):
+            return False
+        successful = {
+            item.get("name")
+            for item in checks
+            if isinstance(item, dict) and item.get("ok") is True
+        }
+        return {
+            "required-schema",
+            "forced-tenant-rls",
+            "source-row-parity",
+        }.issubset(successful)
+    return bool(payload.get("ok")) and any(
+        isinstance(step, dict)
+        and step.get("name") == "restore_drill"
+        and step.get("ok") is True
+        and step.get("skipped") is not True
+        for step in payload.get("steps", [])
+    )
 
 
 if __name__ == "__main__":

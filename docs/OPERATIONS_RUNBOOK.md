@@ -257,6 +257,12 @@ non-zero semantic score. Bind that report to the backup/restore report with
 reindex and semantic inputs. Preserve the generated `restore-recovery.json` in
 the signed release evidence bundle.
 
+`scheduled_backup.py` writes `obelisk-memory-<timestamp>.restore.json` for
+each successful drill. It records schema, forced-RLS and source-row-parity
+checks and is included in the backup bundle manifest. Prefer this bound report
+as `--restore-report`; the verifier still accepts earlier scheduled-job reports
+for backward-compatible evidence review.
+
 ## Scheduled backup job
 
 For unattended operations, run the scheduler-ready backup wrapper from cron,
