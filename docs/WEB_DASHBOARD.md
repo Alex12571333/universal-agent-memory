@@ -43,7 +43,9 @@ UAM_UI_COOKIE_SECURE=true
 - **Конфликты** — inspect conflict candidates and review rationale.
 - **Хранилище** — edit human-readable memory text. Frontmatter, provenance,
   revisions and embeddings stay under the hood. Saving uses vault import,
-  creates a new append-only revision and triggers reindex.
+  creates a new append-only revision and triggers reindex. The editor also
+  shows a read-only deterministic integrity summary: broken canonical references
+  are errors; unlinked active records are warnings and are never auto-linked.
 - **Граф** — Obsidian-style force graph. Nodes can be dragged, the canvas can
   be panned/zoomed, labels can be toggled, and physics can be restarted.
 - **Модели** — inspect runtime embedding settings, save desired model config,

@@ -6,6 +6,7 @@ import type {
   RecallResponse,
   SystemStatus,
   VaultFile,
+  VaultHealthResponse,
   VaultResponse
 } from "./types";
 
@@ -89,6 +90,11 @@ export const api = {
   vault(workspace: string, tenant: string) {
     return request<VaultResponse>(
       `/v1/workspaces/${workspace}/vault?tenant_id=${tenant}`
+    );
+  },
+  vaultHealth(workspace: string, tenant: string) {
+    return request<VaultHealthResponse>(
+      `/v1/workspaces/${workspace}/vault/health?tenant_id=${tenant}`
     );
   },
   modelSettings() {

@@ -9,7 +9,8 @@ import {
   type ModelSettings,
   type RecallResult,
   type SystemStatus,
-  type VaultFile
+  type VaultFile,
+  type VaultHealthResponse
 } from "./types";
 
 type View = "dashboard" | "memory" | "inbox" | "vault" | "graph" | "settings";
@@ -194,6 +195,7 @@ function Dashboard(props: { principal: string; canLogout: boolean; onLogout: () 
   const [memories, setMemories] = useState<MemoryItem[]>([]);
   const [conflicts, setConflicts] = useState<ConflictCase[]>([]);
   const [vault, setVault] = useState<VaultFile[]>([]);
+  const [vaultHealth, setVaultHealth] = useState<VaultHealthResponse | null>(null);
   const [settings, setSettings] = useState<ModelSettings | null>(null);
   const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
   const [selectedMemory, setSelectedMemory] = useState<string | null>(null);
@@ -207,16 +209,18 @@ function Dashboard(props: { principal: string; canLogout: boolean; onLogout: () 
   async function refresh() {
     setLoading(true);
     try {
-      const [memoryData, conflictData, vaultData, modelData, statusData] = await Promise.all([
+      const [memoryData, conflictData, vaultData, vaultHealthData, modelData, statusData] = await Promise.all([
         api.memories(workspace, tenant),
         api.conflicts(workspace, tenant),
         api.vault(workspace, tenant),
+        api.vaultHealth(workspace, tenant),
         api.modelSettings(),
         api.systemStatus()
       ]);
       setMemories(memoryData.memories);
       setConflicts(conflictData.cases);
       setVault(vaultData.files);
+      setVaultHealth(vaultHealthData);
       setSettings(modelData);
       setSystemStatus(statusData);
       setSelectedMemory((current) => current ?? memoryData.memories[0]?.id ?? null);
@@ -341,6 +345,7 @@ function Dashboard(props: { principal: string; canLogout: boolean; onLogout: () 
                 setStatus={setStatus}
                 refresh={refresh}
                 onArchive={archiveVaultFile}
+                health={vaultHealth}
               />
             ) : view === "inbox" ? (
               <ConflictList conflicts={conflicts} onDecide={decideConflict} />
@@ -876,6 +881,7 @@ function VaultEditor(props: {
   setStatus: (status: string) => void;
   refresh: () => Promise<void>;
   onArchive: (file?: VaultFile) => Promise<void>;
+  health: VaultHealthResponse | null;
 }) {
   const file = props.files.find((item) => item.path === props.selectedPath) ?? props.files[0];
   const [text, setText] = useState(vaultReadableBody(file));
@@ -913,8 +919,43 @@ function VaultEditor(props: {
           <button onClick={() => void save(true)}>Проверить без записи</button>
           <button className="primary" onClick={() => void save(false)}>Сохранить и пересчитать вектор</button>
         </div>
+        <VaultHealthPanel report={props.health} />
       </div>
     </div>
+  );
+}
+
+function VaultHealthPanel({ report }: { report: VaultHealthResponse | null }) {
+  if (!report) return null;
+  const summary = report.error_count
+    ? `Найдены ошибки целостности: ${report.error_count}`
+    : "Структура хранилища цела";
+  const diagnostics = report.issues
+    .filter((issue) => issue.severity === "error")
+    .slice(0, 4);
+  return (
+    <section className={`vault-health ${report.healthy ? "is-healthy" : "has-errors"}`} aria-live="polite">
+      <div className="vault-health-head">
+        <div>
+          <small>Проверка целостности</small>
+          <b>{summary}</b>
+        </div>
+        <span>{report.healthy ? "✓ Без ошибок" : "! Нужна проверка"}</span>
+      </div>
+      <p>
+        {report.recallable_head_count} актуальных записей · {report.edge_count} связей · {report.observation_count} наблюдений
+      </p>
+      {report.unlinked_head_count > 0 ? (
+        <p className="vault-health-note">
+          {report.unlinked_head_count} записей пока без явной связи. Это предупреждение, а не ошибка и ничего не меняется автоматически.
+        </p>
+      ) : null}
+      {diagnostics.length > 0 ? (
+        <ul>
+          {diagnostics.map((issue, index) => <li key={`${issue.code}-${issue.item_id ?? issue.edge_id ?? issue.observation_id ?? index}`}>{issue.message}</li>)}
+        </ul>
+      ) : null}
+    </section>
   );
 }
 
