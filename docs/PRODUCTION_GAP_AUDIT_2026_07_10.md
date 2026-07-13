@@ -123,14 +123,17 @@ static readiness script are green.
 
 7. **Workspace-safe reindex needs target concurrency evidence.**
    `EmbeddingService.reindex_all()` now computes and validates every embedding
-   before touching Qdrant, serializes concurrent work per workspace, upserts the
-   complete replacement set, then deletes only stale IDs captured inside the
-   same tenant/workspace boundary. Empty canonical workspaces clear only their
-   own vectors. Other workspaces are never deleted, and provider/upsert failure
-   cannot empty the previous set. Unit tests cover cross-workspace preservation,
-   empty sync, boundary rejection and provider failure. Live Qdrant passed 11/11,
-   including scoped replacement and failed-upsert preservation. Multi-replica
-   target concurrency and crash-during-partial-upsert evidence are still needed.
+   before touching Qdrant, serializes concurrent work per workspace with a
+   PostgreSQL session advisory lock held through the external vector sync, then
+   upserts the complete replacement set and deletes only stale IDs captured
+   inside the same tenant/workspace boundary. Empty canonical workspaces clear
+   only their own vectors. Other workspaces are never deleted, and
+   provider/upsert failure cannot empty the previous set. Unit tests cover
+   cross-workspace preservation, empty sync, boundary rejection and provider
+   failure; a PostgreSQL integration test proves two independent ledger clients
+   serialize the same workspace. Live Qdrant passed 11/11, including scoped
+   replacement and failed-upsert preservation. Multi-replica target concurrency
+   and crash-during-partial-upsert evidence are still needed.
    Collection startup now enforces dense dimension and immutable model metadata;
    incompatible configuration fails before serving recall. The migration runner
    builds a separately named collection, verifies exact workspace point count,

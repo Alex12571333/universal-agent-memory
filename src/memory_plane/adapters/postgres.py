@@ -305,6 +305,27 @@ class PostgresMemoryLedger:
             row = connection.execute("select 1 as ready").fetchone()
         return bool(row and row["ready"] == 1)
 
+    @contextmanager
+    def workspace_operation_lock(
+        self, tenant_id: UUID, workspace_id: UUID, operation: str
+    ) -> Iterator[None]:
+        """Hold a PostgreSQL session lock for one externally visible operation.
+
+        Reindex mutates Qdrant outside a SQL transaction, so a transaction lock
+        would be released before the vector replacement completed.  This session
+        lock stays leased on one pooled connection until the caller finishes.
+        """
+        key = f"obelisk:{operation}:{tenant_id}:{workspace_id}"
+        with self._connection() as connection:
+            self._set_tenant(connection, tenant_id)
+            connection.execute("select pg_advisory_lock(hashtextextended(%s, 0))", (key,))
+            try:
+                yield
+            finally:
+                connection.execute(
+                    "select pg_advisory_unlock(hashtextextended(%s, 0))", (key,)
+                )
+
     @property
     def name(self) -> str:
         """Return the stable retrieval diagnostic name."""

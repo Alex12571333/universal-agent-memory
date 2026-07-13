@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import time
+from contextlib import nullcontext
 from threading import Lock
 from typing import TYPE_CHECKING, cast
 from uuid import UUID
@@ -67,35 +68,40 @@ class EmbeddingService:
     def reindex_all(self, tenant_id: UUID, workspace_id: UUID) -> int:
         """Re-generate all embeddings using the current model and perform a full reindex."""
         lock = self._workspace_reindex_lock(tenant_id, workspace_id)
-        lock.acquire()
-        started = time.perf_counter()
-        try:
-            items = self._ledger.list_for_workspace(tenant_id, workspace_id)
-            superseded_ids = {
-                item.supersedes_id for item in items if item.supersedes_id is not None
-            }
-            pairs = []
-            for item in items:
-                if item.id in superseded_ids or item.status.value in {"archived", "rejected"}:
-                    continue
-                vector = self._embed_document(item.text)
-                self._validate_dimension(vector)
-                pairs.append((item, vector))
+        operation_lock = getattr(self._ledger, "workspace_operation_lock", None)
+        distributed_lock = (
+            operation_lock(tenant_id, workspace_id, "embedding-reindex")
+            if callable(operation_lock)
+            else nullcontext()
+        )
+        with lock, distributed_lock:
+            started = time.perf_counter()
+            try:
+                items = self._ledger.list_for_workspace(tenant_id, workspace_id)
+                superseded_ids = {
+                    item.supersedes_id for item in items if item.supersedes_id is not None
+                }
+                pairs = []
+                for item in items:
+                    if item.id in superseded_ids or item.status.value in {"archived", "rejected"}:
+                        continue
+                    vector = self._embed_document(item.text)
+                    self._validate_dimension(vector)
+                    pairs.append((item, vector))
 
-            self._qdrant.sync_workspace(
-                tenant_id,
-                workspace_id,
-                pairs,
-                model_name=self._client.model_name,
-            )
-            self._reindex_total += 1
-            return len(pairs)
-        except Exception:
-            self._reindex_failures_total += 1
-            raise
-        finally:
-            self._reindex_last_duration_seconds = time.perf_counter() - started
-            lock.release()
+                self._qdrant.sync_workspace(
+                    tenant_id,
+                    workspace_id,
+                    pairs,
+                    model_name=self._client.model_name,
+                )
+                self._reindex_total += 1
+                return len(pairs)
+            except Exception:
+                self._reindex_failures_total += 1
+                raise
+            finally:
+                self._reindex_last_duration_seconds = time.perf_counter() - started
 
     def collect_metrics(self) -> dict[str, float | int]:
         """Return process-local embedding health metrics."""
