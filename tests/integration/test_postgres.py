@@ -367,6 +367,38 @@ class PostgresMemoryLedgerTest(unittest.TestCase):
         self.assertEqual(0, memory_count)
         self.assertEqual(0, outbox_count)
 
+    def test_proposal_submit_audit_failure_rolls_back_proposal(self) -> None:
+        service = MemoryProposalService(self.store, RetentionService(self.store))
+        audit = AuditEvent(
+            tenant_id=self.tenant,
+            workspace_id=self.workspace,
+            action="proposal.submit",
+            actor="integration",
+            actor_type="system",
+            resource_type="memory_proposal",
+        )
+        with patch.object(
+            self.store, "_insert_audit_event", side_effect=RuntimeError("audit down")
+        ):
+            with self.assertRaisesRegex(RuntimeError, "audit down"):
+                service.submit(
+                    SubmitMemoryProposalCommand(
+                        tenant_id=self.tenant,
+                        workspace_id=self.workspace,
+                        namespace="postgres-submit-audit-failure",
+                        requester="integration-test",
+                        target=MemoryProposalTarget.FACT,
+                        proposal="Submit audit failure must not store a proposal.",
+                    ),
+                    audit_event=audit,
+                )
+        self.assertEqual(
+            (),
+            self.store.list_proposals(
+                self.tenant, self.workspace, namespace="postgres-submit-audit-failure"
+            ),
+        )
+
     def test_proposal_accept_audit_failure_rolls_back_memory_and_status(self) -> None:
         service = MemoryProposalService(self.store, RetentionService(self.store))
         submitted = service.submit(

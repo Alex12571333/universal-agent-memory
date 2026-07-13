@@ -408,7 +408,10 @@ class InMemoryMemoryStore:
         return turn_ids
 
     def append_proposal(
-        self, proposal: MemoryProposal, idempotency_key: str | None = None
+        self,
+        proposal: MemoryProposal,
+        idempotency_key: str | None = None,
+        audit_event: AuditEvent | None = None,
     ) -> tuple[MemoryProposal, bool]:
         """Atomically append a memory proposal."""
         idempotency_key = _scope_idempotency_key(proposal.workspace_id, idempotency_key)
@@ -423,6 +426,8 @@ class InMemoryMemoryStore:
                 self._proposal_idempotency[(proposal.tenant_id, idempotency_key)] = (
                     proposal.id
                 )
+            if audit_event is not None:
+                self.append_audit_event(audit_event)
             return proposal, True
 
     def get_proposal(self, tenant_id: UUID, proposal_id: UUID) -> MemoryProposal | None:

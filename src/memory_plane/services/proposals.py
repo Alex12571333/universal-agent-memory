@@ -24,7 +24,10 @@ class MemoryProposalRepository(Protocol):
     """Storage boundary for proposed memory changes."""
 
     def append_proposal(
-        self, proposal: MemoryProposal, idempotency_key: str | None = None
+        self,
+        proposal: MemoryProposal,
+        idempotency_key: str | None = None,
+        audit_event: AuditEvent | None = None,
     ) -> tuple[MemoryProposal, bool]:
         """Append a proposal or return the existing one for an idempotency key."""
         ...
@@ -145,7 +148,11 @@ class MemoryProposalService:
         self._privacy = privacy or PrivacyGuard.from_env()
         self._memory_llm = memory_llm
 
-    def submit(self, command: SubmitMemoryProposalCommand) -> SubmitMemoryProposalResult:
+    def submit(
+        self,
+        command: SubmitMemoryProposalCommand,
+        audit_event: AuditEvent | None = None,
+    ) -> SubmitMemoryProposalResult:
         """Store a sanitized proposal for later curation/review."""
         proposal_text = self._privacy.apply(command.proposal)
         evidence_text = self._privacy.apply(command.evidence) if command.evidence else None
@@ -189,6 +196,9 @@ class MemoryProposalService:
         stored, created = self._repository.append_proposal(
             proposal,
             command.idempotency_key,
+            audit_event=replace(audit_event, resource_id=str(proposal.id))
+            if audit_event is not None
+            else None,
         )
         return SubmitMemoryProposalResult(proposal=stored, created=created)
 
