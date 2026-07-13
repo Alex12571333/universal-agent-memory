@@ -2372,20 +2372,38 @@ def create_app(
     def reindex(workspace_id: UUID, tenant_id: UUID, request: Request) -> dict[str, Any]:
         """Re-generate all embeddings for the workspace."""
         principal = _principal_from_request(request)
+        intent = services.audit.record(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            action="embedding.reindex.intent",
+            actor=principal.name,
+            actor_type=_audit_actor_type(principal),
+            resource_type="workspace_vector_index",
+            resource_id=str(workspace_id),
+            metadata={"model": services.embedding.model_name},
+        )
         try:
             count = services.embedding.reindex_all(tenant_id, workspace_id)
         except Exception as exc:
-            services.audit.record(
-                tenant_id=tenant_id,
-                workspace_id=workspace_id,
-                action="embedding.reindex",
-                actor=principal.name,
-                actor_type=_audit_actor_type(principal),
-                resource_type="workspace_vector_index",
-                resource_id=str(workspace_id),
-                status="failed",
-                metadata={"error_type": type(exc).__name__},
-            )
+            try:
+                services.audit.record(
+                    tenant_id=tenant_id,
+                    workspace_id=workspace_id,
+                    action="embedding.reindex",
+                    actor=principal.name,
+                    actor_type=_audit_actor_type(principal),
+                    resource_type="workspace_vector_index",
+                    resource_id=str(workspace_id),
+                    status="failed",
+                    metadata={
+                        "intent_event_id": str(intent.id),
+                        "error_type": type(exc).__name__,
+                    },
+                )
+            except Exception:
+                # The durable intent already proves the operation was started.
+                # Do not replace the real reindex failure with an audit outage.
+                pass
             raise
         services.audit.record(
             tenant_id=tenant_id,
@@ -2395,7 +2413,11 @@ def create_app(
             actor_type=_audit_actor_type(principal),
             resource_type="workspace_vector_index",
             resource_id=str(workspace_id),
-            metadata={"reindexed_count": count, "model": services.embedding.model_name},
+            metadata={
+                "intent_event_id": str(intent.id),
+                "reindexed_count": count,
+                "model": services.embedding.model_name,
+            },
         )
         return {"reindexed_count": count}
 
