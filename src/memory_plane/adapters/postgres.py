@@ -912,6 +912,37 @@ class PostgresMemoryLedger:
             "api_keys_revoked_total": row["api_keys_revoked_total"],
         }
 
+    def workspace_embedding_stale(self, tenant_id: UUID, workspace_id: UUID) -> bool:
+        """Return whether a workspace has not completed its embedding delivery.
+
+        An event is stale until the outbox published it *and* the durable
+        ``embed-v1`` consumer marked it complete. Dead-lettered events stay
+        stale so recall cannot claim a healthy vector index.
+        """
+        with self._connection() as connection:
+            self._set_tenant(connection, tenant_id)
+            row = connection.execute(
+                """
+                select exists(
+                  select 1
+                  from outbox_events o
+                  left join processed_events p
+                    on p.tenant_id = o.tenant_id
+                   and p.event_id = o.id
+                   and p.consumer = 'embed-v1'
+                  where o.workspace_id = %s
+                    and o.name = 'memory.retained.v1'
+                    and (
+                      o.published_at is null
+                      or o.dead_lettered_at is not null
+                      or p.processed_at is null
+                    )
+                ) as stale
+                """,
+                (workspace_id,),
+            ).fetchone()
+        return bool(row and row["stale"])
+
     def append_audit_event(self, event: AuditEvent) -> AuditEvent:
         """Append one operator/agent audit event under RLS."""
         from psycopg.types.json import Jsonb

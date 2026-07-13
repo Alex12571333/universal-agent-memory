@@ -79,7 +79,9 @@ def build_in_memory_container() -> Container:
     embedding = EmbeddingService(store, qdrant, client)
     retrieval = RetrievalService(
         (store, qdrant),
-        staleness_check=lambda query: _outbox_pending(store, query.tenant_id),
+        staleness_check=lambda query: _outbox_pending(
+            store, query.tenant_id, query.workspace_id
+        ),
     )
     retrieval.record_success(store.name)
     retrieval.record_success(qdrant.name)
@@ -177,7 +179,9 @@ def build_postgres_container(
     retrieval = RetrievalService(
         tuple(sources),
         required_sources=frozenset({store.name}),
-        staleness_check=lambda query: _outbox_pending(store, query.tenant_id),
+        staleness_check=lambda query: _outbox_pending(
+            store, query.tenant_id, query.workspace_id
+        ),
     )
     retrieval.record_success(store.name)
     if qdrant_url_val:
@@ -217,8 +221,11 @@ def build_postgres_container(
     )
 
 
-def _outbox_pending(store: object, tenant_id: UUID) -> bool:
-    """Report conservative vector freshness from the canonical outbox ledger."""
+def _outbox_pending(store: object, tenant_id: UUID, workspace_id: UUID) -> bool:
+    """Report workspace-scoped vector freshness from the canonical ledger."""
+    workspace_probe = getattr(store, "workspace_embedding_stale", None)
+    if callable(workspace_probe):
+        return bool(workspace_probe(tenant_id, workspace_id))
     collector = getattr(store, "collect_metrics", None)
     if not callable(collector):
         raise RuntimeError("outbox freshness metrics unavailable")

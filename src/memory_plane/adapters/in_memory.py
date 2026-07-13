@@ -585,6 +585,16 @@ class InMemoryMemoryStore:
                 ),
             }
 
+    def workspace_embedding_stale(self, tenant_id: UUID, workspace_id: UUID) -> bool:
+        """Return whether this workspace has an unprocessed embedding event."""
+        with self._lock:
+            return any(
+                event.tenant_id == tenant_id
+                and event.workspace_id == workspace_id
+                and event.name == "memory.retained.v1"
+                for event in self.events
+            )
+
     def append_audit_event(self, event: AuditEvent) -> AuditEvent:
         """Append one immutable audit event."""
         with self._lock:
