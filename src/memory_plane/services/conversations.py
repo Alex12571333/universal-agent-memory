@@ -10,6 +10,7 @@ from typing import Any, Protocol
 from uuid import UUID
 
 from memory_plane.contracts.dto import RetainResult
+from memory_plane.domain.audit import AuditEvent
 from memory_plane.domain.conversation import (
     ConversationMessage,
     ConversationRetentionPolicy,
@@ -249,7 +250,11 @@ class ConversationCurator:
         self._memory_llm = memory_llm
         self._proposals = proposals
 
-    def curate_turn(self, command: CurateConversationTurnCommand) -> CurateConversationTurnResult:
+    def curate_turn(
+        self,
+        command: CurateConversationTurnCommand,
+        audit_event: AuditEvent | None = None,
+    ) -> CurateConversationTurnResult:
         """Create a reviewable proposal; LLM output never writes durable memory."""
         turn = self._ledger.get_turn(command.tenant_id, command.turn_id)
         if turn is None:
@@ -277,7 +282,8 @@ class ConversationCurator:
                     "claim_status": "unverified",
                 },
                 idempotency_key=(command.idempotency_key or f"curate-conversation-turn:{turn.id}"),
-            )
+            ),
+            audit_event=audit_event,
         )
         if command.auto_accept:
             automatic = self._proposals.auto_accept(proposal.proposal)
