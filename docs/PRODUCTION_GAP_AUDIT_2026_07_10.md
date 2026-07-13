@@ -197,9 +197,10 @@ static readiness script are green.
    yet a recall source.
 2. Outbox retry uses capped exponential backoff before an event is
    dead-lettered. JetStream delivery is bounded with exponential NAK delays,
-   durable DLQ records and an operator-selected replay command. Stream
-   size/age limits and authenticated NATS remain to be installed for a long
-   running appliance.
+   durable DLQ records and an operator-selected replay command. Production
+   compose supplies an NATS auth token and the worker configures bounded
+   stream/DLQ size and age. Long-running target evidence for retention under
+   real traffic still remains required.
 3. PostgreSQL uses an explicit bounded `psycopg_pool` connection pool per
    process. The deployment still has one API process and single-node
    PostgreSQL/Qdrant/NATS volumes, with no HA or safe horizontal-scaling
