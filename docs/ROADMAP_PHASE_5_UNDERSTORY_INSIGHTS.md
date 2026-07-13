@@ -47,10 +47,10 @@ to connect approved proposal/mutation decisions to the same lineage.
 
 ### Bounded seed overview for integrations
 
-A new agent session may receive a small, generated inventory of the workspace
-(approved layers, active heads, recent changes) so the agent knows when to call
-memory.  It must be opt-in, budgeted, derived from recallable heads only, and
-never replace a scoped `recall` call.
+An opt-in seed endpoint now returns a compact deterministic inventory from
+shared recallable heads in the `core`, `working` and `procedural` layers. It is
+budgeted to 128–4096 estimated tokens, excludes private/thread data, and never
+replaces a scoped `recall` call. Recent-change summaries remain a later feature.
 
 ### Targeted Markdown edits remain CAS operations
 

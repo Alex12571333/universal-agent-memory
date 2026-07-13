@@ -36,6 +36,7 @@ from memory_plane.services.reflection import ReflectionService
 from memory_plane.services.replay import RecallReplayService
 from memory_plane.services.retention import RetentionService
 from memory_plane.services.retrieval import RetrievalService
+from memory_plane.services.session_seed import SessionSeedService
 from memory_plane.services.vault import VaultExporter
 from memory_plane.services.vault_health import VaultHealthService
 
@@ -63,6 +64,7 @@ class Container:
     vault: VaultExporter
     vault_health: VaultHealthService
     replay: RecallReplayService
+    session_seed: SessionSeedService
     store: object
 
 
@@ -114,6 +116,7 @@ def build_in_memory_container() -> Container:
         vault=VaultExporter(store, observations, retention),
         vault_health=VaultHealthService(store, observations, graph),
         replay=RecallReplayService(AuditLogService(store), store),
+        session_seed=SessionSeedService(store),
         store=store,
     )
 
@@ -225,6 +228,7 @@ def build_postgres_container(
         vault=VaultExporter(store, observations, retention),
         vault_health=VaultHealthService(store, observations, graph),
         replay=RecallReplayService(AuditLogService(store), store),
+        session_seed=SessionSeedService(store),
         store=store,
     )
 

@@ -78,6 +78,13 @@ operator scheduler/UI
 The memory server stays self-hosted. Agents call it over HTTP through the SDK or
 native plugin adapters.
 
+For an opt-in orientation at the beginning of a new session, an agent may call
+`GET /v1/workspaces/{workspace_id}/seed?tenant_id=...&budget_tokens=512`.
+It returns only active/pinned recallable heads from the shared `core`,
+`working` and `procedural` layers, never private/thread data. The response is
+bounded to 128–4096 estimated tokens and is deliberately not a replacement for
+task-scoped `POST /v1/memory/recall`.
+
 ## Recall audit and operator replay
 
 Every successful `POST /v1/memory/recall` now returns a `replay_id`.  It is an
