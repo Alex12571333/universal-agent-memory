@@ -11,7 +11,7 @@ under failure.
 | Area | Current state | Production verdict |
 |---|---|---|
 | Architecture | PostgreSQL source of truth, Qdrant index, outbox, NATS workers, vault, API, UI | Good foundation |
-| Docker | Local self-hosted compose keeps infra ports internal in production topology; database secrets use dedicated mounts; deployment preflight writes boundary evidence | Fresh role provisioning still needs clean target-boot evidence |
+| Docker | Local self-hosted Compose keeps infra ports internal in the production topology; database secrets use dedicated mounts; an isolated fresh-boot smoke generates new secrets and volumes, then proves migration plus retain/recall | Live provider and longer-running appliance evidence remain required |
 | API auth | Bearer keys, route capabilities, strict principal bindings, env validation and non-secret key registry exist; `/health` is public | Identity isolation is implemented and locally proven; target-deployment evidence remains required |
 | Audit trail | `audit_events`, export/signing and retention tools exist; retain, CAS supersede, raw conversation append, proposal submission/reviews, curation proposals, reflection observations, graph edges, conflict decisions and checkpoints share their canonical write transaction; reindex writes a durable intent before touching Qdrant and a terminal status afterwards | Qdrant is external, so reindex cannot be one atomic database transaction; target failure/recovery evidence remains required |
 | Browser/API hardening | Security headers are enforced by middleware and tests | Baseline present |
@@ -43,8 +43,12 @@ static readiness script are green.
    integration scenarios, migration rerun and password rotation (old rejected,
    new accepted). A separate production-Compose smoke also initialized a fresh
    volume and completed all migrations through the two mounted Docker secrets.
-   The same proof must still be executed and preserved on the target Docker
-   runtime before this gate is closed.
+   On 2026-07-13, `scripts/fresh_production_smoke.py` ran again on the local
+   appliance Docker runtime with newly generated secrets and empty volumes;
+   PostgreSQL 17, migration, runtime role checks, encrypted canonical retain
+   and lexical recall all passed. The report is deliberately kept as local
+   release evidence rather than committed data. Provider-backed embedding and
+   longer-running appliance evidence remain separate release gates.
 
 2. **Identity provisioning and binding exist, but installer bootstrap needs longer target proof.**
    An operator-only, audited and idempotent endpoint now provisions an agent and
