@@ -2308,8 +2308,15 @@ def create_app(
         return _conflict_decision_response(decision) or {}
 
     @app.post("/v1/graph/edges", status_code=201)
-    def create_graph_edge(body: GraphEdgeBody) -> dict[str, Any]:
+    def create_graph_edge(body: GraphEdgeBody, request: Request) -> dict[str, Any]:
         """Create one typed memory graph edge."""
+        principal = _principal_from_request(request)
+        audit_event = AuditEvent(
+            tenant_id=body.tenant_id, workspace_id=body.workspace_id,
+            action="graph.edge.create", actor=principal.name,
+            actor_type=_audit_actor_type(principal), resource_type="memory_edge",
+            metadata={"src_id": str(body.src_id), "dst_id": str(body.dst_id), "edge_type": body.edge_type.value},
+        )
         try:
             edge = services.graph.link(
                 tenant_id=body.tenant_id,
@@ -2319,6 +2326,7 @@ def create_app(
                 edge_type=body.edge_type,
                 weight=body.weight,
                 provenance_item_id=body.provenance_item_id,
+                audit_event=audit_event,
             )
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc

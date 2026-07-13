@@ -23,6 +23,7 @@ from memory_plane.domain.conversation import (
     ConversationRetentionPolicy,
     ConversationTurn,
 )
+from memory_plane.domain.graph import MemoryEdge, MemoryEdgeType
 from memory_plane.domain.identity import AgentIdentity
 from memory_plane.domain.models import (
     MemoryItem,
@@ -478,6 +479,37 @@ class PostgresMemoryLedgerTest(unittest.TestCase):
                 self.workspace,
                 namespace="postgres-turn-audit-failure",
             ),
+        )
+
+    def test_graph_edge_audit_failure_rolls_back_edge(self) -> None:
+        source = self._item("graph audit source")
+        target = self._item("graph audit target")
+        self.store.retain(source, self._event(source))
+        self.store.retain(target, self._event(target))
+        edge = MemoryEdge(
+            tenant_id=self.tenant,
+            workspace_id=self.workspace,
+            src_id=source.id,
+            dst_id=target.id,
+            edge_type=MemoryEdgeType.SUPPORTS,
+        )
+        audit = AuditEvent(
+            tenant_id=self.tenant,
+            workspace_id=self.workspace,
+            action="graph.edge.create",
+            actor="integration",
+            actor_type="system",
+            resource_type="memory_edge",
+            resource_id=str(edge.id),
+        )
+        with patch.object(
+            self.store, "_insert_audit_event", side_effect=RuntimeError("audit down")
+        ):
+            with self.assertRaisesRegex(RuntimeError, "audit down"):
+                self.store.save_edge(edge, audit_event=audit)
+        self.assertEqual(
+            (),
+            self.store.list_neighbors(self.tenant, self.workspace, source.id),
         )
 
     def test_proposal_accept_audit_failure_rolls_back_memory_and_status(self) -> None:

@@ -13,7 +13,7 @@ under failure.
 | Architecture | PostgreSQL source of truth, Qdrant index, outbox, NATS workers, vault, API, UI | Good foundation |
 | Docker | Local self-hosted compose keeps infra ports internal in production topology; database secrets use dedicated mounts; deployment preflight writes boundary evidence | Fresh role provisioning still needs clean target-boot evidence |
 | API auth | Bearer keys, route capabilities, strict principal bindings, env validation and non-secret key registry exist; `/health` is public | Identity isolation is implemented and locally proven; target-deployment evidence remains required |
-| Audit trail | `audit_events`, export/signing and retention tools exist; retain, CAS supersede, raw conversation append, proposal submission/reviews, curation proposals and conflict decisions share their canonical write transaction | Coverage is incomplete for graph, reflection, reindex and checkpoints |
+| Audit trail | `audit_events`, export/signing and retention tools exist; retain, CAS supersede, raw conversation append, proposal submission/reviews, curation proposals, graph edges and conflict decisions share their canonical write transaction | Coverage is incomplete for reflection, reindex and checkpoints |
 | Browser/API hardening | Security headers are enforced by middleware and tests | Baseline present |
 | Data model | Append-only memory, CAS supersede, atomic conflict-winner revisions, canonical active-head recall, provenance, statuses and pgcrypto for canonical text, raw conversations and proposals exist | Sensitive-table, legacy-data and backup encryption remain incomplete |
 | Conversation capture | Raw ledger, proposal-first curation, `curated_only` purge, bounded staging TTL, stable identities and live pipeline runner exist | The purge schedule and installed agent hooks still require target evidence |
@@ -232,7 +232,9 @@ static readiness script are green.
    `conversation.curate.propose`, so an audit failure leaves no LLM-derived
    proposal. Raw conversation append now commits its encrypted transcript,
    idempotency record and `conversation.turn.append` audit together; audit
-   failure leaves no transcript. Denied requests, graph writes, reflect,
+   failure leaves no transcript. Graph-edge creation now commits edge and
+   `graph.edge.create` audit atomically; audit failure leaves no edge. Denied
+   requests, reflect,
    reindex and checkpoints still need
    complete status-aware and, where applicable, transactional audit coverage.
 8. The application role is now granted `SELECT/INSERT` by default, with only

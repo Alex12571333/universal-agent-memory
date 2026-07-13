@@ -1830,7 +1830,7 @@ class PostgresMemoryLedger:
             for row in rows
         )
 
-    def save_edge(self, edge: MemoryEdge) -> MemoryEdge:
+    def save_edge(self, edge: MemoryEdge, audit_event: AuditEvent | None = None) -> MemoryEdge:
         """Persist one graph edge under RLS."""
         with self._connection() as connection:
             self._set_tenant(connection, edge.tenant_id)
@@ -1856,6 +1856,8 @@ class PostgresMemoryLedger:
                     edge.created_at,
                 ),
             )
+            if audit_event is not None:
+                self._insert_audit_event(connection, audit_event)
         return edge
 
     def list_neighbors(
@@ -2532,9 +2534,9 @@ class PostgresGraphRepository:
         """Retain shared connection configuration."""
         self._store = store
 
-    def save_edge(self, edge: MemoryEdge) -> MemoryEdge:
+    def save_edge(self, edge: MemoryEdge, audit_event: AuditEvent | None = None) -> MemoryEdge:
         """Delegate edge persistence."""
-        return self._store.save_edge(edge)
+        return self._store.save_edge(edge, audit_event=audit_event)
 
     def list_neighbors(
         self,
