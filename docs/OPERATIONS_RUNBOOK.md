@@ -250,9 +250,10 @@ python scripts/restore_reindex_probe.py \
 ```
 
 The collection name must be new and must not equal `UAM_QDRANT_COLLECTION`.
-The probe rebuilds vectors solely from the restored ledger and passes only when
-the point count matches and `qdrant_hybrid` returns the source memory with a
-non-zero semantic score. Bind that report to the backup/restore report with
+The probe first runs deterministic vault-health over the restored canonical
+ledger, then rebuilds vectors solely from that ledger. It passes only when no
+canonical-reference integrity error exists, the point count matches, and
+`qdrant_hybrid` returns the source memory with a non-zero semantic score. Bind that report to the backup/restore report with
 `scripts/restore_recovery_evidence.py`, passing the probe report as both the
 reindex and semantic inputs. Preserve the generated `restore-recovery.json` in
 the signed release evidence bundle.
