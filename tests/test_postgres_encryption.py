@@ -38,6 +38,17 @@ def test_postgres_pgcrypto_mode_requires_key(monkeypatch: pytest.MonkeyPatch) ->
         PostgresMemoryLedger("postgresql://example/memory")
 
 
+def test_protected_search_requires_distinct_hmac_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    key = "memtext_" + "a" * 40
+    monkeypatch.setenv("UAM_MEMORY_TEXT_ENCRYPTION", "pgcrypto")
+    monkeypatch.setenv("UAM_MEMORY_TEXT_ENCRYPTION_KEY", key)
+    monkeypatch.setenv("UAM_PROTECTED_SEARCH_INDEX", "hmac-v1")
+    monkeypatch.setenv("UAM_PROTECTED_SEARCH_INDEX_KEY", key)
+
+    with pytest.raises(ValueError, match="must differ"):
+        PostgresMemoryLedger("postgresql://example/memory")
+
+
 def test_postgres_encrypts_memory_text_before_insert(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("UAM_MEMORY_TEXT_ENCRYPTION", "pgcrypto")
     monkeypatch.setenv("UAM_MEMORY_TEXT_ENCRYPTION_KEY", "memtext_" + "a" * 40)
