@@ -136,8 +136,11 @@ static readiness script are green.
    cross-workspace preservation, empty sync, boundary rejection and provider
    failure; a PostgreSQL integration test proves two independent ledger clients
    serialize the same workspace. Live Qdrant passed 11/11, including scoped
-   replacement and failed-upsert preservation. Multi-replica target concurrency
-   and crash-during-partial-upsert evidence are still needed.
+   replacement and failed-upsert preservation. A live Qdrant failure-injection
+   test now writes 100 of 101 replacement points, simulates a second-batch
+   crash, verifies that the stale set was not deleted, and proves a retry
+   converges to exactly the canonical replacement set. Multi-replica target
+   concurrency evidence remains required.
    Collection startup now enforces dense dimension and immutable model metadata;
    incompatible configuration fails before serving recall. The migration runner
    builds a separately named collection, verifies exact workspace point count,
