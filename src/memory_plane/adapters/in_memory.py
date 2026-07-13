@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from contextlib import contextmanager
 from dataclasses import replace
 from datetime import UTC, datetime
 from threading import RLock
@@ -69,6 +70,14 @@ class InMemoryMemoryStore:
     def ping(self) -> bool:
         """In-process canonical storage is ready while the process is alive."""
         return True
+
+    @contextmanager
+    def workspace_operation_lock(
+        self, tenant_id: UUID, workspace_id: UUID, operation: str):
+        """Mirror the distributed-lock contract for deterministic single-process tests."""
+        del tenant_id, workspace_id, operation
+        with self._lock:
+            yield
 
     def provision_agent_thread(
         self,

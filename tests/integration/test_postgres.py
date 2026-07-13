@@ -3,6 +3,8 @@ from __future__ import annotations
 import importlib.util
 import os
 import sys
+import threading
+import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
@@ -146,6 +148,52 @@ class PostgresMemoryLedgerTest(unittest.TestCase):
         if event_id is not None:
             values["id"] = event_id
         return IntegrationEvent(**values)
+
+    def test_workspace_operation_lock_serializes_independent_postgres_ledgers(self) -> None:
+        other = PostgresMemoryLedger(DATABASE_URL or "")
+        first_entered = threading.Event()
+        release_first = threading.Event()
+        second_entered = threading.Event()
+        errors: list[BaseException] = []
+
+        def first_worker() -> None:
+            try:
+                with self.store.workspace_operation_lock(
+                    self.tenant, self.workspace, "embedding-reindex"
+                ):
+                    first_entered.set()
+                    if not release_first.wait(timeout=3):
+                        raise TimeoutError("test did not release first workspace lock")
+            except BaseException as exc:  # noqa: BLE001 - return worker failure to test thread.
+                errors.append(exc)
+
+        def second_worker() -> None:
+            try:
+                if not first_entered.wait(timeout=3):
+                    raise TimeoutError("first workspace lock was not acquired")
+                with other.workspace_operation_lock(
+                    self.tenant, self.workspace, "embedding-reindex"
+                ):
+                    second_entered.set()
+            except BaseException as exc:  # noqa: BLE001 - return worker failure to test thread.
+                errors.append(exc)
+
+        first_thread = threading.Thread(target=first_worker)
+        second_thread = threading.Thread(target=second_worker)
+        first_thread.start()
+        second_thread.start()
+        self.assertTrue(first_entered.wait(timeout=3))
+        time.sleep(0.15)
+        self.assertFalse(second_entered.is_set())
+        release_first.set()
+        first_thread.join(timeout=3)
+        second_thread.join(timeout=3)
+        other.close()
+
+        self.assertFalse(first_thread.is_alive())
+        self.assertFalse(second_thread.is_alive())
+        self.assertEqual([], errors)
+        self.assertTrue(second_entered.is_set())
 
     def test_retain_round_trip_is_idempotent_and_queues_once(self) -> None:
         item = self._item()

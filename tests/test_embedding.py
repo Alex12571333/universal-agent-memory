@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import unittest
+from contextlib import contextmanager
 from typing import Any
 from unittest.mock import ANY, patch
 from uuid import uuid4
@@ -657,6 +658,19 @@ class EmbeddingServiceTest(unittest.TestCase):
 
         self.assertIs(same_a, same_b)
         self.assertIsNot(same_a, other)
+
+    def test_reindex_uses_workspace_operation_lock_when_ledger_supports_it(self) -> None:
+        entered: list[tuple[object, object, str]] = []
+
+        @contextmanager
+        def distributed_lock(tenant_id: object, workspace_id: object, operation: str):
+            entered.append((tenant_id, workspace_id, operation))
+            yield
+
+        with patch.object(self.container.store, "workspace_operation_lock", distributed_lock):
+            self.assertEqual(0, self.container.embedding.reindex_all(self.tenant, self.workspace))
+
+        self.assertEqual([(self.tenant, self.workspace, "embedding-reindex")], entered)
 
 
 if __name__ == "__main__":
