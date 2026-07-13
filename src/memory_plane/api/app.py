@@ -2479,14 +2479,24 @@ def create_app(
     # ── Checkpoint endpoints ────────────────────────────────────────
 
     @app.post("/v1/checkpoints", status_code=201)
-    def save_checkpoint(body: CheckpointSaveBody) -> dict[str, Any]:
+    def save_checkpoint(body: CheckpointSaveBody, request: Request) -> dict[str, Any]:
         """Save a new working-memory checkpoint revision."""
+        principal = _principal_from_request(request)
         try:
             cp = services.checkpoint.save(
                 tenant_id=body.tenant_id,
                 workspace_id=body.workspace_id,
                 thread_id=body.thread_id,
                 state=body.state,
+                audit_event=AuditEvent(
+                    tenant_id=body.tenant_id,
+                    workspace_id=body.workspace_id,
+                    action="checkpoint.save",
+                    actor=principal.name,
+                    actor_type=_audit_actor_type(principal),
+                    resource_type="checkpoint",
+                    metadata={"thread_id": str(body.thread_id)},
+                ),
             )
         except StaleRevisionError as exc:
             raise HTTPException(
@@ -2557,8 +2567,11 @@ def create_app(
         return _checkpoint_response(cp)
 
     @app.put("/v1/checkpoints/{thread_id}")
-    def update_checkpoint(thread_id: UUID, body: CheckpointUpdateBody) -> dict[str, Any]:
+    def update_checkpoint(
+        thread_id: UUID, body: CheckpointUpdateBody, request: Request
+    ) -> dict[str, Any]:
         """CAS-update a checkpoint; returns 409 on stale revision."""
+        principal = _principal_from_request(request)
         try:
             cp = services.checkpoint.update(
                 tenant_id=body.tenant_id,
@@ -2566,6 +2579,18 @@ def create_app(
                 thread_id=thread_id,
                 state=body.state,
                 expected_revision=body.expected_revision,
+                audit_event=AuditEvent(
+                    tenant_id=body.tenant_id,
+                    workspace_id=body.workspace_id,
+                    action="checkpoint.update",
+                    actor=principal.name,
+                    actor_type=_audit_actor_type(principal),
+                    resource_type="checkpoint",
+                    metadata={
+                        "thread_id": str(thread_id),
+                        "expected_revision": body.expected_revision,
+                    },
+                ),
             )
         except StaleRevisionError as exc:
             raise HTTPException(

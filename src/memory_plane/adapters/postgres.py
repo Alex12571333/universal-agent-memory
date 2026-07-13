@@ -2729,7 +2729,7 @@ class PostgresCheckpointStore:
     def __init__(self, ledger: PostgresMemoryLedger) -> None:
         self._ledger = ledger
 
-    def save(self, checkpoint: Checkpoint) -> Checkpoint:
+    def save(self, checkpoint: Checkpoint, audit_event: AuditEvent | None = None) -> Checkpoint:
         """Append a new checkpoint revision unconditionally."""
         from psycopg.types.json import Jsonb
 
@@ -2753,10 +2753,15 @@ class PostgresCheckpointStore:
                     checkpoint.created_at,
                 ),
             )
+            if audit_event is not None:
+                self._ledger._insert_audit_event(connection, audit_event)
         return checkpoint
 
     def save_if_head(
-        self, checkpoint: Checkpoint, expected_revision: int
+        self,
+        checkpoint: Checkpoint,
+        expected_revision: int,
+        audit_event: AuditEvent | None = None,
     ) -> Checkpoint:
         """CAS: append only when current head revision equals *expected_revision*."""
         from psycopg.types.json import Jsonb
@@ -2800,6 +2805,8 @@ class PostgresCheckpointStore:
                     checkpoint.created_at,
                 ),
             )
+            if audit_event is not None:
+                self._ledger._insert_audit_event(connection, audit_event)
         return checkpoint
 
     def get_head(
