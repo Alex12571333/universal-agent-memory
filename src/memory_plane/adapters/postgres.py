@@ -2870,7 +2870,12 @@ class PostgresCheckpointStore:
         return tuple(self._to_checkpoint(row) for row in rows)
 
     def compact(
-        self, tenant_id: UUID, thread_id: UUID, *, keep_last: int = 3
+        self,
+        tenant_id: UUID,
+        thread_id: UUID,
+        *,
+        keep_last: int = 3,
+        audit_event: AuditEvent | None = None,
     ) -> int:
         """Delete old revisions keeping the most recent *keep_last*."""
         with self._ledger._connection() as connection:
@@ -2890,6 +2895,8 @@ class PostgresCheckpointStore:
                 """,
                 (thread_id, keep_last),
             ).fetchall()
+            if audit_event is not None:
+                self._ledger._insert_audit_event(connection, audit_event)
         return len(row)
 
     @staticmethod

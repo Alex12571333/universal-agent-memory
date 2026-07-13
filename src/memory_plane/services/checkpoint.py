@@ -98,7 +98,17 @@ class CheckpointService:
         return self._store.list_for_workspace(tenant_id, workspace_id, limit=limit, offset=offset)
 
     def compact(
-        self, *, tenant_id: UUID, thread_id: UUID, keep_last: int = 3
+        self,
+        *,
+        tenant_id: UUID,
+        thread_id: UUID,
+        keep_last: int = 3,
+        audit_event: AuditEvent | None = None,
     ) -> int:
         """Delete old revisions keeping *keep_last* most recent ones."""
-        return self._store.compact(tenant_id, thread_id, keep_last=keep_last)
+        return self._store.compact(
+            tenant_id,
+            thread_id,
+            keep_last=keep_last,
+            audit_event=audit_event,
+        )

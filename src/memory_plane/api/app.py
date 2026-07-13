@@ -303,6 +303,7 @@ class CheckpointCompactBody(BaseModel):
     """Compaction request body."""
 
     tenant_id: UUID = DEFAULT_SERVER_ID
+    workspace_id: UUID = DEFAULT_PROJECT_ID
     keep_last: int = Field(default=3, ge=1)
 
 
@@ -2605,12 +2606,25 @@ def create_app(
         return _checkpoint_response(cp)
 
     @app.post("/v1/checkpoints/{thread_id}/compact")
-    def compact_checkpoint(thread_id: UUID, body: CheckpointCompactBody) -> dict[str, Any]:
+    def compact_checkpoint(
+        thread_id: UUID, body: CheckpointCompactBody, request: Request
+    ) -> dict[str, Any]:
         """Delete old revisions keeping the most recent *keep_last*."""
+        principal = _principal_from_request(request)
         deleted = services.checkpoint.compact(
             tenant_id=body.tenant_id,
             thread_id=thread_id,
             keep_last=body.keep_last,
+            audit_event=AuditEvent(
+                tenant_id=body.tenant_id,
+                workspace_id=body.workspace_id,
+                action="checkpoint.compact",
+                actor=principal.name,
+                actor_type=_audit_actor_type(principal),
+                resource_type="checkpoint_thread",
+                resource_id=str(thread_id),
+                metadata={"keep_last": body.keep_last},
+            ),
         )
         return {"deleted": deleted}
 

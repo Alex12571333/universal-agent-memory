@@ -984,7 +984,12 @@ class InMemoryCheckpointStore:
             return tuple(ordered[start:stop])
 
     def compact(
-        self, tenant_id: UUID, thread_id: UUID, *, keep_last: int = 3
+        self,
+        tenant_id: UUID,
+        thread_id: UUID,
+        *,
+        keep_last: int = 3,
+        audit_event: AuditEvent | None = None,
     ) -> int:
         """Delete old revisions keeping *keep_last* most recent ones."""
         with self._lock:
