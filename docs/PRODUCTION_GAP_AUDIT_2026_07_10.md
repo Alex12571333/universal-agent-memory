@@ -15,7 +15,7 @@ under failure.
 | API auth | Bearer keys, route capabilities, strict principal bindings, env validation and non-secret key registry exist; `/health` is public | Identity isolation is implemented and locally proven; target-deployment evidence remains required |
 | Audit trail | `audit_events`, export/signing and retention tools exist; retain, CAS supersede, raw conversation append, proposal submission/reviews, curation proposals, graph edges and conflict decisions share their canonical write transaction | Coverage is incomplete for reflection, reindex and checkpoints |
 | Browser/API hardening | Security headers are enforced by middleware and tests | Baseline present |
-| Data model | Append-only memory, CAS supersede, atomic conflict-winner revisions, canonical active-head recall, provenance, statuses and pgcrypto for canonical text, raw conversations and proposals exist | Sensitive-table, legacy-data and backup encryption remain incomplete |
+| Data model | Append-only memory, CAS supersede, atomic conflict-winner revisions, canonical active-head recall, provenance, statuses and pgcrypto for canonical text plus application JSON exist | Legacy migration evidence, storage-volume controls and backup-destination encryption remain deployment gates |
 | Conversation capture | Raw ledger, proposal-first curation, `curated_only` purge, bounded staging TTL, stable identities and live pipeline runner exist | The purge schedule and installed agent hooks still require target evidence |
 | Embeddings | Provider-neutral endpoints, async worker, fail-soft recall, scoped sync and immutable collection identity exist | Target outage/migration evidence remains required |
 | Memory LLM | Provider-neutral OpenAI-compatible contract, deterministic fallback, proposal-first curation and live runner exist | Target failure/concurrency evidence and quality evaluation remain required; generated content never becomes recallable until an operator accepts its proposal |
@@ -87,14 +87,19 @@ static readiness script are green.
    multi-root rollback/idempotency proof must be preserved on the target
    deployment before closing the release gate.
 
-5. **Encryption-at-rest coverage is incomplete.**
+5. **Encryption-at-rest needs deployment evidence.**
    pgcrypto now protects new `memory_items.text` rows, raw conversation content,
    proposals, proposal evidence, provenance quotes, observation summaries,
-   checkpoint state and audit metadata. `scripts/reencrypt_legacy_pgcrypto.py`
-   now converts the corresponding legacy plaintext rows in restart-safe,
-   administrator-only batches and emits evidence reports. It must be run after
-   every writer uses the same pgcrypto key; unprotected JSON metadata outside
-   those fields can still contain plaintext.
+   checkpoint state and audit metadata. It also protects application JSON in
+   canonical-item metadata, agent configuration, raw turn/message metadata,
+   proposal metadata and durable outbox payloads. A dedicated
+   `raw_content_state` column keeps transcript lifecycle cleanup queryable
+   without retaining arbitrary metadata in plaintext.
+   `scripts/reencrypt_legacy_pgcrypto.py` converts all of those legacy fields
+   in restart-safe, administrator-only batches and emits evidence reports. It
+   must be run after every writer uses the same pgcrypto key. This is
+   application-field encryption, not a claim that every operational column,
+   PostgreSQL storage volume or backup destination is encrypted.
    New scheduled PostgreSQL artifacts use authenticated AES-256-GCM,
    but direct `backup.py` is intentionally a low-level raw-dump primitive and
    must not be used for a production schedule. Production documentation must

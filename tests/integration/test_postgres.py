@@ -38,7 +38,11 @@ from memory_plane.domain.models import (
     Observation,
     Provenance,
 )
-from memory_plane.domain.proposal import MemoryProposalStatus, MemoryProposalTarget
+from memory_plane.domain.proposal import (
+    MemoryProposal,
+    MemoryProposalStatus,
+    MemoryProposalTarget,
+)
 from memory_plane.services.conflicts import ConflictService
 from memory_plane.services.conversations import (
     AppendConversationTurnCommand,
@@ -348,6 +352,47 @@ class PostgresMemoryLedgerTest(unittest.TestCase):
             protected.retain(item, self._event(item), "protected-noncanonical-fields")
             self.assertEqual(item, protected.get(self.tenant, item.id))
 
+            agent, _ = protected.provision_agent_thread(
+                AgentIdentity(
+                    id=uuid4(),
+                    tenant_id=self.tenant,
+                    workspace_id=self.workspace,
+                    name="Protected metadata agent",
+                    role="integration",
+                    config={"secret": "private agent configuration 9005"},
+                )
+            )
+            self.assertEqual("private agent configuration 9005", agent.config["secret"])
+
+            turn = ConversationTurn(
+                tenant_id=self.tenant,
+                workspace_id=self.workspace,
+                thread_id=uuid4(),
+                metadata={"secret": "private turn metadata 9006"},
+                messages=(
+                    ConversationMessage(
+                        role="user",
+                        content="private conversation content 9007",
+                        metadata={"secret": "private message metadata 9008"},
+                    ),
+                ),
+            )
+            protected.append_turn(turn, "protected-turn-metadata")
+            self.assertEqual(turn, protected.get_turn(self.tenant, turn.id))
+
+            proposal = MemoryProposal(
+                tenant_id=self.tenant,
+                workspace_id=self.workspace,
+                namespace="protected-metadata",
+                requester="integration-test",
+                target=MemoryProposalTarget.FACT,
+                proposal="private proposal content 9009",
+                evidence="private proposal evidence 9010",
+                metadata={"secret": "private proposal metadata 9011"},
+            )
+            protected.append_proposal(proposal, "protected-proposal-metadata")
+            self.assertEqual(proposal, protected.get_proposal(self.tenant, proposal.id))
+
             observation = Observation(
                 tenant_id=self.tenant,
                 workspace_id=self.workspace,
@@ -413,6 +458,30 @@ class PostgresMemoryLedgerTest(unittest.TestCase):
                     "select metadata from audit_events where id = %s",
                     (audit.id,),
                 ).fetchone()["metadata"]
+                item_metadata = connection.execute(
+                    "select metadata from memory_items where id = %s",
+                    (item.id,),
+                ).fetchone()["metadata"]
+                event_payload = connection.execute(
+                    "select payload from outbox_events where correlation_id = %s",
+                    (item.id,),
+                ).fetchone()["payload"]
+                agent_config = connection.execute(
+                    "select config from agents where id = %s",
+                    (agent.id,),
+                ).fetchone()["config"]
+                turn_metadata = connection.execute(
+                    "select metadata from conversation_turns where id = %s",
+                    (turn.id,),
+                ).fetchone()["metadata"]
+                message_metadata = connection.execute(
+                    "select metadata from conversation_messages where turn_id = %s",
+                    (turn.id,),
+                ).fetchone()["metadata"]
+                proposal_row = connection.execute(
+                    "select proposal, evidence, metadata from memory_proposals where id = %s",
+                    (proposal.id,),
+                ).fetchone()
                 state = connection.execute(
                     "select state from checkpoints where id = %s",
                     (checkpoint.id,),
@@ -421,6 +490,17 @@ class PostgresMemoryLedgerTest(unittest.TestCase):
             self.assertNotIn("private derived observation 9002", summary)
             self.assertNotIn("private audit detail 9003", str(metadata))
             self.assertNotIn("private checkpoint state 9004", str(state))
+            for marker, raw_value in (
+                ("integration-test", item_metadata),
+                ("memory_id", event_payload),
+                ("private agent configuration 9005", agent_config),
+                ("private turn metadata 9006", turn_metadata),
+                ("private message metadata 9008", message_metadata),
+                ("private proposal content 9009", proposal_row["proposal"]),
+                ("private proposal evidence 9010", proposal_row["evidence"]),
+                ("private proposal metadata 9011", proposal_row["metadata"]),
+            ):
+                self.assertNotIn(marker, str(raw_value))
 
     def test_plaintext_lexical_search_uses_postgres_fts_candidate_path(self) -> None:
         """Plaintext deployments must bound lexical recall in PostgreSQL."""

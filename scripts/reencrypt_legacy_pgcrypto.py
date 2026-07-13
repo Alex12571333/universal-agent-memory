@@ -93,6 +93,12 @@ STEPS = (
     _text_step("memory_proposals.proposal", "memory_proposals", "proposal"),
     _text_step("memory_proposals.evidence", "memory_proposals", "evidence"),
     _text_step("observations.summary", "observations", "summary"),
+    _json_step("agents.config", "agents", "config"),
+    _json_step("memory_items.metadata", "memory_items", "metadata"),
+    _json_step("conversation_turns.metadata", "conversation_turns", "metadata"),
+    _json_step("conversation_messages.metadata", "conversation_messages", "metadata"),
+    _json_step("memory_proposals.metadata", "memory_proposals", "metadata"),
+    _json_step("outbox_events.payload", "outbox_events", "payload"),
     _json_step("audit_events.metadata", "audit_events", "metadata"),
     _json_step("checkpoints.state", "checkpoints", "state"),
 )
