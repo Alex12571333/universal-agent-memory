@@ -884,6 +884,8 @@ def _required_scope_for_request(path: str, method: str) -> str:
     if path.startswith("/v1/graph"):
         return "operator"
     if path.startswith("/v1/workspaces/"):
+        if path.endswith("/seed") and method == "GET":
+            return "read"
         if path.endswith("/reflect") and method == "POST":
             return "write"
         return "operator"
@@ -1488,6 +1490,25 @@ def create_app(
                 }
                 for reference in replay.references
             ],
+        }
+
+    @app.get("/v1/workspaces/{workspace_id}/seed")
+    def get_session_seed(
+        workspace_id: UUID,
+        tenant_id: UUID = DEFAULT_SERVER_ID,
+        budget_tokens: int = 512,
+    ) -> dict[str, Any]:
+        """Return opt-in bounded shared orientation; use recall for task context."""
+        seed = services.session_seed.build(
+            tenant_id, workspace_id, budget_tokens=budget_tokens
+        )
+        return {
+            "tenant_id": str(tenant_id),
+            "workspace_id": str(workspace_id),
+            "budget_tokens": seed.budget_tokens,
+            "used_tokens": seed.used_tokens,
+            "trace_ids": [str(item_id) for item_id in seed.trace_ids],
+            "markdown": seed.markdown,
         }
 
     @app.get("/v1/keys")
