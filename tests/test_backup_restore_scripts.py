@@ -918,6 +918,33 @@ def test_restore_recovery_evidence_fails_without_semantic_recall(
     assert json.loads(report_path.read_text(encoding="utf-8"))["checks"]["semantic_recall"] is False
 
 
+def test_restore_recovery_evidence_accepts_bound_restore_drill_report() -> None:
+    payload = {
+        "format": "obelisk-restore-drill-v1",
+        "ok": True,
+        "checks": [
+            {"name": "required-schema", "ok": True},
+            {"name": "forced-tenant-rls", "ok": True},
+            {"name": "source-row-parity", "ok": True},
+        ],
+    }
+
+    assert restore_recovery_evidence._restore_drill_ok(payload) is True
+
+
+def test_restore_recovery_evidence_rejects_bound_report_without_source_parity() -> None:
+    payload = {
+        "format": "obelisk-restore-drill-v1",
+        "ok": True,
+        "checks": [
+            {"name": "required-schema", "ok": True},
+            {"name": "forced-tenant-rls", "ok": True},
+        ],
+    }
+
+    assert restore_recovery_evidence._restore_drill_ok(payload) is False
+
+
 def test_backup_encryption_round_trip_rejects_tampering(tmp_path: Path) -> None:
     source = tmp_path / "source.dump"
     encrypted = tmp_path / "source.dump.enc"
