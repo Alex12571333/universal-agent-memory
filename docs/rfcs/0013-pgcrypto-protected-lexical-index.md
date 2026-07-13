@@ -71,6 +71,19 @@ Do not treat a backfill report as a rotation approval. Retain the final report,
 verify `complete: true`, perform a scoped count/restart drill, then capture the
 reader's separate query-plan evidence before relying on the capacity benefit.
 
+Capture that evidence with a non-secret plan probe. It fails unless coverage is
+complete and PostgreSQL can use `memory_search_tokens_lookup_idx`; the report
+redacts HMAC literals and contains neither memory text nor the query text.
+
+```bash
+UAM_PROTECTED_SEARCH_INDEX=hmac-v1 \
+UAM_PROTECTED_SEARCH_INDEX_KEY_FILE=/run/secrets/protected_search_index_key \
+PYTHONPATH=src python scripts/protected_search_index_probe.py \
+  --tenant-id <tenant-uuid> --workspace-id <workspace-uuid> \
+  --query 'non-secret release probe terms' \
+  --report ./ops/protected-search-index-plan.json
+```
+
 ## Rollback
 
 Disable `UAM_PROTECTED_SEARCH_INDEX`; recall reverts to the current fallback.
