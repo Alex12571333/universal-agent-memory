@@ -59,6 +59,11 @@ def read_secret_env(name: str) -> str | None:
     return secret or None
 
 
+def default_evaluator_api_key() -> str | None:
+    """Prefer an explicit soak credential over the legacy singleton key."""
+    return read_secret_env("UAM_AGENT_SOAK_API_KEY") or read_secret_env("UAM_API_KEY")
+
+
 def require_status_build_identity(payload: object) -> dict[str, str]:
     """Validate the runtime identity embedded in a system-status response."""
     if not isinstance(payload, Mapping):
@@ -511,7 +516,14 @@ def _parse_uuid(value: str) -> UUID:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base-url", default=os.getenv("UAM_BASE_URL", "http://127.0.0.1:6798"))
-    parser.add_argument("--api-key", default=read_secret_env("UAM_API_KEY"))
+    parser.add_argument(
+        "--api-key",
+        default=default_evaluator_api_key(),
+        help=(
+            "Operator/agent key for this evaluator. Prefer UAM_AGENT_SOAK_API_KEY "
+            "or its _FILE variant when the server uses scoped UAM_API_KEYS."
+        ),
+    )
     parser.add_argument("--tenant-id", type=_parse_uuid, default=DEFAULT_TENANT)
     parser.add_argument("--rounds", type=int, default=3)
     parser.add_argument("--parallel", type=int, default=2)

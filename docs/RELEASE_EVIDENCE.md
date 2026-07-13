@@ -141,7 +141,7 @@ UAM_VAULT_SIGNING_KEY=... PYTHONPATH=src python scripts/import_vault.py ./vault-
   --require-signature \
   --json-report ./ops/vault-import.json
 
-UAM_API_KEY=... python scripts/agent_soak_eval.py \
+UAM_AGENT_SOAK_API_KEY=... python scripts/agent_soak_eval.py \
   --base-url "$RELEASE_API_URL" \
   --rounds 5 \
   --parallel 4 \
@@ -152,6 +152,7 @@ UAM_API_KEY=... python scripts/load_smoke_eval.py \
   --agents 8 \
   --operations-per-agent 5 \
   --json-report ./ops/load-smoke.json
+
 
 UAM_API_KEY=... python scripts/ui_walkthrough_eval.py \
   --base-url "$RELEASE_API_URL" \
