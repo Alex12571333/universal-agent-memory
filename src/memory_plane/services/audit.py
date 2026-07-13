@@ -44,6 +44,10 @@ class AuditLogService:
         )
         return self._repository.append_audit_event(event)
 
+    def get_event(self, tenant_id: UUID, event_id: UUID) -> AuditEvent | None:
+        """Load one event for a tenant-scoped explanation endpoint."""
+        return self._repository.get_audit_event(tenant_id, event_id)
+
     def list_events(
         self,
         tenant_id: UUID,

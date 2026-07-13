@@ -78,6 +78,26 @@ operator scheduler/UI
 The memory server stays self-hosted. Agents call it over HTTP through the SDK or
 native plugin adapters.
 
+## Recall audit and operator replay
+
+Every successful `POST /v1/memory/recall` now returns a `replay_id`.  It is an
+audit-event UUID, not a second copy of the prompt or a transcript.  The durable
+record contains the query's SHA-256 fingerprint and character count, candidate
+and context-budget metrics, source names, and canonical selected memory IDs.
+It never contains the raw recall query or copied memory text.
+
+An operator can inspect the exact scoped, redacted explanation later:
+
+```bash
+curl "$UAM_URL/v1/workspaces/$UAM_WORKSPACE_ID/replays/$REPLAY_ID?tenant_id=$UAM_TENANT_ID" \
+  -H "Authorization: Bearer $UAM_OPERATOR_API_KEY"
+```
+
+The endpoint is operator-scoped and tenant/workspace-bound.  It resolves each
+saved trace ID against the current canonical ledger and returns only its ID,
+layer, status and revision.  This makes an old recall explainable without
+turning the audit trail into a second unprotected conversation archive.
+
 ## OpenClaw
 
 Use the native plugin scaffold in `agent-integrations/openclaw/`.

@@ -601,6 +601,12 @@ class InMemoryMemoryStore:
             self._audit_events.setdefault(event.id, event)
             return self._audit_events[event.id]
 
+    def get_audit_event(self, tenant_id: UUID, event_id: UUID) -> AuditEvent | None:
+        """Load one audit event without crossing the tenant boundary."""
+        with self._lock:
+            event = self._audit_events.get(event_id)
+            return event if event is not None and event.tenant_id == tenant_id else None
+
     def list_audit_events(
         self,
         tenant_id: UUID,

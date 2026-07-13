@@ -278,6 +278,10 @@ class AuditRepository(Protocol):
         """Persist one audit event."""
         ...
 
+    def get_audit_event(self, tenant_id: UUID, event_id: UUID) -> AuditEvent | None:
+        """Load one tenant-scoped audit event for an operator replay."""
+        ...
+
     def list_audit_events(
         self,
         tenant_id: UUID,

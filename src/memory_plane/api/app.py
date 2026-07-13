@@ -1450,6 +1450,46 @@ def create_app(
             "events": [_audit_event_response(event) for event in events],
         }
 
+    @app.get("/v1/workspaces/{workspace_id}/replays/{audit_event_id}")
+    def get_recall_replay(
+        workspace_id: UUID,
+        audit_event_id: UUID,
+        tenant_id: UUID = DEFAULT_SERVER_ID,
+    ) -> dict[str, Any]:
+        """Explain one recall using redacted audit data and canonical memory IDs."""
+        try:
+            replay = services.replay.get(tenant_id, workspace_id, audit_event_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="recall replay not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return {
+            "id": str(replay.audit_event.id),
+            "tenant_id": str(replay.audit_event.tenant_id),
+            "workspace_id": str(workspace_id),
+            "created_at": replay.audit_event.created_at.isoformat(),
+            "actor": replay.audit_event.actor,
+            "actor_type": replay.audit_event.actor_type,
+            "operation": replay.operation,
+            "query_sha256": replay.query_sha256,
+            "query_chars": replay.query_chars,
+            "candidate_count": replay.candidate_count,
+            "sources_used": list(replay.sources_used),
+            "index_stale": replay.index_stale,
+            "context_budget_tokens": replay.context_budget_tokens,
+            "context_used_tokens": replay.context_used_tokens,
+            "trace_ids": [str(item_id) for item_id in replay.trace_ids],
+            "references": [
+                {
+                    "id": str(reference.item_id),
+                    "layer": reference.layer,
+                    "status": reference.status,
+                    "revision": reference.revision,
+                }
+                for reference in replay.references
+            ],
+        }
+
     @app.get("/v1/keys")
     def list_api_keys(tenant_id: UUID = DEFAULT_SERVER_ID) -> dict[str, Any]:
         """List configured API-key metadata without exposing secrets."""
@@ -2093,7 +2133,7 @@ def create_app(
         return _memory_write_response(result)
 
     @app.post("/v1/memory/recall")
-    def recall(body: RecallBody) -> dict[str, Any]:
+    def recall(body: RecallBody, request: Request) -> dict[str, Any]:
         """Run hybrid recall and compile an operation-specific context package."""
         query = RecallQuery(
             tenant_id=body.tenant_id,
@@ -2121,7 +2161,30 @@ def create_app(
             per_layer_limit={layer: DEFAULT_CONTEXT_PER_LAYER_LIMIT for layer in MemoryLayer},
         )
         package = services.context.compile(result, recipe)
+        principal = _principal_from_request(request)
+        audit_event = services.audit.record(
+            tenant_id=body.tenant_id,
+            workspace_id=body.workspace_id,
+            action="memory.recall",
+            actor=principal.name,
+            actor_type=_audit_actor_type(principal),
+            resource_type="memory_recall",
+            metadata={
+                # The query itself must never enter the replay/audit record.
+                "query_sha256": hashlib.sha256(body.query.encode("utf-8")).hexdigest(),
+                "query_chars": len(body.query),
+                "operation": body.operation[:256],
+                "candidate_count": len(result.candidates),
+                "candidate_ids": [str(row.item.id) for row in result.candidates],
+                "sources_used": list(result.sources_used),
+                "index_stale": result.index_stale,
+                "context_budget_tokens": package.budget_tokens,
+                "context_used_tokens": package.used_tokens,
+                "trace_ids": [str(item_id) for item_id in package.trace_ids],
+            },
+        )
         return {
+            "replay_id": str(audit_event.id),
             "results": [
                 {
                     "id": str(row.item.id),
