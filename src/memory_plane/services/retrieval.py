@@ -139,10 +139,10 @@ class RetrievalService:
         """Return aggregate source-failure metrics for the API exporter."""
         with self._health_lock:
             return {
-                "uam_retrieval_source_failures_total": sum(
+                "retrieval_source_failures_total": sum(
                     int(state["failures"]) for state in self._source_health.values()
                 ),
-                "uam_retrieval_degraded_sources": sum(
+                "retrieval_degraded_sources": sum(
                     state["status"] in {"degraded", "failed"}
                     for state in self._source_health.values()
                 ),
