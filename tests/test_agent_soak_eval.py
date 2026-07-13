@@ -195,3 +195,17 @@ def test_agent_soak_eval_writes_json_report(tmp_path: Path) -> None:
     text = path.read_text(encoding="utf-8")
     assert '"format": "obelisk-agent-soak-v1"' in text
     assert '"ok": true' in text
+
+
+def test_agent_soak_prefers_explicit_scoped_evaluator_key(monkeypatch) -> None:
+    monkeypatch.setenv("UAM_API_KEY", "legacy-key")
+    monkeypatch.setenv("UAM_AGENT_SOAK_API_KEY", "scoped-operator-key")
+
+    assert agent_soak_eval.default_evaluator_api_key() == "scoped-operator-key"
+
+
+def test_agent_soak_falls_back_to_legacy_key(monkeypatch) -> None:
+    monkeypatch.delenv("UAM_AGENT_SOAK_API_KEY", raising=False)
+    monkeypatch.setenv("UAM_API_KEY", "legacy-key")
+
+    assert agent_soak_eval.default_evaluator_api_key() == "legacy-key"

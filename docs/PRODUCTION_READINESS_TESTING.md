@@ -141,6 +141,11 @@ Run and preserve:
 - `scripts/load_smoke_eval.py`;
 - `scripts/ui_walkthrough_eval.py`.
 
+For the OpenClaw/Hermes soak, do not assume the legacy `UAM_API_KEY` exists.
+When the appliance uses scoped `UAM_API_KEYS`, pass a deliberately separate
+`UAM_AGENT_SOAK_API_KEY` (or `UAM_AGENT_SOAK_API_KEY_FILE`) with the operator
+scope and use `--provision-identities` for an isolated evidence run.
+
 These validate raw→curated memory behavior, concurrent correctness/latency and
 operator workflows against the release server.
 
