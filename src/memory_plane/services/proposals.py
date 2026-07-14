@@ -305,6 +305,10 @@ class MemoryProposalService:
         proposal = self._load_for_review(command)
         if proposal.status == MemoryProposalStatus.REJECTED:
             raise ValueError("rejected proposal cannot be accepted")
+        if proposal.target == MemoryProposalTarget.GRAPH:
+            raise ValueError(
+                "graph proposals require the dedicated evidence-bound graph review path"
+            )
         layer, kind = _memory_shape(proposal.target, command.layer, command.kind)
         labels = tuple(
             dict.fromkeys(
@@ -459,7 +463,6 @@ def _memory_shape(
         MemoryProposalTarget.PREFERENCE: (MemoryLayer.SOCIAL, "proposed_preference"),
         MemoryProposalTarget.DECISION: (MemoryLayer.CORE, "proposed_decision"),
         MemoryProposalTarget.TASK: (MemoryLayer.EPISODIC, "proposed_task"),
-        MemoryProposalTarget.GRAPH: (MemoryLayer.SEMANTIC, "proposed_graph_fact"),
         MemoryProposalTarget.PROCEDURE: (MemoryLayer.PROCEDURAL, "proposed_procedure"),
         MemoryProposalTarget.AUTO: (MemoryLayer.SEMANTIC, "proposed_memory"),
     }
