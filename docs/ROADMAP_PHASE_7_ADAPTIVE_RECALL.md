@@ -1,7 +1,8 @@
 # Phase 7 — Adaptive recall and prompt-budget control
 
-Status: implementation and local regression complete; isolated target evidence
-on `192.168.0.14` pending.
+Status: implemented and validated locally and on isolated target
+`192.168.0.14`. Evidence:
+`docs/TARGET_ADAPTIVE_RECALL_VALIDATION_2026_07_14.md`.
 
 ## Problem statement
 
@@ -45,15 +46,15 @@ operator choice, not an integration default.
 
 | Requirement | Local evidence | Target evidence |
 |---|---|---|
-| JS/Python gate parity | shared JSON fixture + Node/Pytest | pending |
-| no recall for simple turn | mocked OpenClaw + shared-core tests | pending |
-| compact request fields | OpenClaw/Hermes/shared assertions | pending |
-| full tier override | OpenClaw/shared assertions | pending |
-| RU/EN score floor | API calibration regression | pending |
-| dense score boundary | retrieval regression | pending |
-| untrusted wrapper | integration assertions | pending |
-| reason/token/latency metrics | integration metric snapshots | pending |
-| fail-soft runtime | existing plugin behavior + regression | pending |
+| JS/Python gate parity | shared JSON fixture + Node/Pytest | PASS on `.14` |
+| no recall for simple turn | mocked OpenClaw + shared-core tests | PASS on `.14` |
+| compact request fields | OpenClaw/Hermes/shared assertions | PASS on `.14` |
+| full tier override | OpenClaw/shared assertions | PASS on `.14` |
+| RU/EN score floor | API calibration regression | PASS locally |
+| dense score boundary | retrieval regression | PASS locally |
+| untrusted wrapper | integration assertions | PASS on `.14` |
+| reason/token/latency metrics | integration metric snapshots | PASS on `.14` |
+| fail-soft runtime | existing plugin behavior + regression | PASS on `.14` |
 
 Target validation must use an isolated workspace/thread and synthetic markers;
 it must not read or mutate the agents' working memory.
