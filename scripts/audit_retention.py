@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from dataclasses import asdict, dataclass
@@ -212,12 +213,14 @@ def _run_export(
     batch_size: int,
     signing_key: str | None,
 ) -> bool:
+    environment = os.environ.copy()
+    environment["UAM_DATABASE_URL"] = database_url
+    if signing_key:
+        environment["UAM_AUDIT_SIGNING_KEY"] = signing_key
     command = [
         sys.executable,
         str(ROOT / "scripts" / "export_audit.py"),
         str(bundle_dir),
-        "--database-url",
-        database_url,
         "--tenant-id",
         str(tenant_id),
         "--until",
@@ -230,21 +233,20 @@ def _run_export(
         command.append("--all-workspaces")
     else:
         command.extend(["--workspace-id", str(workspace_id)])
-    if signing_key:
-        command.extend(["--signing-key", signing_key])
-    return subprocess.run(command, check=False).returncode == 0
+    return subprocess.run(command, check=False, env=environment).returncode == 0
 
 
 def _run_verify(bundle_dir: Path, *, signing_key: str | None) -> bool:
+    environment = os.environ.copy()
+    if signing_key:
+        environment["UAM_AUDIT_SIGNING_KEY"] = signing_key
     command = [
         sys.executable,
         str(ROOT / "scripts" / "export_audit.py"),
         str(bundle_dir),
         "--verify",
     ]
-    if signing_key:
-        command.extend(["--signing-key", signing_key])
-    return subprocess.run(command, check=False).returncode == 0
+    return subprocess.run(command, check=False, env=environment).returncode == 0
 
 
 def _read_manifest(bundle_dir: Path) -> dict[str, object]:

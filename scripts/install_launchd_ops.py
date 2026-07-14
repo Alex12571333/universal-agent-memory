@@ -36,22 +36,32 @@ def _wrapper(workspace: Path, env_file: Path, task: str) -> str:
         "backup": (
             '"$OBELISK_PYTHON" scripts/scheduled_backup.py '
             '--backup-dir "$OBELISK_BACKUP_DIR" --audit-dir "$OBELISK_AUDIT_DIR" '
-            '--report "$OBELISK_EVIDENCE_DIR/latest-backup-report.json"'
+            '--report "$OBELISK_EVIDENCE_DIR/latest-backup-report.json" '
+            '--require-signature'
         ),
         "maintenance": (
             '"$OBELISK_PYTHON" scripts/maintenance_retention.py '
-            '--database-url "$UAM_MAINTENANCE_DATABASE_URL" --apply '
-            '--report "$OBELISK_EVIDENCE_DIR/maintenance-retention.json"'
+            '--apply --report "$OBELISK_EVIDENCE_DIR/maintenance-retention.json"'
+        ),
+        "audit-retention": (
+            '"$OBELISK_PYTHON" scripts/audit_retention.py '
+            '--tenant-id "$UAM_SERVER_ID" --workspace-id "$UAM_PROJECT_ID" '
+            '--export-root "${OBELISK_AUDIT_RETENTION_DIR:-$OBELISK_AUDIT_DIR/retention}" '
+            '--json-report "$OBELISK_EVIDENCE_DIR/audit-retention.json" --apply'
         ),
         "metrics": (
             '"$OBELISK_PYTHON" scripts/check_metrics_health.py '
             '--metrics-url "${UAM_METRICS_URL:-http://127.0.0.1:6798/metrics}" '
             '--report "$OBELISK_EVIDENCE_DIR/metrics-health.json"'
         ),
+        "runtime-dependencies": (
+            '"$OBELISK_PYTHON" scripts/check_runtime_dependencies.py '
+            '--status-url "${UAM_SYSTEM_STATUS_URL:-http://127.0.0.1:6798/v1/system/status}" '
+            '--report "$OBELISK_EVIDENCE_DIR/runtime-dependencies-health.json"'
+        ),
         "conversation-retention": (
             '"$OBELISK_PYTHON" scripts/purge_expired_conversations.py '
             '--base-url "${UAM_INTERNAL_BASE_URL:-http://127.0.0.1:6798}" '
-            '--api-key "$(< \"$UAM_API_KEY_FILE\")" '
             '--tenant-id "$UAM_SERVER_ID" --workspace-id "$UAM_PROJECT_ID" '
             '> "$OBELISK_EVIDENCE_DIR/conversation-retention.json"'
         ),
@@ -89,9 +99,11 @@ def install(*, workspace: Path, env_file: Path, launch_agents: Path) -> list[Pat
     schedule = {
         "conversation-retention": (2, 47, None),
         "backup": (3, 23, None),
-        "maintenance": (3, 37, None),
-        "semantic-recovery": (4, 13, 0),
+        "maintenance": (4, 7, None),
+        "audit-retention": (4, 37, None),
+        "semantic-recovery": (5, 13, 0),
         "metrics": (9, 17, None),
+        "runtime-dependencies": (9, 27, None),
     }
     result: list[Path] = []
     for task, (hour, minute, weekday) in schedule.items():
