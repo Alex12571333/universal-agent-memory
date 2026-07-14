@@ -275,7 +275,16 @@ static readiness script are green.
    linked to that intent; an intent-audit failure prevents mutation. Because
    Qdrant is external, the terminal audit write is necessarily best-effort if
    the audit store fails after a vector-side outcome, so recovery evidence is
-   still required. Denied requests are not currently durable audit events.
+   still required. Every API authorization rejection now appends a durable
+   `auth.request.denied` event before returning `401` or `403`, including
+   missing/invalid/revoked credentials, insufficient scope, CSRF failure and
+   agent identity-boundary violations. The event uses a fixed reason and
+   bounded route family; credentials, CSRF values, query strings, request
+   bodies, arbitrary paths and client addresses are not retained. A failed
+   audit write never weakens the authorization decision and emits a
+   secret-free process error. A non-superuser PostgreSQL 17 target run on `.14`
+   proved durable insertion and secret/query redaction; see
+   [target durable authorization-denial validation](TARGET_DURABLE_AUTH_DENIAL_VALIDATION_2026_07_14.md).
    Checkpoint save/update now append actor-bound audit events in the same
    PostgreSQL transaction as their CAS revision; failure injection proves an
    audit error leaves no checkpoint revision. Checkpoint compaction uses the
@@ -288,10 +297,12 @@ static readiness script are green.
    `UAM_ENFORCE_RUNTIME_DB_ACL=true` detects stale broad ACLs. CAS supersede
    uses a transaction-scoped advisory lock rather than `SELECT FOR UPDATE`, so
    it remains operational with that least-privilege role; PostgreSQL integration
-   tests cover both CAS/idempotency and audit-insert rollback. The migration job
-   must still be rerun during every upgrade and a target privilege report must
-   be retained. Database-enforced immutable audit triggers and migration
-   checksums remain future hardening.
+   tests cover both CAS/idempotency and audit-insert rollback. Migration `016`
+   installs a database trigger that rejects ordinary audit update/delete, and
+   the migration runner stores and verifies SHA-256 checksums for applied SQL.
+   The migration job must still be rerun during every upgrade; a target
+   privilege report, checksum verification and immutable-trigger probe must be
+   retained.
 9. Memory, conversation and proposal idempotency keys are namespaced by
    workspace inside each adapter. A future schema migration can make this
    namespace queryable for operations, but independent workspace retries no

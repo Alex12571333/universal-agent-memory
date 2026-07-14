@@ -266,6 +266,10 @@ The verifier requires:
   positive embedding dimension;
 - audit retention report format `obelisk-audit-retention-v1`, `ok: true`,
   signed pre-prune export and verified export;
+- preserve the release-bound authorization-denial probe showing that an invalid
+  token produces a redacted durable `auth.request.denied` row through the
+  non-superuser runtime role; the reference target procedure and result are in
+  [target durable authorization-denial validation](TARGET_DURABLE_AUTH_DENIAL_VALIDATION_2026_07_14.md);
 - deployment preflight report format `obelisk-deployment-preflight-v1`,
   `ok: true`, public HTTPS health/security-header checks, and evidence that the
   direct backend URL probe was performed and was not publicly reachable;
