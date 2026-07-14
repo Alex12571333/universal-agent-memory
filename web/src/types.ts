@@ -123,9 +123,22 @@ export interface RecallResult {
   source: string;
 }
 
+export interface RetrievalTraceStep {
+  sequence: number;
+  stage: "source" | "fusion";
+  name: string;
+  status: "succeeded" | "degraded";
+  candidate_count: number;
+  accepted_count: number;
+  selected_count: number;
+  error_type: string | null;
+}
+
 export interface RecallResponse {
+  replay_id: string;
   results: RecallResult[];
   sources_used: string[];
+  retrieval_traversal?: RetrievalTraceStep[];
   context: {
     operation: string;
     used_tokens: number;

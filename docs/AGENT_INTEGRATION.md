@@ -105,6 +105,13 @@ saved trace ID against the current canonical ledger and returns only its ID,
 layer, status and revision.  This makes an old recall explainable without
 turning the audit trail into a second unprotected conversation archive.
 
+The replay also contains `retrieval_traversal`: ordered, bounded telemetry for
+each candidate source and the final fusion stage. It records counts before and
+after policy filtering, the selected count and an optional dependency exception
+class. It never stores exception messages, endpoint URLs, query text, candidate
+text or model prompts. The operator UI shows this compact path in Russian for
+the current recall and remains compatible with older servers that omit it.
+
 ## OpenClaw
 
 Use the native plugin scaffold in `agent-integrations/openclaw/`.

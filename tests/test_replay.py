@@ -44,6 +44,7 @@ def test_recall_replay_is_durable_redacted_and_workspace_scoped() -> None:
     )
 
     assert recall.status_code == 200
+    assert recall.json()["retrieval_traversal"][-1]["stage"] == "fusion"
     replay_id = recall.json()["replay_id"]
     replay = client.get(
         f"/v1/workspaces/{workspace}/replays/{replay_id}",
@@ -67,8 +68,13 @@ def test_recall_replay_is_durable_redacted_and_workspace_scoped() -> None:
         "dead_letter_memory_count": 0,
         "missing_delivery_memory_count": 0,
     }
+    traversal = replay.json()["retrieval_traversal"]
+    assert [step["stage"] for step in traversal] == ["source", "source", "fusion"]
+    assert traversal[-1]["name"] == "weighted-fusion"
+    assert traversal[-1]["selected_count"] == 1
     assert secret_query not in replay.text
     assert secret_memory not in replay.text
+    assert all("text" not in step for step in traversal)
     assert secret_query not in audit.text
     assert any(event["id"] == replay_id for event in audit.json()["events"])
     assert (

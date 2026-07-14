@@ -10,7 +10,13 @@ from threading import RLock
 from typing import Any
 from uuid import UUID
 
-from memory_plane.contracts.dto import Candidate, IndexFreshness, RecallQuery, RecallResult
+from memory_plane.contracts.dto import (
+    Candidate,
+    IndexFreshness,
+    RecallQuery,
+    RecallResult,
+    RetrievalTraceStep,
+)
 from memory_plane.domain.models import MemoryScope, MemoryStatus
 from memory_plane.ports.repositories import CandidateSource
 
@@ -53,16 +59,28 @@ class RetrievalService:
         """Fan out to sources, merge duplicate IDs, score, filter and rank."""
         grouped: dict[UUID, list[Candidate]] = defaultdict(list)
         used: list[str] = []
+        traversal: list[RetrievalTraceStep] = []
         for source in self._sources:
             try:
                 candidates = source.search(query)
             except Exception as exc:
                 self.record_failure(source.name, exc)
+                if len(traversal) < 63:
+                    traversal.append(
+                        RetrievalTraceStep(
+                            sequence=len(traversal) + 1,
+                            stage="source",
+                            name=_trace_name(source.name),
+                            status="degraded",
+                            error_type=_trace_error_type(exc),
+                        )
+                    )
                 if source.name in self._required_sources:
                     raise
                 continue
             self.record_success(source.name)
             used.append(source.name)
+            accepted_count = 0
             for candidate in candidates:
                 if candidate.item.tenant_id != query.tenant_id:
                     continue
@@ -83,16 +101,41 @@ class RetrievalService:
                 ):
                     continue
                 grouped[candidate.item.id].append(candidate)
+                accepted_count += 1
+            if len(traversal) < 63:
+                traversal.append(
+                    RetrievalTraceStep(
+                        sequence=len(traversal) + 1,
+                        stage="source",
+                        name=_trace_name(source.name),
+                        status="succeeded",
+                        candidate_count=len(candidates),
+                        accepted_count=accepted_count,
+                    )
+                )
 
         ranked = [self._fuse(rows) for rows in grouped.values()]
         ranked = [row for row in ranked if row.final_score >= query.minimum_score]
         ranked.sort(key=lambda row: (row.final_score, row.item.created_at), reverse=True)
+        selected = tuple(ranked[: query.top_k])
+        traversal.append(
+            RetrievalTraceStep(
+                sequence=len(traversal) + 1,
+                stage="fusion",
+                name="weighted-fusion",
+                status="succeeded",
+                candidate_count=len(grouped),
+                accepted_count=len(ranked),
+                selected_count=len(selected),
+            )
+        )
         freshness = self._index_freshness(query)
         return RecallResult(
-            candidates=tuple(ranked[: query.top_k]),
+            candidates=selected,
             sources_used=tuple(used),
             index_stale=freshness.stale if freshness is not None else False,
             index_freshness=freshness,
+            traversal=tuple(traversal),
         )
 
     def _index_freshness(self, query: RecallQuery) -> IndexFreshness | None:
@@ -195,3 +238,15 @@ class RetrievalService:
         """Map age to a smooth 0..1 score with a 30-day half-life."""
         age_days = max(0.0, (datetime.now(UTC) - created_at).total_seconds() / 86_400)
         return float(0.5 ** (age_days / 30.0))
+
+
+def _trace_name(value: object) -> str:
+    """Bound adapter-controlled names before they enter durable audit metadata."""
+    normalized = str(value).strip()[:64]
+    return normalized or "unknown-source"
+
+
+def _trace_error_type(error: Exception) -> str:
+    """Record only a bounded class name, never an exception message."""
+    normalized = type(error).__name__.strip()[:128]
+    return normalized or "DependencyError"
