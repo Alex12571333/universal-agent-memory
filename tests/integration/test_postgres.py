@@ -8,6 +8,7 @@ import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
+from datetime import UTC, datetime
 from pathlib import Path
 from types import ModuleType
 from unittest.mock import patch
@@ -45,6 +46,7 @@ from memory_plane.domain.proposal import (
     MemoryProposalStatus,
     MemoryProposalTarget,
 )
+from memory_plane.domain.worker import WorkerHeartbeat
 from memory_plane.services.conflicts import ConflictService
 from memory_plane.services.conversations import (
     AppendConversationTurnCommand,
@@ -1727,6 +1729,73 @@ class PostgresMemoryLedgerTest(unittest.TestCase):
         self.assertEqual(0, freshness.processing_memory_count)
         self.assertEqual(1, freshness.dead_letter_memory_count)
         self.assertEqual(0, freshness.missing_delivery_memory_count)
+
+    def test_worker_heartbeat_readiness_uses_runtime_role_and_database_clock(self) -> None:
+        now = datetime.now(UTC)
+        for kind, worker_id, status in (
+            ("outbox-relay", "relay-a", "running"),
+            ("embedding-worker", "embed-a", "stopping"),
+            ("maintenance-worker", "maintenance-a", "running"),
+            ("expired-worker", "expired-a", "running"),
+        ):
+            self.store.record_worker_heartbeat(
+                WorkerHeartbeat(
+                    tenant_id=self.tenant,
+                    worker_kind=kind,
+                    worker_id=worker_id,
+                    status=status,
+                    started_at=now,
+                    last_seen_at=now,
+                )
+            )
+        with self.store._connection() as connection:
+            self.store._set_tenant(connection, self.tenant)
+            connection.execute(
+                """
+                update worker_heartbeats
+                set last_seen_at = clock_timestamp() - interval '2 minutes'
+                where worker_kind = 'maintenance-worker'
+                """
+            )
+            connection.execute(
+                """
+                update worker_heartbeats
+                set last_seen_at = clock_timestamp() - interval '25 hours'
+                where worker_kind = 'expired-worker'
+                """
+            )
+        self.store.record_worker_heartbeat(
+            WorkerHeartbeat(
+                tenant_id=self.tenant,
+                worker_kind="outbox-relay",
+                worker_id="relay-a",
+                status="running",
+                started_at=now,
+                last_seen_at=now,
+            )
+        )
+
+        snapshot = self.store.worker_readiness(
+            self.tenant,
+            (
+                "outbox-relay",
+                "embedding-worker",
+                "maintenance-worker",
+                "expired-worker",
+            ),
+            stale_after_seconds=30,
+        )
+
+        self.assertFalse(snapshot.ready)
+        self.assertEqual(("expired-worker",), snapshot.missing_kinds)
+        self.assertEqual(
+            ("embedding-worker", "maintenance-worker"),
+            snapshot.stale_kinds,
+        )
+        by_kind = {row.worker_kind: row for row in snapshot.required}
+        self.assertEqual(1, by_kind["outbox-relay"].fresh_instances)
+        self.assertEqual(1, by_kind["embedding-worker"].stale_instances)
+        self.assertEqual(1, by_kind["maintenance-worker"].stale_instances)
 
 
 if __name__ == "__main__":

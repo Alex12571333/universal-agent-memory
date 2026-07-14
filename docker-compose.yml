@@ -53,6 +53,8 @@ services:
       # optional advanced services are absent. Set true for an advanced runtime
       # verification or an appliance deployment with NATS and the worker.
       UAM_RUNTIME_DEPENDENCY_PROBES: ${UAM_RUNTIME_DEPENDENCY_PROBES:-false}
+      UAM_REQUIRED_WORKERS: ${UAM_REQUIRED_WORKERS:-}
+      UAM_WORKER_HEARTBEAT_TTL_SECONDS: ${UAM_WORKER_HEARTBEAT_TTL_SECONDS:-30}
     ports: ["6798:8080"]
     volumes:
       - model_settings_data:/var/lib/obelisk
@@ -158,6 +160,7 @@ services:
       UAM_MEMORY_TEXT_ENCRYPTION_SCOPES: ${UAM_MEMORY_TEXT_ENCRYPTION_SCOPES:-all}
       UAM_MEMORY_TEXT_ENCRYPTION_KEY: ${UAM_MEMORY_TEXT_ENCRYPTION_KEY:-}
       UAM_MEMORY_TEXT_ENCRYPTION_KEY_FILE: ${UAM_MEMORY_TEXT_ENCRYPTION_KEY_FILE:-}
+      UAM_WORKER_HEARTBEAT_SECONDS: ${UAM_WORKER_HEARTBEAT_SECONDS:-5}
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -189,6 +192,7 @@ services:
       UAM_EMBEDDING_SEND_DIMENSIONS: ${UAM_EMBEDDING_SEND_DIMENSIONS:-false}
       UAM_EMBEDDING_API_KEY: ${UAM_EMBEDDING_API_KEY:-}
       UAM_WORKER_METRICS_PORT: ${UAM_WORKER_METRICS_PORT:-9091}
+      UAM_WORKER_HEARTBEAT_SECONDS: ${UAM_WORKER_HEARTBEAT_SECONDS:-5}
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -215,6 +219,7 @@ services:
       UAM_MEMORY_TEXT_ENCRYPTION_SCOPES: ${UAM_MEMORY_TEXT_ENCRYPTION_SCOPES:-all}
       UAM_MEMORY_TEXT_ENCRYPTION_KEY: ${UAM_MEMORY_TEXT_ENCRYPTION_KEY:-}
       UAM_MEMORY_TEXT_ENCRYPTION_KEY_FILE: ${UAM_MEMORY_TEXT_ENCRYPTION_KEY_FILE:-}
+      UAM_WORKER_HEARTBEAT_SECONDS: ${UAM_WORKER_HEARTBEAT_SECONDS:-5}
       # The curator is a maintenance consumer, so it needs the same bounded
       # OpenAI-compatible model configuration as the API. It still writes only
       # evidence-linked proposals unless the narrow auto-accept policy passes.

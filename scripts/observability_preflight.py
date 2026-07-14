@@ -19,6 +19,8 @@ REQUIRED_METRICS = (
     "uam_embedding_reindex_failures_total",
     "uam_retrieval_degraded_sources",
     "uam_retrieval_source_failures_total",
+    "uam_worker_missing",
+    "uam_worker_stale",
 )
 REQUIRED_ALERTS = (
     "ObeliskOutboxDeadLetters",
@@ -29,6 +31,8 @@ REQUIRED_ALERTS = (
     "ObeliskReindexFailures",
     "ObeliskRetrievalDegraded",
     "ObeliskRetrievalSourceFailures",
+    "ObeliskWorkerPipelineMissing",
+    "ObeliskWorkerHeartbeatStale",
 )
 
 

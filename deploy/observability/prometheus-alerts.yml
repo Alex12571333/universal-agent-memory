@@ -73,6 +73,31 @@ groups:
             Prometheus cannot scrape the private embedding-worker metrics
             endpoint. New memories will not receive fresh dense vectors.
 
+      - alert: ObeliskWorkerPipelineMissing
+        expr: uam_worker_missing > 0
+        for: 1m
+        labels:
+          severity: critical
+          service: obelisk-memory
+        annotations:
+          summary: Required Obelisk Memory workers are missing
+          description: >
+            At least one required outbox, embedding or maintenance worker role
+            has no fresh durable heartbeat. The public readiness endpoint is
+            fail-closed until every configured role recovers.
+
+      - alert: ObeliskWorkerHeartbeatStale
+        expr: uam_worker_stale > 0
+        for: 1m
+        labels:
+          severity: critical
+          service: obelisk-memory
+        annotations:
+          summary: Obelisk Memory worker heartbeat is stale
+          description: >
+            A previously observed required worker role no longer has a running
+            heartbeat inside the configured TTL. Inspect worker and NATS logs.
+
       - alert: ObeliskReindexFailures
         expr: increase(uam_embedding_reindex_failures_total[30m]) > 0
         for: 1m

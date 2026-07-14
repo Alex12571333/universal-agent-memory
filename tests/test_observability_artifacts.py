@@ -35,6 +35,11 @@ def test_grafana_dashboard_uses_real_exposed_metrics() -> None:
         "uam_api_keys_revoked_total",
         "uam_retrieval_degraded_sources",
         "uam_retrieval_source_failures_total",
+        "uam_worker_required",
+        "uam_worker_ready",
+        "uam_worker_unready",
+        "uam_worker_missing",
+        "uam_worker_stale",
     }
 
     all_expressions = "\n".join(sorted(panel_exprs))
@@ -57,6 +62,8 @@ def test_prometheus_alerts_cover_production_failure_modes() -> None:
         "ObeliskReindexFailures",
         "ObeliskRetrievalDegraded",
         "ObeliskRetrievalSourceFailures",
+        "ObeliskWorkerPipelineMissing",
+        "ObeliskWorkerHeartbeatStale",
     ):
         assert f"alert: {alert_name}" in alerts
 
@@ -69,6 +76,8 @@ def test_prometheus_alerts_cover_production_failure_modes() -> None:
         "uam_embedding_reindex_failures_total",
         "uam_retrieval_degraded_sources",
         "uam_retrieval_source_failures_total",
+        "uam_worker_missing",
+        "uam_worker_stale",
     ):
         assert metric in alerts
 

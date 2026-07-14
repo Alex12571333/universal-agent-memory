@@ -21,11 +21,14 @@ def test_maintenance_handler_reflects_only_requested_jobs(monkeypatch) -> None:
         async def connect(self):
             raise RuntimeError("stop after wiring")
 
+        async def close(self):
+            return None
+
     container = SimpleNamespace(
         reflection=SimpleNamespace(
             reflect=lambda tenant, workspace: reflected.append((tenant, workspace))
         ),
-        store=object(),
+        store=SimpleNamespace(close=lambda: None),
     )
     monkeypatch.setenv("UAM_SERVER_ID", str(uuid4()))
     monkeypatch.setenv("UAM_DATABASE_URL", "postgresql://example")

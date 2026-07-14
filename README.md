@@ -73,6 +73,13 @@ startup/query failures degrade to PostgreSQL lexical recall and are visible on
 `/ready`. Embedding workers still fail fast when Qdrant is unavailable so events
 are retried instead of silently losing index work.
 
+Production readiness also depends on durable worker heartbeats. The outbox
+relay, embedding worker and maintenance worker record tenant-scoped liveness in
+PostgreSQL on an independent timer; `/ready` returns 503 when a required role is
+missing or stale. Responses and metrics expose role-level aggregates only, not
+worker IDs, hostnames or process metadata. Development Compose leaves this gate
+opt-in so a minimal local server can still be started without background roles.
+
 ## Quick start for local development
 
 ```bash

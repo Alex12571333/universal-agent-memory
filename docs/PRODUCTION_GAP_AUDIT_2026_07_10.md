@@ -329,9 +329,15 @@ static readiness script are green.
     is unpublished, unprocessed, or dead-lettered. Pending work in another
     workspace no longer degrades a clean workspace. Exact affected-memory
     counts still need a durable index-state ledger.
-15. Worker-specific Prometheus metrics are served privately by the embedding
-    worker. Structured worker logs plus NATS/worker state in readiness are not
-    yet an operational readiness gate.
+15. Worker liveness is now a durable operational gate. Migration `017` adds a
+    tenant-isolated PostgreSQL heartbeat ledger; all three production worker
+    roles emit heartbeats independently from long-running jobs; `/ready` fails
+    closed for missing or stale roles; Prometheus exposes only aggregate
+    required/ready/missing/stale counts; and dashboard/alert artifacts cover
+    the failure modes. Isolated PostgreSQL 17 target evidence demonstrates
+    stop/stale/recovery behavior through the restricted runtime role; every
+    release must still repeat the deployment-bound probe. See
+    [target worker heartbeat validation](TARGET_WORKER_HEARTBEAT_VALIDATION_2026_07_14.md).
 
 ### P2 — deployment hardening and supply chain
 

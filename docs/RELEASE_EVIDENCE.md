@@ -102,6 +102,12 @@ sealed directory in immutable storage.
 ```bash
 UAM_API_KEY=... PYTHONPATH=src python scripts/check_metrics_health.py \
   --metrics-url http://localhost:6798/metrics \
+  --max-worker-unready 0 \
+  --require-metric uam_worker_required \
+  --require-metric uam_worker_ready \
+  --require-metric uam_worker_unready \
+  --require-metric uam_worker_missing \
+  --require-metric uam_worker_stale \
   --report ./ops/metrics-health.json
 
 PYTHONPATH=src python scripts/ops_schedule_preflight.py .env.production \
@@ -246,13 +252,14 @@ The verifier requires:
 - load smoke report format `obelisk-load-smoke-v1`, `ok: true`, parallel
   retain/recall correctness, error-rate, p95 latency and metrics-backlog checks;
 - metrics health report format `obelisk-metrics-health-v1`, `ok: true`, outbox
-  pending/dead-letter/lag and inflight checks;
+  pending/dead-letter/lag, inflight and required-worker heartbeat checks. The
+  release gate requires zero missing, stale and otherwise unready roles;
 - ops schedule report format `obelisk-ops-schedule-preflight-v1`, `ok: true`,
   installed backup/audit-retention/metrics schedule evidence, alert routing and
   durable artifact roots;
 - observability report format `obelisk-observability-preflight-v1`, `ok: true`,
   Grafana dashboard coverage and Prometheus alert rules for required production
-  metrics/failure modes;
+  metrics/failure modes, including missing and stale worker-role heartbeats;
 - release notes report format `obelisk-release-notes-v1`, `ok: true`, a
   non-empty versioned changelog, and rollback instructions that name the
   previous ref/image and restore procedure;
@@ -270,6 +277,10 @@ The verifier requires:
   token produces a redacted durable `auth.request.denied` row through the
   non-superuser runtime role; the reference target procedure and result are in
   [target durable authorization-denial validation](TARGET_DURABLE_AUTH_DENIAL_VALIDATION_2026_07_14.md);
+- preserve the release-bound worker-liveness probe showing missing, ready and
+  stopping states through the non-superuser runtime role without exposing
+  worker identities; the reference target procedure and result are in
+  [target worker heartbeat validation](TARGET_WORKER_HEARTBEAT_VALIDATION_2026_07_14.md);
 - deployment preflight report format `obelisk-deployment-preflight-v1`,
   `ok: true`, public HTTPS health/security-header checks, and evidence that the
   direct backend URL probe was performed and was not publicly reachable;

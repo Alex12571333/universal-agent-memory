@@ -22,6 +22,7 @@ PLACEHOLDER_PATTERNS = (
 )
 VALID_SCOPES = {"admin", "operator", "agent", "read", "write"}
 VALID_MEMORY_SCOPES = {"private", "thread", "team", "workspace", "organization"}
+REQUIRED_WORKERS = {"outbox-relay", "embedding-worker", "maintenance-worker"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,6 +74,7 @@ def validate_env(
         _check_uuid(values, "UAM_PROJECT_ID"),
         _check_context_budget(values),
         _check_runtime_db_acl(values),
+        _check_worker_heartbeat_policy(values),
         _check_privacy(values),
         _check_embedding_dim(values),
         _check_qdrant_collection(values),
@@ -252,6 +254,43 @@ def _check_runtime_db_acl(values: dict[str, str]) -> EnvCheck:
             "must be true so a stale broad application role cannot serve requests",
         )
     return EnvCheck("UAM_ENFORCE_RUNTIME_DB_ACL", True, "enabled")
+
+
+def _check_worker_heartbeat_policy(values: dict[str, str]) -> EnvCheck:
+    configured = {
+        value.strip().lower()
+        for value in values.get("UAM_REQUIRED_WORKERS", "").split(",")
+        if value.strip()
+    }
+    if configured != REQUIRED_WORKERS:
+        return EnvCheck(
+            "worker-heartbeats",
+            False,
+            "UAM_REQUIRED_WORKERS must contain outbox-relay, embedding-worker "
+            "and maintenance-worker",
+        )
+    try:
+        interval = float(values.get("UAM_WORKER_HEARTBEAT_SECONDS", "0"))
+        ttl = int(values.get("UAM_WORKER_HEARTBEAT_TTL_SECONDS", "0"))
+    except ValueError:
+        return EnvCheck("worker-heartbeats", False, "heartbeat interval/TTL must be numeric")
+    if not 0.5 <= interval <= 300:
+        return EnvCheck(
+            "worker-heartbeats",
+            False,
+            "heartbeat interval must be between 0.5 and 300 seconds",
+        )
+    if not 5 <= ttl <= 600 or ttl < interval * 3:
+        return EnvCheck(
+            "worker-heartbeats",
+            False,
+            "heartbeat TTL must be between 5 and 600 seconds and at least 3x interval",
+        )
+    return EnvCheck(
+        "worker-heartbeats",
+        True,
+        f"{len(configured)} required roles, interval={interval:g}s, TTL={ttl}s",
+    )
 
 
 def _check_privacy(values: dict[str, str]) -> EnvCheck:

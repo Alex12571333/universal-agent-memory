@@ -49,6 +49,9 @@ def run_checks(*, static_only: bool) -> list[Check]:
         "src/memory_plane/config/secrets.py",
         "migrations/008_audit_events.sql",
         "migrations/009_api_key_registry.sql",
+        "migrations/017_worker_heartbeats.sql",
+        "src/memory_plane/domain/worker.py",
+        "src/memory_plane/workers/heartbeat.py",
         "scripts/check_branch_protection.py",
         "scripts/check_metrics_health.py",
         "scripts/deployment_preflight.py",
@@ -935,6 +938,10 @@ def run_checks(*, static_only: bool) -> list[Check]:
     )
 
     gap_audit = read("docs/PRODUCTION_GAP_AUDIT_2026_07_10.md")
+    production_compose = read("docker-compose.prod.yml")
+    api_app = read("src/memory_plane/api/app.py")
+    worker_heartbeat = read("src/memory_plane/workers/heartbeat.py")
+    observability_alerts = read("deploy/observability/prometheus-alerts.yml")
     checks.extend(
         [
             Check(
@@ -948,6 +955,22 @@ def run_checks(*, static_only: bool) -> list[Check]:
                 and "Reliability gate" in gap_audit
                 and "Agent-integration gate" in gap_audit,
                 "gap audit defines full-production gates",
+            ),
+            Check(
+                "workers:durable-heartbeat-readiness",
+                "UAM_REQUIRED_WORKERS" in production_compose
+                and "UAM_WORKER_HEARTBEAT_TTL_SECONDS" in production_compose
+                and "worker_readiness" in api_app
+                and "WorkerHeartbeatEmitter" in worker_heartbeat,
+                "production readiness fails closed on durable required-worker heartbeats",
+            ),
+            Check(
+                "workers:heartbeat-alerts",
+                "ObeliskWorkerPipelineMissing" in observability_alerts
+                and "ObeliskWorkerHeartbeatStale" in observability_alerts
+                and "uam_worker_missing" in observability_alerts
+                and "uam_worker_stale" in observability_alerts,
+                "missing and stale worker roles have Prometheus alerts",
             ),
         ]
     )
