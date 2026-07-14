@@ -361,6 +361,13 @@ storage prefix.
 
 ## Audit export
 
+Audit rows are protected by a database trigger against ordinary update or
+delete, even for a table owner. Pruning remains available only through
+`scripts/audit_retention.py --apply` after that runner has produced and
+verified its signed export; the adapter enables the deletion exception only
+for the current retention transaction. Do not set
+`uam.audit_retention_mode` in general application or administrator sessions.
+
 Export recent operator/agent audit events before upgrades, incident response, or
 security review:
 

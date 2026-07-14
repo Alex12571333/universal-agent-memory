@@ -44,6 +44,24 @@ opaque evidence for the proposal/curation pipeline and cannot be silently
 converted into a durable timeless winner. This is deliberately limited
 coverage, not a general multilingual NLU claim.
 
+### Migration identity and database-enforced audit immutability
+
+The migration ledger now records the SHA-256 digest of every SQL migration.
+Existing rows without a digest are baselined once under the migration advisory
+lock; any later byte change to an applied migration fails startup instead of
+silently accepting schema drift.
+
+PostgreSQL now rejects `UPDATE` and `DELETE` on `audit_events` with an
+append-only trigger, including operations performed by the table owner. The
+only deletion exception is the existing signed-export retention flow, which
+enables a transaction-local `uam.audit_retention_mode` immediately before its
+bounded delete. Runtime ACLs still deny the application role direct audit
+updates and deletes, so this exception does not grant a new API capability.
+
+This closes the repository implementation part of P1 finding 8. A target
+migration report and a real retention-export/prune probe must still be retained
+for a production release.
+
 ## Remaining gate
 
 No deterministic extractor can safely infer all paraphrases, negations or

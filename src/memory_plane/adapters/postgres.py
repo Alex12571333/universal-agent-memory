@@ -1140,6 +1140,9 @@ class PostgresMemoryLedger:
         safe_limit = max(1, min(int(limit), 500))
         with self._connection() as connection:
             self._set_tenant(connection, tenant_id)
+            connection.execute(
+                "select set_config('uam.audit_retention_mode', 'on', true)"
+            )
             result = connection.execute(
                 """
                 with doomed as (

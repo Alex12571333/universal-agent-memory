@@ -155,10 +155,53 @@ def test_migration_runner_includes_every_versioned_sql_file() -> None:
         "013_protected_search_tokens.sql",
         "014_protected_search_scope_integrity.sql",
         "015_encrypt_json_payloads.sql",
+        "016_audit_immutability.sql",
     }
     configured = {path.name for path in migrate.MIGRATIONS}
 
     assert configured == expected
+
+
+def test_migration_checksums_and_audit_immutability_are_enforced() -> None:
+    audit_migration = next(
+        path for path in migrate.MIGRATIONS if path.name == "016_audit_immutability.sql"
+    )
+    sql = audit_migration.read_text(encoding="utf-8").lower()
+
+    assert len(migrate._migration_checksum(audit_migration)) == 64
+    assert "before update or delete on audit_events" in sql
+    assert "current_setting('uam.audit_retention_mode', true) = 'on'" in sql
+    assert "audit_events is append-only" in sql
+
+
+def test_migration_runner_rejects_changed_applied_sql(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first = migrate.MIGRATIONS[0]
+
+    class Result:
+        def __init__(self, rows: list[tuple[object, ...]] | None = None) -> None:
+            self.rows = rows or []
+
+        def fetchall(self) -> list[tuple[object, ...]]:
+            return self.rows
+
+    class Connection:
+        def __enter__(self) -> Connection:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def execute(self, statement: object, _params: object = None) -> Result:
+            if str(statement) == "select name, checksum_sha256 from schema_migrations":
+                return Result([(first.name, "0" * 64)])
+            return Result()
+
+    monkeypatch.setattr(migrate.psycopg, "connect", lambda _dsn: Connection())
+
+    with pytest.raises(RuntimeError, match=first.name):
+        migrate.migrate("postgresql://example/memory")
 
 
 class _RoleQueryResult:
