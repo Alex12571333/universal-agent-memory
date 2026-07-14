@@ -215,6 +215,7 @@
 | `hermes/universal_agent_memory/recall_gate.py` | Standalone Hermes gate | No LLM/network dependency; bundled with provider install |
 | `hermes/universal_agent_memory/plugin.yaml` | Hermes provider metadata | User-installed memory provider manifest |
 | `scripts/agent_soak_eval.py` | Runtime evidence for OpenClaw/Hermes contract | Parallel agent markers plus cross-workspace leakage probes |
+| `scripts/adaptive_recall_target_probe.py` | Real Hermes runtime + isolated HTTP stub → JSON gate evidence | Proves skip/compact/full/metrics/fail-soft without touching agent memory |
 
 ## Composition/API
 
