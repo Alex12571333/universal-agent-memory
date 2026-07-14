@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
-from memory_plane.contracts.dto import IndexFreshness
+from memory_plane.contracts.dto import IndexFreshness, RetrievalTraceStep
 from memory_plane.domain.audit import AuditEvent
 from memory_plane.ports.repositories import MemoryLedger
 from memory_plane.services.audit import AuditLogService
@@ -37,6 +37,7 @@ class RecallReplay:
     context_budget_tokens: int
     context_used_tokens: int
     trace_ids: tuple[UUID, ...]
+    traversal: tuple[RetrievalTraceStep, ...]
     references: tuple[ReplayMemoryReference, ...]
 
 
@@ -81,6 +82,7 @@ class RecallReplayService:
             context_budget_tokens=_bounded_int(metadata.get("context_budget_tokens")),
             context_used_tokens=_bounded_int(metadata.get("context_used_tokens")),
             trace_ids=trace_ids,
+            traversal=_retrieval_traversal(metadata.get("retrieval_traversal")),
             references=tuple(references),
         )
 
@@ -132,3 +134,42 @@ def _index_freshness(value: Any) -> IndexFreshness | None:
         dead_letter_memory_count=_bounded_int(value.get("dead_letter_memory_count")),
         missing_delivery_memory_count=_bounded_int(value.get("missing_delivery_memory_count")),
     )
+
+
+def _retrieval_traversal(value: Any) -> tuple[RetrievalTraceStep, ...]:
+    """Decode only the fixed, text-free retrieval telemetry contract."""
+    if not isinstance(value, list):
+        return ()
+    steps: list[RetrievalTraceStep] = []
+    for index, row in enumerate(value[:64], start=1):
+        if not isinstance(row, dict):
+            continue
+        stage = row.get("stage")
+        status = row.get("status")
+        name = row.get("name")
+        error_type = row.get("error_type")
+        if stage not in {"source", "fusion"} or status not in {
+            "succeeded",
+            "degraded",
+        }:
+            continue
+        if not isinstance(name, str) or not name or len(name) > 64:
+            continue
+        if not isinstance(error_type, str) or not error_type:
+            error_type = None
+        try:
+            steps.append(
+                RetrievalTraceStep(
+                    sequence=index,
+                    stage=stage,
+                    name=name,
+                    status=status,
+                    candidate_count=_bounded_int(row.get("candidate_count")),
+                    accepted_count=_bounded_int(row.get("accepted_count")),
+                    selected_count=_bounded_int(row.get("selected_count")),
+                    error_type=error_type[:128] if error_type else None,
+                )
+            )
+        except ValueError:
+            continue
+    return tuple(steps)

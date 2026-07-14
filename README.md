@@ -35,6 +35,7 @@ Repository capability baseline:
 | Async pipeline | Transactional outbox, NATS JetStream relay, dead-letter path |
 | Memory reasoning | OpenAI-compatible chat endpoint, provider-neutral config, fail-soft fallback |
 | Context | Compact 8k recall budget; retrieve many candidates, inject only ranked evidence |
+| Explainability | Durable redacted recall replay with source/filter/fusion traversal counts |
 | Human vault | Markdown/Obsidian-style export, dry-run import, safe supersede |
 | UI | React/Vite operator dashboard served by Docker on `/ui` |
 | Agent integration | Native OpenClaw plugin and Hermes memory provider adapters |

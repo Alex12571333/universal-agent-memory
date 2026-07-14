@@ -1751,6 +1751,7 @@ def create_app(
             "context_budget_tokens": replay.context_budget_tokens,
             "context_used_tokens": replay.context_used_tokens,
             "trace_ids": [str(item_id) for item_id in replay.trace_ids],
+            "retrieval_traversal": [asdict(step) for step in replay.traversal],
             "references": [
                 {
                     "id": str(reference.item_id),
@@ -2533,6 +2534,7 @@ def create_app(
                 "candidate_count": len(result.candidates),
                 "candidate_ids": [str(row.item.id) for row in result.candidates],
                 "sources_used": list(result.sources_used),
+                "retrieval_traversal": [asdict(step) for step in result.traversal],
                 "index_stale": result.index_stale,
                 "index_freshness": None
                 if result.index_freshness is None
@@ -2556,6 +2558,7 @@ def create_app(
                 for row in result.candidates
             ],
             "sources_used": result.sources_used,
+            "retrieval_traversal": [asdict(step) for step in result.traversal],
             "index_stale": result.index_stale,
             "index_freshness": None
             if result.index_freshness is None

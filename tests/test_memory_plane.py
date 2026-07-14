@@ -199,6 +199,17 @@ class MemoryPlaneTest(unittest.TestCase):
             "degraded",
             retrieval.source_health()["optional_vector"]["status"],
         )
+        self.assertEqual(
+            [self.container.store.name, "optional_vector", "weighted-fusion"],
+            [step.name for step in result.traversal],
+        )
+        self.assertEqual("succeeded", result.traversal[0].status)
+        self.assertEqual(1, result.traversal[0].candidate_count)
+        self.assertEqual(1, result.traversal[0].accepted_count)
+        self.assertEqual("degraded", result.traversal[1].status)
+        self.assertEqual("ConnectionError", result.traversal[1].error_type)
+        self.assertNotIn("vector dependency unavailable", repr(result.traversal))
+        self.assertEqual(1, result.traversal[2].selected_count)
 
     def test_recall_propagates_required_canonical_source_failure(self) -> None:
         retrieval = RetrievalService(

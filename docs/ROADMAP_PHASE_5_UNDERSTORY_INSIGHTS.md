@@ -167,3 +167,130 @@ are suitable for a target-runtime lifecycle probe.
 - The report does not expose protected raw conversation content or vector data.
 - The existing vault export/import, CAS supersede and outbox/indexing behaviour
   remain unchanged and covered by regression tests.
+
+## Second-pass source audit — 2026-07-14
+
+The follow-up review inspected the implementation rather than relying only on
+the upstream README. The inspected upstream tree was commit
+`0a387c3c68d29253fdb74378390eea7edf0e3137`, including:
+
+- `packages/core/src/okf/bundle.ts`, `knowledge-base.ts`, `graph.ts`,
+  `lint.ts`, `search.ts` and `validate.ts`;
+- `packages/core/src/agent/trace.ts`, `tools.ts`, `agent.ts` and
+  `system-prompt.ts`;
+- `packages/server/src/mcp/seed.ts`, `mcp/server.ts`, `mcp/http.ts`,
+  `api/browse.ts` and `index.ts`;
+- the React graph/traversal UI and the repository tests.
+
+This review confirms that the useful ideas are architectural, not code to copy.
+The upstream repository still exposes no source-code license file. Obelisk
+therefore keeps a clean-room implementation boundary.
+
+### What Understory does well
+
+1. One deterministic write boundary enforces path confinement, required
+   frontmatter, generated indexes and an append-only human log after every
+   mutation.
+2. A compact session seed gives an agent a reason to query memory without
+   dumping the entire knowledge base into its prompt.
+3. Query traces record the actual sequence of search/read/write operations and
+   make the path visible in the graph UI.
+4. Graph lint distinguishes broken links from orphaned concepts and makes
+   maintenance measurable.
+5. Targeted section patches reduce accidental full-document rewrites.
+
+### What must not be copied into Obelisk production
+
+1. The default HTTP server has no tenant/authentication middleware around its
+   browse, chat and MCP routes and reflects request origins through CORS.
+2. All mutations share one in-process promise queue. It cannot coordinate
+   multiple replicas and does not replace database CAS/transactions.
+3. Search is a full Markdown scan with literal term scoring. It is unsuitable
+   for large multilingual memory and is explicitly weaker than Obelisk's
+   PostgreSQL/Qdrant hybrid retrieval.
+4. Graph repair and contradiction handling depend on an LLM prompt. A model can
+   suggest changes, but Obelisk must require canonical evidence and keep the
+   result non-recallable until deterministic policy or review accepts it.
+5. Best-effort Git autocommit is not an atomic durability boundary: a memory
+   write can succeed while its commit fails.
+6. File-backed traces are useful telemetry but are not tenant-isolated,
+   release-bound durable audit evidence.
+
+### Verified overlap in Obelisk
+
+| Capability | Obelisk status | Stronger production property |
+| --- | --- | --- |
+| plain Markdown inspection | implemented | PostgreSQL remains authoritative; signed export and CAS import |
+| graph lint | implemented | typed edges, evidence IDs, revision-chain checks and tenant RLS |
+| session seed | implemented | opt-in token budget and private/thread exclusion |
+| targeted edits | implemented | append-only supersede, expected revision, outbox and re-embedding |
+| query replay | partially implemented | durable redacted audit event instead of raw query/answer files |
+| create-vs-enrich policy | implemented in proposal/curation boundary | evidence-linked proposal is not recallable before acceptance |
+| concurrent mutations | implemented | PostgreSQL CAS, idempotency, transactional outbox and worker leases |
+
+## Phase 5.1 implementation backlog
+
+### P1 — redacted retrieval traversal
+
+Extend the existing recall replay with ordered, bounded steps:
+
+1. each candidate source attempted;
+2. number returned by the source;
+3. number surviving tenant/workspace/scope/status/temporal policy;
+4. optional dependency failure type without endpoint/error text;
+5. unique candidates entering fusion, candidates above threshold and final
+   selected count.
+
+The trace must never store the raw query, candidate text, prompt, answer,
+credential, endpoint or worker identity. It is persisted inside the existing
+tenant-scoped audit event and returned from the operator replay endpoint. The
+web recall panel should show the same compact pipeline for the current request.
+
+### P1 — evidence-bound graph maintenance proposals
+
+Vault health may produce a deterministic repair *plan*, but not a repair. An
+unlinked item is not necessarily wrong. Any LLM-generated relationship must be
+stored as a non-recallable `graph` proposal containing source/destination IDs,
+typed relation, provenance ID and rationale. Acceptance must revalidate both
+endpoints and evidence in one tenant/workspace before writing the edge.
+
+### P2 — portable knowledge projection
+
+An optional OKF-compatible export can improve portability, but it remains a
+projection. Stable Obelisk IDs, revision/status/provenance and signed manifest
+must survive round trips. `index.md` and activity logs may be generated during
+export; they must never become a second source of truth.
+
+### P2 — traversal overlay and maintenance UX
+
+The force-directed graph can overlay an approved replay by highlighting
+selected canonical IDs and showing numbered aggregate stages. It must not infer
+or draw relationships merely because two memories appeared in one recall.
+
+## Phase 5.1 acceptance criteria
+
+- retrieval traversal is deterministic, ordered and bounded;
+- optional source failure is visible without error text or endpoint data;
+- tenant/workspace/scope/status filters are applied before counts enter fusion;
+- replay remains readable after memory supersession without copying old text;
+- the browser renders the current trace in Russian and remains functional when
+  an older server omits the optional field;
+- no Understory code, assets, prompts or icons are copied.
+
+## Phase 5.1 implementation status — 2026-07-14
+
+The redacted retrieval traversal is implemented. `RecallResult` now carries a
+bounded ordered trace for successful and degraded candidate sources plus the
+final weighted-fusion stage. The API persists it inside the existing durable
+recall audit event, the scoped replay endpoint decodes only the fixed telemetry
+schema, and the React recall panel renders the current path in Russian. Tests
+prove that an optional dependency's exception message is not retained and that
+the replay still contains no raw query or memory text.
+
+The PostgreSQL 17 target round trip through the non-superuser runtime role is
+recorded in
+[target retrieval traversal validation](TARGET_RETRIEVAL_TRAVERSAL_VALIDATION_2026_07_14.md).
+
+Evidence-bound graph maintenance proposals, the optional portable projection
+and the graph replay overlay remain separate follow-up work. They are not
+claimed as implemented by this phase.

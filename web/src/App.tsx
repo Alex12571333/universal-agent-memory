@@ -8,6 +8,7 @@ import {
   type MemoryItem,
   type ModelSettings,
   type RecallResult,
+  type RetrievalTraceStep,
   type SystemStatus,
   type VaultFile,
   type VaultHealthResponse
@@ -202,6 +203,7 @@ function Dashboard(props: { principal: string; canLogout: boolean; onLogout: () 
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [query, setQuery] = useState("Что важно знать текущему агенту?");
   const [recall, setRecall] = useState<RecallResult[]>([]);
+  const [recallTraversal, setRecallTraversal] = useState<RetrievalTraceStep[]>([]);
   const [draftMemory, setDraftMemory] = useState("");
   const [status, setStatus] = useState("Готов");
   const [loading, setLoading] = useState(false);
@@ -254,6 +256,7 @@ function Dashboard(props: { principal: string; canLogout: boolean; onLogout: () 
     setStatus("Ищу в памяти...");
     const response = await api.recall(workspace, tenant, query);
     setRecall(response.results);
+    setRecallTraversal(response.retrieval_traversal ?? []);
     setStatus(`Найдено ${response.results.length} воспоминаний`);
   }
 
@@ -364,7 +367,13 @@ function Dashboard(props: { principal: string; canLogout: boolean; onLogout: () 
               }
             />
             {view === "memory" ? (
-              <RecallPanel query={query} setQuery={setQuery} runRecall={runRecall} results={recall} />
+              <RecallPanel
+                query={query}
+                setQuery={setQuery}
+                runRecall={runRecall}
+                results={recall}
+                traversal={recallTraversal}
+              />
             ) : (
               <MemoryGraph memories={memories} selectedId={selected?.id} onSelect={setSelectedMemory} expanded={view === "graph"} />
             )}
@@ -599,16 +608,35 @@ function MemoryList({ memories, selectedId, onSelect }: { memories: MemoryItem[]
   );
 }
 
-function RecallPanel({ query, setQuery, runRecall, results }: {
+function RecallPanel({ query, setQuery, runRecall, results, traversal }: {
   query: string;
   setQuery: (value: string) => void;
   runRecall: () => Promise<void>;
   results: RecallResult[];
+  traversal: RetrievalTraceStep[];
 }) {
   return (
     <div className="recall-panel">
       <textarea value={query} onChange={(event) => setQuery(event.target.value)} />
       <button onClick={() => void runRecall()}>Найти в памяти</button>
+      {traversal.length > 0 ? (
+        <div className="retrieval-traversal" aria-label="Путь поиска по памяти">
+          <div className="retrieval-traversal-title">
+            <b>Путь поиска</b>
+            <small>этапов: {traversal.length}</small>
+          </div>
+          {traversal.map((step) => (
+            <div className={`retrieval-step ${step.status}`} key={`${step.sequence}-${step.name}`}>
+              <span>{step.sequence}</span>
+              <div>
+                <b>{step.stage === "fusion" ? "Объединение и ранжирование" : translateSource(step.name)}</b>
+                <small>{retrievalStepSummary(step)}</small>
+              </div>
+              <em>{step.status === "succeeded" ? "готово" : "резервный режим"}</em>
+            </div>
+          ))}
+        </div>
+      ) : null}
       <div className="recall-results">
         {results.map((item) => (
           <article key={item.id}>
@@ -620,6 +648,16 @@ function RecallPanel({ query, setQuery, runRecall, results }: {
       </div>
     </div>
   );
+}
+
+function retrievalStepSummary(step: RetrievalTraceStep) {
+  if (step.status === "degraded") {
+    return "Источник недоступен; поиск продолжен без сохранения текста ошибки";
+  }
+  if (step.stage === "fusion") {
+    return `${step.candidate_count} уникальных · ${step.accepted_count} выше порога · выбрано ${step.selected_count}`;
+  }
+  return `${step.candidate_count} кандидатов · допущено политикой ${step.accepted_count}`;
 }
 
 function MemoryGraph({

@@ -159,6 +159,39 @@ class IndexFreshness:
 
 
 @dataclass(frozen=True, slots=True)
+class RetrievalTraceStep:
+    """One bounded, text-free stage in a hybrid retrieval traversal."""
+
+    sequence: int
+    stage: str
+    name: str
+    status: str
+    candidate_count: int = 0
+    accepted_count: int = 0
+    selected_count: int = 0
+    error_type: str | None = None
+
+    def __post_init__(self) -> None:
+        """Reject unbounded or ambiguous trace telemetry."""
+        if not 1 <= self.sequence <= 64:
+            raise ValueError("retrieval trace sequence must be between 1 and 64")
+        if self.stage not in {"source", "fusion"}:
+            raise ValueError("retrieval trace stage must be source or fusion")
+        if self.status not in {"succeeded", "degraded"}:
+            raise ValueError("retrieval trace status must be succeeded or degraded")
+        if not self.name or len(self.name) > 64:
+            raise ValueError("retrieval trace name must contain between 1 and 64 characters")
+        for field_name in ("candidate_count", "accepted_count", "selected_count"):
+            value = getattr(self, field_name)
+            if not 0 <= value <= 1_000_000:
+                raise ValueError(f"{field_name} must be between 0 and 1000000")
+        if self.error_type is not None and (
+            not self.error_type or len(self.error_type) > 128
+        ):
+            raise ValueError("retrieval trace error_type must be between 1 and 128 characters")
+
+
+@dataclass(frozen=True, slots=True)
 class RecallResult:
     """Ranked retrieval output with inspectable source diagnostics."""
 
@@ -166,6 +199,7 @@ class RecallResult:
     sources_used: tuple[str, ...]
     index_stale: bool = False
     index_freshness: IndexFreshness | None = None
+    traversal: tuple[RetrievalTraceStep, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
