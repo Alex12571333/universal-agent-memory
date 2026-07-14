@@ -48,7 +48,9 @@ workspace scan, so rollout cannot cause recall loss.
   Missing, partial or tokenless backfill always retains the authorized fallback;
   no configuration flag can force indexed-only recall.
 - Batch backfill is restart-safe. Rotation execution and query-plan release
-  evidence are still outstanding gates.
+  evidence were validated in an isolated PostgreSQL 17 target run; see
+  [TARGET_PROTECTED_SEARCH_ROTATION_VALIDATION_2026_07_14.md](../TARGET_PROTECTED_SEARCH_ROTATION_VALIDATION_2026_07_14.md).
+  Coordinated all-writer deployment and retained reports remain release gates.
 
 ### Backfill operation
 
