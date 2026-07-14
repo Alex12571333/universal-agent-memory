@@ -260,6 +260,9 @@ class GraphRepository(Protocol):
         item_id: UUID,
         *,
         edge_type: MemoryEdgeType | None = None,
+        after_created_at: datetime | None = None,
+        after_edge_id: UUID | None = None,
+        limit: int = 100,
     ) -> tuple[MemoryEdge, ...]:
         """List incoming and outgoing edges for one item."""
         ...

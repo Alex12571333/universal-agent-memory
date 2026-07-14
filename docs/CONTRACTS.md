@@ -73,6 +73,12 @@ tenant/thread, затем читает ordered head и вставляет сле
 `CandidateSource.search` не имеет права возвращать другой project/server.
 Retrieval service повторно проверяет boundary/status как defense in depth.
 
+`GET /v1/memory/{item_id}/neighbors` возвращает edges в стабильном ascending
+порядке `(created_at, id)`, не более 500 за страницу. Следующая страница
+использует оба поля `after_created_at` и `after_edge_id`; частичный cursor
+отклоняется. Storage adapter допускает одну дополнительную sentinel-строку,
+чтобы `has_more` оставался корректным и на максимальном размере страницы.
+
 `ObservationRepository` хранит только derived data. Удаление observation не
 удаляет evidence.
 

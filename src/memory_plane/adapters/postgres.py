@@ -1085,7 +1085,8 @@ class PostgresMemoryLedger:
         limit: int = 100,
     ) -> tuple[AuditEvent, ...]:
         """List recent audit events under RLS."""
-        safe_limit = max(1, min(int(limit), 500))
+        # API callers request one sentinel row beyond the public 500-row page.
+        safe_limit = max(1, min(int(limit), 501))
         with self._connection() as connection:
             self._set_tenant(connection, tenant_id)
             rows = connection.execute(
@@ -1388,7 +1389,8 @@ class PostgresMemoryLedger:
         limit: int = 50,
     ) -> tuple[ConversationTurn, ...]:
         """List recent raw conversation turns with their ordered messages."""
-        safe_limit = max(1, min(int(limit), 200))
+        # API callers request one sentinel row beyond the public 200-row page.
+        safe_limit = max(1, min(int(limit), 201))
         with self._connection() as connection:
             self._set_tenant(connection, tenant_id)
             rows = connection.execute(
@@ -1695,7 +1697,8 @@ class PostgresMemoryLedger:
         limit: int = 50,
     ) -> tuple[MemoryProposal, ...]:
         """List recent memory proposals under RLS."""
-        safe_limit = max(1, min(int(limit), 200))
+        # API callers request one sentinel row beyond the public 200-row page.
+        safe_limit = max(1, min(int(limit), 201))
         with self._connection() as connection:
             self._set_tenant(connection, tenant_id)
             rows = connection.execute(
@@ -2204,8 +2207,13 @@ class PostgresMemoryLedger:
         item_id: UUID,
         *,
         edge_type: MemoryEdgeType | None = None,
+        after_created_at: datetime | None = None,
+        after_edge_id: UUID | None = None,
+        limit: int = 100,
     ) -> tuple[MemoryEdge, ...]:
         """List incoming/outgoing graph edges under RLS."""
+        # API callers request one sentinel row beyond the public 500-row page.
+        safe_limit = max(1, min(int(limit), 501))
         with self._connection() as connection:
             self._set_tenant(connection, tenant_id)
             rows = connection.execute(
@@ -2216,7 +2224,12 @@ class PostgresMemoryLedger:
                 where workspace_id = %s
                   and (src_id = %s or dst_id = %s)
                   and (%s::text is null or edge_type = %s::text)
+                  and (
+                    %s::timestamptz is null
+                    or (created_at, id) > (%s::timestamptz, %s::uuid)
+                  )
                 order by created_at, id
+                limit %s
                 """,
                 (
                     workspace_id,
@@ -2224,6 +2237,10 @@ class PostgresMemoryLedger:
                     item_id,
                     edge_type.value if edge_type else None,
                     edge_type.value if edge_type else None,
+                    after_created_at,
+                    after_created_at,
+                    after_edge_id,
+                    safe_limit,
                 ),
             ).fetchall()
         return tuple(
@@ -2950,6 +2967,9 @@ class PostgresGraphRepository:
         item_id: UUID,
         *,
         edge_type: MemoryEdgeType | None = None,
+        after_created_at: datetime | None = None,
+        after_edge_id: UUID | None = None,
+        limit: int = 100,
     ) -> tuple[MemoryEdge, ...]:
         """Delegate neighbor lookup."""
         return self._store.list_neighbors(
@@ -2957,6 +2977,9 @@ class PostgresGraphRepository:
             workspace_id,
             item_id,
             edge_type=edge_type,
+            after_created_at=after_created_at,
+            after_edge_id=after_edge_id,
+            limit=limit,
         )
 
     def list_for_workspace(

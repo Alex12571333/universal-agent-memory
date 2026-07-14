@@ -2531,20 +2531,39 @@ def create_app(
         workspace_id: UUID = DEFAULT_PROJECT_ID,
         tenant_id: UUID = DEFAULT_SERVER_ID,
         edge_type: MemoryEdgeType | None = None,
+        limit: int = 100,
+        after_created_at: datetime | None = None,
+        after_edge_id: UUID | None = None,
     ) -> dict[str, Any]:
         """List incoming and outgoing graph edges for a memory item."""
+        if (after_created_at is None) != (after_edge_id is None):
+            raise HTTPException(
+                status_code=422,
+                detail="after_created_at and after_edge_id must be supplied together",
+            )
+        safe_limit = max(1, min(int(limit), 500))
         edges = services.graph.neighbors(
             tenant_id=tenant_id,
             workspace_id=workspace_id,
             item_id=item_id,
             edge_type=edge_type,
+            after_created_at=after_created_at,
+            after_edge_id=after_edge_id,
+            limit=safe_limit + 1,
         )
+        has_more = len(edges) > safe_limit
+        rows = edges[:safe_limit]
+        cursor = rows[-1] if has_more and rows else None
         return {
             "tenant_id": str(tenant_id),
             "workspace_id": str(workspace_id),
             "item_id": str(item_id),
-            "count": len(edges),
-            "edges": [_graph_edge_response(edge) for edge in edges],
+            "count": len(rows),
+            "limit": safe_limit,
+            "has_more": has_more,
+            "next_after_created_at": cursor.created_at.isoformat() if cursor else None,
+            "next_after_edge_id": str(cursor.id) if cursor else None,
+            "edges": [_graph_edge_response(edge) for edge in rows],
         }
 
     @app.post("/v1/workspaces/{workspace_id}/reindex", status_code=202)

@@ -903,6 +903,9 @@ class InMemoryMemoryStore:
         item_id: UUID,
         *,
         edge_type: MemoryEdgeType | None = None,
+        after_created_at: datetime | None = None,
+        after_edge_id: UUID | None = None,
+        limit: int = 100,
     ) -> tuple[MemoryEdge, ...]:
         """List incoming and outgoing graph edges."""
         rows = [
@@ -912,8 +915,15 @@ class InMemoryMemoryStore:
             and edge.workspace_id == workspace_id
             and (edge.src_id == item_id or edge.dst_id == item_id)
             and (edge_type is None or edge.edge_type == edge_type)
+            and (
+                after_created_at is None
+                or after_edge_id is None
+                or (edge.created_at, edge.id) > (after_created_at, after_edge_id)
+            )
         ]
-        return tuple(sorted(rows, key=lambda row: (row.created_at, row.id)))
+        # API callers request one sentinel row beyond the public 500-row page.
+        safe_limit = max(1, min(int(limit), 501))
+        return tuple(sorted(rows, key=lambda row: (row.created_at, row.id))[:safe_limit])
 
     def list_edges_for_workspace(
         self, tenant_id: UUID, workspace_id: UUID
@@ -1003,6 +1013,9 @@ class InMemoryGraphRepository:
         item_id: UUID,
         *,
         edge_type: MemoryEdgeType | None = None,
+        after_created_at: datetime | None = None,
+        after_edge_id: UUID | None = None,
+        limit: int = 100,
     ) -> tuple[MemoryEdge, ...]:
         """Delegate neighbor lookup."""
         return self._store.list_neighbors(
@@ -1010,6 +1023,9 @@ class InMemoryGraphRepository:
             workspace_id,
             item_id,
             edge_type=edge_type,
+            after_created_at=after_created_at,
+            after_edge_id=after_edge_id,
+            limit=limit,
         )
 
     def list_for_workspace(
