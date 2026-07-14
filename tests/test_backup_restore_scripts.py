@@ -1267,10 +1267,17 @@ def test_audit_retention_dry_run_exports_and_verifies_without_pruning(
     tenant = uuid4()
     workspace = uuid4()
     commands: list[list[str]] = []
+    child_envs: list[dict[str, str]] = []
     audit = Mock()
 
-    def fake_run(command: list[str], *, check: bool = False) -> subprocess.CompletedProcess[str]:
+    def fake_run(
+        command: list[str],
+        *,
+        check: bool = False,
+        env: dict[str, str] | None = None,
+    ) -> subprocess.CompletedProcess[str]:
         commands.append(command)
+        child_envs.append(env or {})
         bundle = Path(command[2])
         if "--verify" not in command:
             bundle.mkdir(parents=True, exist_ok=True)
@@ -1308,6 +1315,12 @@ def test_audit_retention_dry_run_exports_and_verifies_without_pruning(
     assert "--all-pages" in commands[0]
     assert "--until" in commands[0]
     assert "--verify" in commands[1]
+    assert "--database-url" not in commands[0]
+    assert "--signing-key" not in commands[0]
+    assert "--signing-key" not in commands[1]
+    assert child_envs[0]["UAM_DATABASE_URL"] == "postgresql://example/db"
+    assert child_envs[0]["UAM_AUDIT_SIGNING_KEY"] == "audit-signing-key"
+    assert child_envs[1]["UAM_AUDIT_SIGNING_KEY"] == "audit-signing-key"
     audit.prune_events.assert_not_called()
 
 
@@ -1343,7 +1356,12 @@ def test_audit_retention_apply_prunes_only_after_verify(
     audit = Mock()
     audit.prune_events.side_effect = [2, 0]
 
-    def fake_run(command: list[str], *, check: bool = False) -> subprocess.CompletedProcess[str]:
+    def fake_run(
+        command: list[str],
+        *,
+        check: bool = False,
+        env: dict[str, str] | None = None,
+    ) -> subprocess.CompletedProcess[str]:
         commands.append(command)
         bundle = Path(command[2])
         if "--verify" not in command:
@@ -1405,7 +1423,12 @@ def test_audit_retention_does_not_prune_when_verify_fails(
 ) -> None:
     audit = Mock()
 
-    def fake_run(command: list[str], *, check: bool = False) -> subprocess.CompletedProcess[str]:
+    def fake_run(
+        command: list[str],
+        *,
+        check: bool = False,
+        env: dict[str, str] | None = None,
+    ) -> subprocess.CompletedProcess[str]:
         bundle = Path(command[2])
         if "--verify" not in command:
             bundle.mkdir(parents=True, exist_ok=True)

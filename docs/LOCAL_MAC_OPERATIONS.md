@@ -13,14 +13,18 @@ OBELISK_BACKUP_DIR=/Users/<user>/.local/share/obelisk-memory/backups
 OBELISK_AUDIT_DIR=/Users/<user>/.local/share/obelisk-memory/audit
 # Optional: defaults to <workspace>/.env when omitted.
 OBELISK_RUNTIME_ENV_FILE=/absolute/path/to/universal-agent-memory/.env
-UAM_BACKUP_DATABASE_URL=postgresql://... 
-UAM_MAINTENANCE_DATABASE_URL=postgresql://...
+UAM_BACKUP_DATABASE_URL_FILE=/Users/<user>/.config/obelisk-memory/backup_database_url
+UAM_MAINTENANCE_DATABASE_URL_FILE=/Users/<user>/.config/obelisk-memory/maintenance_database_url
+UAM_AUDIT_RETENTION_DATABASE_URL_FILE=/Users/<user>/.config/obelisk-memory/audit_retention_database_url
 UAM_BACKUP_ENCRYPTION_KEY_FILE=/Users/<user>/.config/obelisk-memory/backup_encryption_key
 UAM_BACKUP_SIGNING_KEY_FILE=/Users/<user>/.config/obelisk-memory/backup_signing_key
 UAM_BACKUP_SIGNING_KEY_ID=local-backup-key-2026
+UAM_AUDIT_SIGNING_KEY_FILE=/Users/<user>/.config/obelisk-memory/audit_signing_key
+UAM_AUDIT_RETENTION_DAYS=365
 UAM_API_KEY_FILE=/Users/<user>/.config/obelisk-memory/operator_api_key
 UAM_METRICS_URL=http://127.0.0.1:6798/metrics
 UAM_INTERNAL_BASE_URL=http://127.0.0.1:6798
+UAM_SYSTEM_STATUS_URL=http://127.0.0.1:6798/v1/system/status
 # Local notification route; receives a redacted JSON report on stdin.
 UAM_ALERT_COMMAND="/absolute/path/to/universal-agent-memory/.venv/bin/python /absolute/path/to/universal-agent-memory/scripts/macos_alert.py"
 UAM_SERVER_ID=00000000-0000-0000-0000-000000000001
@@ -39,15 +43,16 @@ python scripts/install_launchd_ops.py \
   --workspace "$PWD" \
   --env-file ~/.config/obelisk-memory/ops.env
 
-for job in conversation-retention backup maintenance semantic-recovery metrics; do
+for job in conversation-retention backup maintenance audit-retention semantic-recovery metrics runtime-dependencies; do
   launchctl bootstrap "gui/$(id -u)" \
     "$HOME/Library/LaunchAgents/com.obelisk-memory.$job.plist"
 done
 ```
 
-Schedules are conversation staging purge daily at 02:47, backup at 03:23,
-operational retention at 03:37, semantic recovery every Sunday at 04:13, and
-metrics daily at 09:17. Generated wrappers and logs live under
+Schedules are conversation staging purge daily at 02:47, signed backup at
+03:23, operational retention at 04:07, signed audit export-before-prune at
+04:37, semantic recovery every Sunday at 05:13, metrics at 09:17, and the
+NATS/embedding-worker dependency gate at 09:27. Generated wrappers and logs live under
 `~/Library/LaunchAgents/obelisk-memory/`; reports are under
 `OBELISK_EVIDENCE_DIR`. `launchctl print gui/$(id -u)/com.obelisk-memory.metrics`
 shows the last exit code. Keep backup artifacts on an encrypted external disk
@@ -61,10 +66,12 @@ restores it into temporary PostgreSQL/Qdrant containers, proves dense recall
 from the restored ledger, saves timestamped evidence, then removes the
 temporary resources.
 
-On 2026-07-12 the three jobs were installed and manually smoke-tested on the
-reference local appliance: metrics and maintenance exited `0`, and the backup
-job completed PostgreSQL dump, AES-256-GCM encryption, isolated restore drill
-and audit export with exit `0`. On macOS Docker Desktop commonly installs
+On 2026-07-12 the then-installed metrics, maintenance, and backup jobs were
+manually smoke-tested on the reference local appliance: metrics and maintenance
+exited `0`, and backup completed PostgreSQL dump, AES-256-GCM encryption,
+isolated restore drill and audit export with exit `0`. The audit-retention and
+runtime-dependency schedules added later require their own successful local
+evidence before a release may claim them as proven. On macOS Docker Desktop commonly installs
 `docker` under `/usr/local/bin`, hence that directory is required in the job
 `PATH` alongside Homebrew `libpq`.
 

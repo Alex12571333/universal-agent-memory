@@ -8,6 +8,11 @@ remains a local, self-hosted memory server whose canonical state is PostgreSQL.
 The Markdown vault stays a human-readable projection and an explicitly
 controlled editing interface; it is not the system of record.
 
+The implementation review was refreshed on 2026-07-14 against upstream commit
+`0a387c3c68d29253fdb74378390eea7edf0e3137`.  The reviewed repository still has
+no source-code license, so this phase copies no code, icons, text, or assets.
+It implements independently only the architectural behaviours listed below.
+
 The phase has two goals:
 
 1. make a vault's structural health visible without an LLM; and
@@ -86,6 +91,21 @@ used.
    remains a later operator feature.
 4. Opt-in bounded integration seed, evaluated against context budgets.
 5. CAS-backed targeted editor patches, including concurrency and reindex tests.
+
+## Upstream-to-Obelisk decision matrix
+
+| Understory behaviour | Obelisk decision | Production boundary |
+| --- | --- | --- |
+| deterministic orphan/broken-link lint | adopted as canonical vault health | PostgreSQL IDs, typed edges, provenance and tenant isolation replace Markdown link scanning |
+| query-path replay | adopted through redacted audit replay | no prompt, transcript, API key or memory body is stored in replay metadata |
+| session-start memory seed | adopted as an opt-in bounded seed | only shared recallable heads; private/thread data is excluded and scoped recall remains mandatory |
+| targeted section/frontmatter patch | adopt next | CAS append-only revision, provenance preservation, outbox and asynchronous re-embedding are mandatory |
+| force-directed graph and replay overlay | UI idea retained | graph data comes from canonical typed edges and remains tenant/workspace scoped |
+| Markdown as canonical state | rejected | Markdown remains a human-readable projection; PostgreSQL is authoritative |
+| in-process mutation queue | rejected | PostgreSQL CAS, transactional outbox and idempotent consumers support concurrent agents |
+| model-driven auto-link/repair | rejected | an LLM can propose a repair but deterministic validation and evidence policy decide durability |
+| literal file scan | rejected | lexical PostgreSQL search plus dense Qdrant retrieval remains the supported path |
+| MCP-only integration | rejected as primary integration | OpenAI-compatible/agent-native hooks and SDKs remain primary; MCP is optional interoperability |
 
 ## Implementation status — 2026-07-13
 
