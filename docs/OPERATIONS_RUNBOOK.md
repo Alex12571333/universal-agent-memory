@@ -332,15 +332,23 @@ dump is not the exact signed artifact:
 PYTHONPATH=src python scripts/restore.py \
   ./backups/obelisk-memory-<timestamp>.dump.enc \
   --bundle-manifest ./backups/obelisk-memory-<timestamp>.bundle.json \
-  --bundle-signing-key "$UAM_BACKUP_SIGNING_KEY" \
   --require-bundle-signature \
-  --database-url "$UAM_RESTORE_DATABASE_URL" \
   --clean
 ```
+
+Before running it, set `UAM_RESTORE_DATABASE_URL_FILE`,
+`UAM_BACKUP_ENCRYPTION_KEY_FILE`, and `UAM_BACKUP_SIGNING_KEY_FILE` to
+mode-`0600` operator-owned files. Do not put a DSN, encryption key, or signing
+key in command arguments: Obelisk passes the database password to libpq through
+a temporary mode-`0600` `PGPASSFILE`, which is removed immediately after the
+subprocess exits.
 
 Use a separately held backup signing key, never the encryption key. The
 low-level restore command still supports explicitly unsigned dumps for drills
 and migrations; that mode is not a production recovery procedure.
+The real isolated target result and the readiness races corrected during that
+exercise are recorded in
+[target secret-safe backup validation](TARGET_SECRET_SAFE_BACKUP_VALIDATION_2026_07_14.md).
 
 Preserve machine-readable schedule evidence before a full-production release:
 
@@ -372,13 +380,13 @@ Export recent operator/agent audit events before upgrades, incident response, or
 security review:
 
 ```bash
+UAM_AUDIT_SIGNING_KEY_FILE=/run/secrets/uam_audit_signing_key \
 PYTHONPATH=src python scripts/export_audit.py ./audit-export \
   --tenant-id "$UAM_SERVER_ID" \
   --workspace-id "$UAM_PROJECT_ID" \
   --since 2026-07-01T00:00:00Z \
   --until 2026-07-11T00:00:00Z \
   --all-pages \
-  --signing-key "$UAM_AUDIT_SIGNING_KEY" \
   --batch-size 500
 ```
 
@@ -396,8 +404,8 @@ Verify the bundle before relying on it:
 cd audit-export
 shasum -a 256 -c manifest.sha256
 shasum -a 256 audit-events.jsonl
-PYTHONPATH=src python ../scripts/export_audit.py . --verify \
-  --signing-key "$UAM_AUDIT_SIGNING_KEY"
+UAM_AUDIT_SIGNING_KEY_FILE=/run/secrets/uam_audit_signing_key \
+PYTHONPATH=src python ../scripts/export_audit.py . --verify
 ```
 
 The current export is intentionally bounded to the recent filtered audit window
@@ -413,8 +421,9 @@ first, prune only when explicitly applying the retention policy.
 Dry-run the retention job:
 
 ```bash
-UAM_AUDIT_SIGNING_KEY=... PYTHONPATH=src python scripts/audit_retention.py \
-  --database-url "$UAM_AUDIT_RETENTION_DATABASE_URL" \
+UAM_AUDIT_SIGNING_KEY_FILE=/run/secrets/uam_audit_signing_key \
+UAM_AUDIT_RETENTION_DATABASE_URL_FILE=/run/secrets/uam_audit_retention_database_url \
+PYTHONPATH=src python scripts/audit_retention.py \
   --tenant-id "$UAM_SERVER_ID" \
   --workspace-id "$UAM_PROJECT_ID" \
   --retain-days 365 \
@@ -426,8 +435,9 @@ Apply only after the exported bundle has been shipped to durable/immutable
 storage:
 
 ```bash
-UAM_AUDIT_SIGNING_KEY=... PYTHONPATH=src python scripts/audit_retention.py \
-  --database-url "$UAM_AUDIT_RETENTION_DATABASE_URL" \
+UAM_AUDIT_SIGNING_KEY_FILE=/run/secrets/uam_audit_signing_key \
+UAM_AUDIT_RETENTION_DATABASE_URL_FILE=/run/secrets/uam_audit_retention_database_url \
+PYTHONPATH=src python scripts/audit_retention.py \
   --tenant-id "$UAM_SERVER_ID" \
   --workspace-id "$UAM_PROJECT_ID" \
   --retain-days 365 \

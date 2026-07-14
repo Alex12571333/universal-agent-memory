@@ -15,6 +15,11 @@ from pathlib import Path
 
 from backup_encryption import BackupEncryptionError, decrypt_file, parse_key
 
+from memory_plane.config.database import read_database_dsn
+from memory_plane.config.postgres_process import (
+    password_free_postgres_dsn,
+    postgres_process_connection,
+)
 from memory_plane.config.secrets import read_secret_env
 
 REQUIRED_TABLES = (
@@ -86,7 +91,13 @@ def main() -> int:
     )
     parser.add_argument(
         "--source-database-url",
-        default=os.getenv("UAM_BACKUP_DATABASE_URL") or os.getenv("UAM_DATABASE_URL"),
+        default=(
+            read_database_dsn(
+                "UAM_BACKUP_DATABASE_URL",
+                component_prefix="UAM_BACKUP_DATABASE",
+            )
+            or read_database_dsn()
+        ),
         help="Optional source PostgreSQL URL used to verify restored row counts",
     )
     parser.add_argument(
@@ -119,7 +130,10 @@ def main() -> int:
     db = "memory"
     user = "memory_admin"
     password = f"drill-{secrets.token_hex(12)}"
-    dsn = f"postgresql://{user}:{password}@localhost:5432/{db}"
+    # Every restore command runs inside the temporary PostgreSQL container.
+    # Use the same Unix socket that readiness checks, avoiding a race where the
+    # socket is ready before the TCP listener accepts localhost connections.
+    dsn = f"postgresql:///{db}?user={user}"
     remote_backup = "/tmp/obelisk-memory.dump"
     decrypted_backup: Path | None = None
 
@@ -141,6 +155,15 @@ def main() -> int:
             raise RuntimeError(f"unable to decrypt backup: {exc}") from exc
         backup = decrypted_backup
 
+    env_descriptor, env_name = tempfile.mkstemp(prefix="obelisk-restore-docker-")
+    os.fchmod(env_descriptor, 0o600)
+    with os.fdopen(env_descriptor, "w", encoding="utf-8") as env_handle:
+        env_handle.write(f"POSTGRES_DB={db}\n")
+        env_handle.write(f"POSTGRES_USER={user}\n")
+        env_handle.write(f"POSTGRES_PASSWORD={password}\n")
+        env_handle.write(f"PGPASSWORD={password}\n")
+    container_env_file = Path(env_name)
+
     try:
         _run(["docker", "volume", "create", volume])
         _run(
@@ -150,12 +173,8 @@ def main() -> int:
                 "-d",
                 "--name",
                 container,
-                "-e",
-                f"POSTGRES_DB={db}",
-                "-e",
-                f"POSTGRES_USER={user}",
-                "-e",
-                f"POSTGRES_PASSWORD={password}",
+                "--env-file",
+                str(container_env_file),
                 "-v",
                 f"{volume}:/var/lib/postgresql/data",
                 args.image,
@@ -201,6 +220,7 @@ def main() -> int:
     finally:
         if decrypted_backup is not None:
             decrypted_backup.unlink(missing_ok=True)
+        container_env_file.unlink(missing_ok=True)
         if not args.keep:
             _run(["docker", "rm", "-f", container], check=False)
             _run(["docker", "volume", "rm", "-f", volume], check=False)
@@ -220,15 +240,21 @@ def _wait_for_postgres(
                 "docker",
                 "exec",
                 container,
-                "pg_isready",
-                "-U",
+                "psql",
+                "--no-psqlrc",
+                "--username",
                 user,
-                "-d",
+                "--dbname",
                 db,
+                "--tuples-only",
+                "--no-align",
+                "--command",
+                "select 1",
             ],
             check=False,
+            capture_output=True,
         )
-        if result.returncode == 0:
+        if result.returncode == 0 and result.stdout.strip() == "1":
             return
         time.sleep(1)
     raise RuntimeError(f"temporary PostgreSQL did not become ready: {container}")
@@ -352,12 +378,17 @@ def _query_source_counts(
     """Query source rows with host psql or the local Compose PostgreSQL fallback."""
     psql_args = ["psql", "--tuples-only", "--no-align"]
     if shutil.which("psql"):
-        return _run(
-            [*psql_args, f"--dbname={source_dsn}", "--command", sql],
-            capture_output=True,
-        )
+        with postgres_process_connection(source_dsn) as connection:
+            return _run(
+                [*psql_args, f"--dbname={connection.dsn}", "--command", sql],
+                capture_output=True,
+                env=connection.environment,
+            )
     if not docker_service or any(character.isspace() for character in docker_service):
         raise ValueError("source Docker service must be a non-empty Compose service name")
+    sanitized_dsn, password = password_free_postgres_dsn(
+        _compose_source_dsn(source_dsn)
+    )
     return _run(
         [
             "docker",
@@ -365,12 +396,19 @@ def _query_source_counts(
             "exec",
             "-T",
             docker_service,
+            "sh",
+            "-c",
+            "IFS= read -r supplied; "
+            "PGPASSWORD=${supplied:-${POSTGRES_PASSWORD:-}}; export PGPASSWORD; "
+            'exec "$@"',
+            "obelisk-pg",
             *psql_args,
-            f"--dbname={_compose_source_dsn(source_dsn)}",
+            f"--dbname={sanitized_dsn}",
             "--command",
             sql,
         ],
         capture_output=True,
+        input_text=f"{password or ''}\n",
     )
 
 
@@ -476,14 +514,20 @@ def _run(
     *,
     check: bool = True,
     capture_output: bool = False,
+    env: dict[str, str] | None = None,
+    input_text: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Run a command with consistent text output settings."""
-    return subprocess.run(
-        command,
-        check=check,
-        text=True,
-        capture_output=capture_output,
-    )
+    options: dict[str, object] = {
+        "check": check,
+        "text": True,
+        "capture_output": capture_output,
+    }
+    if env is not None:
+        options["env"] = env
+    if input_text is not None:
+        options["input"] = input_text
+    return subprocess.run(command, **options)
 
 
 if __name__ == "__main__":

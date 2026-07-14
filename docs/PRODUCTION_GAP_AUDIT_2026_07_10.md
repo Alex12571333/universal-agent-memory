@@ -108,7 +108,14 @@ static readiness script are green.
    but direct `backup.py` is intentionally a low-level raw-dump primitive and
    must not be used for a production schedule. Production documentation must
    not describe `UAM_MEMORY_TEXT_ENCRYPTION_SCOPES=all` as full-database
-   encryption.
+   encryption. Scheduled backup, restore, restore-parity and audit-export child
+   processes no longer receive database URLs or signing/encryption keys in
+   argv. Host libpq tools receive credentials through a short-lived mode-`0600`
+   `PGPASSFILE`; Docker fallbacks receive the password through stdin or a
+   deleted mode-`0600` env file. Regression tests inspect every generated
+   command and reject a secret-bearing argv. A real isolated PostgreSQL 17
+   dump/restore/RLS/row-parity run passed on `.14`; see
+   [target secret-safe backup validation](TARGET_SECRET_SAFE_BACKUP_VALIDATION_2026_07_14.md).
 
 6. **Fail-soft recall is implemented; broader reliability evidence remains required.**
    PostgreSQL is the required canonical candidate source. Qdrant connection and
