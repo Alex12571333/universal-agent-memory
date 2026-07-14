@@ -46,6 +46,16 @@ class _RecoveringCandidateSource:
         return ()
 
 
+class _StaticCandidateSource:
+    name = "calibration_vector"
+
+    def __init__(self, candidates: tuple[Candidate, ...]) -> None:
+        self._candidates = candidates
+
+    def search(self, _query: RecallQuery) -> tuple[Candidate, ...]:
+        return self._candidates
+
+
 class MemoryPlaneTest(unittest.TestCase):
     def setUp(self) -> None:
         self.container = build_in_memory_container()
@@ -275,6 +285,32 @@ class MemoryPlaneTest(unittest.TestCase):
         self.assertEqual(active.item.id, result.candidates[0].item.id)
         by_id = {row.item.id: row for row in result.candidates}
         self.assertLess(by_id[disputed.item.id].final_score, by_id[active.item.id].final_score)
+
+    def test_relevance_floor_keeps_useful_dense_match_and_rejects_noise(self) -> None:
+        useful = self.retain("Dense semantic paraphrase in Russian")
+        noise = self.retain("Unrelated dense candidate")
+        retrieval = RetrievalService(
+            (
+                _StaticCandidateSource(
+                    (
+                        Candidate(item=useful.item, source="calibration_vector", semantic=0.70),
+                        Candidate(item=noise.item, source="calibration_vector", semantic=0.50),
+                    )
+                ),
+            )
+        )
+
+        result = retrieval.recall(
+            RecallQuery(
+                tenant_id=self.tenant,
+                workspace_id=self.workspace,
+                text="семантический парафраз",
+                minimum_score=0.45,
+            )
+        )
+
+        self.assertEqual((useful.item.id,), tuple(row.item.id for row in result.candidates))
+        self.assertGreaterEqual(result.candidates[0].final_score, 0.45)
 
     def test_pinned_memory_must_be_core(self) -> None:
         with self.assertRaises(ValueError):

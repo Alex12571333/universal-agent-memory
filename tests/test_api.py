@@ -841,7 +841,7 @@ def test_api_key_is_disabled_when_not_configured(monkeypatch) -> None:
     assert response.status_code == 200
 
 
-def test_recall_default_context_budget_is_compact_8k() -> None:
+def test_recall_default_context_budget_is_compact_1200() -> None:
     client = TestClient(create_app(build_in_memory_container()))
 
     response = client.post(
@@ -850,12 +850,12 @@ def test_recall_default_context_budget_is_compact_8k() -> None:
     )
 
     assert response.status_code == 200
-    assert response.json()["context"]["budget_tokens"] == 8192
+    assert response.json()["context"]["budget_tokens"] == 1200
 
 
-def test_recall_8k_context_can_include_more_than_100_small_items() -> None:
+def test_recall_default_context_caps_each_layer_at_three_items() -> None:
     client = TestClient(create_app(build_in_memory_container()))
-    for index in range(120):
+    for index in range(12):
         retained = client.post(
             "/v1/memory/retain",
             json={
@@ -863,19 +863,69 @@ def test_recall_8k_context_can_include_more_than_100_small_items() -> None:
                 "scope": "workspace",
                 "kind": "fact",
                 "text": f"Bulk compact context memory {index} shared keyword zephyr.",
-                "idempotency_key": f"api-bulk-8k:{index}",
+                "idempotency_key": f"api-bulk-compact:{index}",
             },
         )
         assert retained.status_code == 201
 
     response = client.post(
         "/v1/memory/recall",
-        json={"query": "zephyr", "top_k": 120},
+        json={"query": "zephyr", "top_k": 12},
     )
 
     assert response.status_code == 200
-    assert response.json()["context"]["budget_tokens"] == 8192
-    assert len(response.json()["context"]["trace_ids"]) == 120
+    assert response.json()["context"]["budget_tokens"] == 1200
+    assert len(response.json()["context"]["trace_ids"]) == 3
+
+    research = client.post(
+        "/v1/memory/recall",
+        json={
+            "query": "zephyr",
+            "top_k": 12,
+            "context_budget_tokens": 2500,
+            "context_per_layer_limit": 6,
+        },
+    )
+    assert research.status_code == 200
+    assert len(research.json()["context"]["trace_ids"]) == 6
+
+
+@pytest.mark.parametrize(
+    ("query", "weak", "key_prefix"),
+    (
+        ("zephyr deployment qdrant", "zephyr unrelated note", "en"),
+        ("обелиск модель эмбеддингов", "обелиск посторонняя заметка", "ru"),
+    ),
+)
+def test_recall_default_relevance_floor_keeps_exact_and_drops_weak_match(
+    query: str,
+    weak: str,
+    key_prefix: str,
+) -> None:
+    client = TestClient(create_app(build_in_memory_container()))
+    for text, key in (
+        (query, f"relevance-{key_prefix}-exact"),
+        (weak, f"relevance-{key_prefix}-weak"),
+    ):
+        response = client.post(
+            "/v1/memory/retain",
+            json={
+                "layer": "semantic",
+                "scope": "workspace",
+                "kind": "fact",
+                "text": text,
+                "idempotency_key": key,
+            },
+        )
+        assert response.status_code == 201
+
+    response = client.post(
+        "/v1/memory/recall",
+        json={"query": query},
+    )
+
+    assert response.status_code == 200
+    assert [row["text"] for row in response.json()["results"]] == [query]
 
 
 def test_conversation_turn_endpoint_stores_raw_transcript_separately() -> None:

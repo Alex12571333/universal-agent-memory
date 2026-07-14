@@ -38,10 +38,11 @@ class RecallRequest:
     thread_id: str | None = None
     layers: tuple[str, ...] = ()
     labels: tuple[str, ...] = ()
-    top_k: int = 12
-    minimum_score: float = 0.0
+    top_k: int = 6
+    minimum_score: float = 0.45
     operation: str = "chat_reply"
-    context_budget_tokens: int = 4000
+    context_budget_tokens: int = 1200
+    context_per_layer_limit: int = 3
 
     def to_dict(self) -> dict[str, Any]:
         return _compact(asdict(self))

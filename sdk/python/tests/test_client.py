@@ -7,6 +7,7 @@ from uam_client import (
     IdentityProvisionRequest,
     InvalidRequestError,
     MemoryClient,
+    RecallRequest,
     RetainRequest,
     RetryPolicy,
 )
@@ -94,6 +95,15 @@ def test_api_key_is_sent_as_bearer_token() -> None:
     MemoryClient(api_key="secret", transport=transport).health()
 
     assert transport.headers[0]["Authorization"] == "Bearer secret"
+
+
+def test_recall_request_uses_compact_production_defaults() -> None:
+    payload = RecallRequest(query="What did we use before?").to_dict()
+
+    assert payload["top_k"] == 6
+    assert payload["minimum_score"] == 0.45
+    assert payload["context_budget_tokens"] == 1200
+    assert payload["context_per_layer_limit"] == 3
 
 
 def test_operator_can_provision_agent_and_thread() -> None:

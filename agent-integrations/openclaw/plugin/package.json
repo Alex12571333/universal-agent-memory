@@ -19,6 +19,7 @@
     }
   },
   "scripts": {
-    "check": "node --check index.js"
+    "check": "node --check index.js && node --check recall_gate.js",
+    "test": "node --test recall_gate.test.js"
   }
 }

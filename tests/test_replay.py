@@ -40,6 +40,7 @@ def test_recall_replay_is_durable_redacted_and_workspace_scoped() -> None:
             "query": secret_query,
             "operation": "operator-review",
             "context_budget_tokens": 512,
+            "minimum_score": 0,
         },
     )
 

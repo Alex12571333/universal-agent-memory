@@ -93,8 +93,9 @@ from memory_plane.services.vault import (
 DEFAULT_SERVER_ID = UUID("00000000-0000-0000-0000-000000000001")
 DEFAULT_PROJECT_ID = UUID("00000000-0000-0000-0000-000000000002")
 DEFAULT_THREAD_ID = UUID("00000000-0000-0000-0000-000000000003")
-DEFAULT_CONTEXT_BUDGET_TOKENS = int(os.getenv("UAM_CONTEXT_BUDGET_TOKENS", "8192"))
-DEFAULT_CONTEXT_PER_LAYER_LIMIT = int(os.getenv("UAM_CONTEXT_PER_LAYER_LIMIT", "1000"))
+DEFAULT_CONTEXT_BUDGET_TOKENS = int(os.getenv("UAM_CONTEXT_BUDGET_TOKENS", "1200"))
+DEFAULT_CONTEXT_PER_LAYER_LIMIT = int(os.getenv("UAM_CONTEXT_PER_LAYER_LIMIT", "3"))
+DEFAULT_RECALL_MINIMUM_SCORE = float(os.getenv("UAM_RECALL_MINIMUM_SCORE", "0.45"))
 PROCESS_STARTED_AT = time.time()
 LOGGER = logging.getLogger(__name__)
 
@@ -252,10 +253,15 @@ class RecallBody(BaseModel):
     thread_id: UUID | None = None
     layers: list[MemoryLayer] = Field(default_factory=list)
     labels: list[str] = Field(default_factory=list)
-    top_k: int = Field(default=12, ge=1, le=1000)
-    minimum_score: float = Field(default=0, ge=0, le=1)
+    top_k: int = Field(default=6, ge=1, le=1000)
+    minimum_score: float = Field(default=DEFAULT_RECALL_MINIMUM_SCORE, ge=0, le=1)
     operation: str = "chat_reply"
     context_budget_tokens: int = Field(default=DEFAULT_CONTEXT_BUDGET_TOKENS, ge=128)
+    context_per_layer_limit: int = Field(
+        default=DEFAULT_CONTEXT_PER_LAYER_LIMIT,
+        ge=1,
+        le=1000,
+    )
 
 
 class UiSessionLoginBody(BaseModel):
@@ -2515,7 +2521,7 @@ def create_app(
                 MemoryLayer.ERROR,
                 MemoryLayer.SOCIAL,
             ),
-            per_layer_limit={layer: DEFAULT_CONTEXT_PER_LAYER_LIMIT for layer in MemoryLayer},
+            per_layer_limit={layer: body.context_per_layer_limit for layer in MemoryLayer},
         )
         package = services.context.compile(result, recipe)
         principal = _principal_from_request(request)
@@ -2540,6 +2546,7 @@ def create_app(
                 if result.index_freshness is None
                 else asdict(result.index_freshness),
                 "context_budget_tokens": package.budget_tokens,
+                "context_per_layer_limit": body.context_per_layer_limit,
                 "context_used_tokens": package.used_tokens,
                 "trace_ids": [str(item_id) for item_id in package.trace_ids],
             },

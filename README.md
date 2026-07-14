@@ -254,9 +254,26 @@ UAM_MEMORY_LLM_EXTRA_BODY_JSON={}
 фрагменты, а затем иерархически сворачивает только их JSON-выжимки. Полная
 переписка никогда не отправляется одним prompt.
 
-The separate agent recall budget remains configurable with
-`UAM_CONTEXT_BUDGET_TOKENS` (default `8192`); it is not sent wholesale to
-the curator.
+The separate agent recall path is adaptive by default. OpenClaw and Hermes skip
+automatic recall for greetings, simple calculations, short translations and
+self-contained requests. Historical, personal, project and ambiguous requests
+receive a compact package:
+
+```dotenv
+UAM_RECALL_MODE=adaptive
+UAM_MEMORY_RECALL_TOP_K=6
+UAM_CONTEXT_BUDGET_TOKENS=1200
+UAM_CONTEXT_PER_LAYER_LIMIT=3
+UAM_RECALL_MINIMUM_SCORE=0.45
+```
+
+For a deliberate research turn, set integration metadata
+`force_full_recall=true`, plugin option `forceFullRecall`, or
+`UAM_RECALL_MODE=always`. The explicit tier defaults to `top_k=10`, 2500 tokens
+and 6 records per layer; every value remains configurable. `off` disables only
+automatic pre-turn recall, not explicit memory-search tools. Gate decisions are
+local and deterministic, and injected records are always framed as untrusted
+reference data. See [ADR 0002](docs/DECISIONS/0002-adaptive-recall-gate.md).
 
 `BASE_URL`, `MODEL`, `API_KEY`, and optional `EXTRA_BODY_JSON` belong to the
 selected deployment. They may identify a direct hosted endpoint, an

@@ -20,8 +20,15 @@
       "agentId": { "type": "string" },
       "threadId": { "type": "string" },
       "enabled": { "type": "boolean", "default": true },
-      "topK": { "type": "number", "minimum": 1, "maximum": 1000, "default": 8 },
-      "contextBudgetTokens": { "type": "number", "minimum": 128, "maximum": 131072, "default": 8192 }
+      "recallMode": { "type": "string", "enum": ["off", "adaptive", "always"], "default": "adaptive" },
+      "topK": { "type": "number", "minimum": 1, "maximum": 1000, "default": 6 },
+      "contextBudgetTokens": { "type": "number", "minimum": 128, "maximum": 131072, "default": 1200 },
+      "contextPerLayerLimit": { "type": "number", "minimum": 1, "maximum": 1000, "default": 3 },
+      "minimumScore": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.45 },
+      "researchTopK": { "type": "number", "minimum": 1, "maximum": 1000, "default": 10 },
+      "researchContextBudgetTokens": { "type": "number", "minimum": 128, "maximum": 131072, "default": 2500 },
+      "researchContextPerLayerLimit": { "type": "number", "minimum": 1, "maximum": 1000, "default": 6 },
+      "forceFullRecall": { "type": "boolean", "default": false }
     }
   }
 }

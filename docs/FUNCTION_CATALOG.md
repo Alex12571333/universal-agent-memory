@@ -207,11 +207,15 @@
 | `shared/identity.py` | Stable UUID resolution | Explicit env UUID or deterministic UUIDv5 fallback |
 | `shared/client.py` | Stdlib HTTP client for plugin runtimes | Bearer auth, retain/recall/checkpoint/reflect |
 | `shared/plugin.py` | Runtime-neutral memory plugin core | Maps lifecycle events to retain/recall calls |
+| `shared/recall_gate.py` | Deterministic RU/EN automatic-recall gate | Modes `off/adaptive/always`; text-free reason/tier metrics |
 | `openclaw/plugin/index.js` | Installable OpenClaw native plugin | `agent_turn_prepare`, `after_tool_call`, `agent_end` hooks |
+| `openclaw/plugin/recall_gate.js` | OpenClaw gate parity implementation | Shared fixtures prevent JS/Python decision drift |
 | `openclaw/plugin/package.json` | OpenClaw extension metadata | `openclaw.extensions: ["./index.js"]` |
 | `hermes/universal_agent_memory/__init__.py` | Hermes `MemoryProvider` | `prefetch`, `sync_turn`, `on_session_end`, explicit tools |
+| `hermes/universal_agent_memory/recall_gate.py` | Standalone Hermes gate | No LLM/network dependency; bundled with provider install |
 | `hermes/universal_agent_memory/plugin.yaml` | Hermes provider metadata | User-installed memory provider manifest |
 | `scripts/agent_soak_eval.py` | Runtime evidence for OpenClaw/Hermes contract | Parallel agent markers plus cross-workspace leakage probes |
+| `scripts/adaptive_recall_target_probe.py` | Real Hermes runtime + isolated HTTP stub → JSON gate evidence | Proves skip/compact/full/metrics/fail-soft without touching agent memory |
 
 ## Composition/API
 
@@ -224,6 +228,7 @@
 | API-key middleware | Защищает все non-health routes при `UAM_API_KEY` |
 | `GET /metrics` | Prometheus counters/lag; защищён API key |
 | `GET /ready` | Canonical PostgreSQL readiness + retrieval source state | `503` only when canonical storage is unavailable; optional vector outage is `200 degraded` |
+| `POST /v1/memory/recall` | Ranked recall + bounded context package | Defaults: top-k 6, score floor 0.45, 1200 tokens, 3 records/layer; explicit per-layer override is bounded `1..1000` |
 | `GET /ui` | Local operator console | Same API-key middleware as API routes |
 | `GET /v1/system/status` | Реальное process/storage/runtime состояние для UI | Не подменяет dependency readiness |
 | `GET /v1/settings/models` | Текущие и desired model settings | Не раскрывает API keys |

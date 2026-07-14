@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -15,12 +16,16 @@ from hermes.universal_agent_memory import (  # noqa: E402
     UniversalAgentMemoryProvider,
     register_memory_provider,
 )
+from hermes.universal_agent_memory.recall_gate import (  # noqa: E402
+    evaluate_recall_gate as evaluate_hermes_gate,
+)
 from openclaw.plugin import create_plugin as create_openclaw_plugin  # noqa: E402
 from shared.client import RetainedMemory  # noqa: E402
 from shared.config import AgentMemoryConfig  # noqa: E402
 from shared.identity import resolve_workspace_id  # noqa: E402
 from shared.lifecycle import AgentEventKind, AgentLifecycleEvent, AgentRunContext  # noqa: E402
 from shared.plugin import UniversalAgentMemoryPlugin  # noqa: E402
+from shared.recall_gate import evaluate_recall_gate as evaluate_shared_gate  # noqa: E402
 
 
 class FakeMemoryClient:
@@ -57,6 +62,7 @@ def test_before_agent_run_recalls_context_package() -> None:
         thread_id=uuid4(),
         operation="plan",
         labels=("alpha",),
+        metadata={"prompt": "What remains in our project?"},
     )
 
     injection = plugin.before_agent_run(context)
@@ -65,6 +71,61 @@ def test_before_agent_run_recalls_context_package() -> None:
     assert injection.sources_used == ("postgres",)
     assert client.recalled[0]["operation"] == "plan"
     assert client.recalled[0]["labels"] == ("alpha",)
+    assert client.recalled[0]["top_k"] == 6
+    assert client.recalled[0]["context_budget_tokens"] == 1200
+    assert client.recalled[0]["context_per_layer_limit"] == 3
+    assert client.recalled[0]["minimum_score"] == 0.45
+    assert "untrusted reference data" in injection.markdown
+
+
+def test_shared_plugin_gate_skips_greeting_without_http_recall() -> None:
+    client = FakeMemoryClient()
+    plugin = UniversalAgentMemoryPlugin(client, AgentMemoryConfig())
+    context = AgentRunContext(
+        tenant_id=uuid4(),
+        workspace_id=uuid4(),
+        metadata={"prompt": "Привет!"},
+    )
+
+    assert plugin.before_agent_run(context).markdown == ""
+    assert client.recalled == []
+    assert plugin.recall_gate_metrics()["decisions"] == {"skip:greeting:none": 1}
+
+
+def test_shared_plugin_always_mode_uses_research_tier() -> None:
+    client = FakeMemoryClient()
+    plugin = UniversalAgentMemoryPlugin(client, AgentMemoryConfig(recall_mode="always"))
+    context = AgentRunContext(
+        tenant_id=uuid4(),
+        workspace_id=uuid4(),
+        metadata={"prompt": "Write a fully self-contained answer."},
+    )
+
+    plugin.before_agent_run(context)
+
+    assert client.recalled[0]["top_k"] == 10
+    assert client.recalled[0]["context_budget_tokens"] == 2500
+    assert client.recalled[0]["context_per_layer_limit"] == 6
+
+
+def test_python_gates_match_shared_ru_en_contract() -> None:
+    cases = json.loads(
+        (INTEGRATIONS / "shared" / "recall_gate_cases.json").read_text(encoding="utf-8")
+    )
+    for case in cases:
+        options = {
+            "mode": case.get("mode", "adaptive"),
+            "has_live_context": case.get("has_live_context"),
+            "force_full_recall": case.get("force_full_recall", False),
+        }
+        expected = case["expected"]
+        for evaluator in (evaluate_shared_gate, evaluate_hermes_gate):
+            decision = evaluator(case["query"], **options)
+            assert {
+                "should_recall": decision.should_recall,
+                "reason": decision.reason,
+                "tier": decision.tier,
+            } == expected
 
 
 def test_after_tool_event_retains_procedural_memory() -> None:
