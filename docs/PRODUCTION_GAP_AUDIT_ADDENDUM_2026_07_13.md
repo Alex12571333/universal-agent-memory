@@ -82,6 +82,14 @@ finding 6. Production still requires a coordinated rollout in which every
 writer advertises the new version before retirement and the resulting reports
 are preserved with release evidence.
 
+### Stable proposal review pagination
+
+The proposal review queue now uses a bounded `(created_at, id)` keyset cursor
+through the API, service and both storage adapters. A page is capped at 200
+records, exposes an explicit `has_more`/next-cursor contract and rejects partial
+cursors. This prevents concurrent proposal ingestion from shifting an offset
+and causing skipped or duplicated operator review rows.
+
 ## Remaining gate
 
 No deterministic extractor can safely infer all paraphrases, negations or

@@ -532,6 +532,8 @@ class InMemoryMemoryStore:
         *,
         namespace: str | None = None,
         status: MemoryProposalStatus | None = None,
+        before_created_at: datetime | None = None,
+        before_proposal_id: UUID | None = None,
         limit: int = 50,
     ) -> tuple[MemoryProposal, ...]:
         """List recent memory proposals."""
@@ -542,6 +544,12 @@ class InMemoryMemoryStore:
             and proposal.workspace_id == workspace_id
             and (namespace is None or proposal.namespace == namespace)
             and (status is None or proposal.status == status)
+            and (
+                before_created_at is None
+                or before_proposal_id is None
+                or (proposal.created_at, proposal.id)
+                < (before_created_at, before_proposal_id)
+            )
         ]
         rows.sort(key=lambda proposal: (proposal.created_at, proposal.id), reverse=True)
         return tuple(rows[:limit])

@@ -736,6 +736,41 @@ class PostgresMemoryLedgerTest(unittest.TestCase):
             ),
         )
 
+    def test_proposal_listing_uses_stable_keyset_cursor(self) -> None:
+        service = MemoryProposalService(self.store, RetentionService(self.store))
+        namespace = "postgres-proposal-pagination"
+        for index in range(3):
+            service.submit(
+                SubmitMemoryProposalCommand(
+                    tenant_id=self.tenant,
+                    workspace_id=self.workspace,
+                    namespace=namespace,
+                    requester="integration-test",
+                    target=MemoryProposalTarget.FACT,
+                    proposal=f"Stable proposal page {index}",
+                    idempotency_key=f"postgres-proposal-page-{index}",
+                )
+            )
+
+        first = self.store.list_proposals(
+            self.tenant,
+            self.workspace,
+            namespace=namespace,
+            limit=2,
+        )
+        second = self.store.list_proposals(
+            self.tenant,
+            self.workspace,
+            namespace=namespace,
+            before_created_at=first[-1].created_at,
+            before_proposal_id=first[-1].id,
+            limit=2,
+        )
+
+        self.assertEqual(2, len(first))
+        self.assertEqual(1, len(second))
+        self.assertFalse({row.id for row in first} & {row.id for row in second})
+
     def test_conversation_curation_audit_failure_rolls_back_proposal(self) -> None:
         turn = ConversationTurn(
             tenant_id=self.tenant,

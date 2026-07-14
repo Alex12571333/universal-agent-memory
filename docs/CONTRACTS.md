@@ -114,6 +114,13 @@ embedding jobs. Это входной шлюз для агентов: proposal +
 сначала проходят privacy guard и review/curation, а уже затем могут стать
 append-only memory.
 
+`GET /v1/memory/proposals` возвращает не более 200 записей и использует
+стабильный descending keyset cursor. Для следующей страницы клиент передаёт
+оба поля `before_created_at` и `before_proposal_id`, полученные как
+`next_before_created_at` и `next_before_proposal_id`; передача только одного
+поля отклоняется. Новые proposal, появившиеся между запросами, не сдвигают уже
+выбранную границу страницы.
+
 `MemoryProposalService.accept` создаёт `MemoryItem` через обычный
 `RetentionService` с provenance `proposal://{proposal_id}` и идемпотентным ключом
 `accept-proposal:{proposal_id}`. PostgreSQL блокирует proposal и пишет canonical

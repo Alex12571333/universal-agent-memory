@@ -864,6 +864,52 @@ def test_conversation_turn_listing_supports_stable_cursor_pagination() -> None:
     assert second.json()["has_more"] is False
 
 
+def test_memory_proposals_support_stable_cursor_pagination() -> None:
+    client = TestClient(create_app(build_in_memory_container()))
+    for index in range(3):
+        response = client.post(
+            "/v1/memory/proposals",
+            json={
+                "namespace": "pagination-test",
+                "proposal": f"Stable proposal page {index}",
+                "evidence": f"operator evidence {index}",
+                "target": "fact",
+                "idempotency_key": f"proposal-page-{index}",
+            },
+        )
+        assert response.status_code == 201
+
+    first = client.get(
+        "/v1/memory/proposals",
+        params={"namespace": "pagination-test", "limit": 2},
+    )
+    assert first.status_code == 200
+    first_body = first.json()
+    assert first_body["count"] == 2
+    assert first_body["has_more"] is True
+    first_ids = {row["id"] for row in first_body["proposals"]}
+
+    second = client.get(
+        "/v1/memory/proposals",
+        params={
+            "namespace": "pagination-test",
+            "limit": 2,
+            "before_created_at": first_body["next_before_created_at"],
+            "before_proposal_id": first_body["next_before_proposal_id"],
+        },
+    )
+    assert second.status_code == 200
+    assert second.json()["count"] == 1
+    assert second.json()["has_more"] is False
+    assert not (first_ids & {row["id"] for row in second.json()["proposals"]})
+
+    incomplete_cursor = client.get(
+        "/v1/memory/proposals",
+        params={"before_created_at": first_body["next_before_created_at"]},
+    )
+    assert incomplete_cursor.status_code == 422
+
+
 def test_conversation_turn_endpoint_applies_privacy_guard() -> None:
     client = TestClient(create_app(build_in_memory_container()))
 
