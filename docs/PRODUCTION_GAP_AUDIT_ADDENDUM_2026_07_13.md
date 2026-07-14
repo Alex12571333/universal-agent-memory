@@ -62,6 +62,13 @@ This closes the repository implementation part of P1 finding 8. A target
 migration report and a real retention-export/prune probe must still be retained
 for a production release.
 
+The isolated target probe recorded in
+[TARGET_AUDIT_INTEGRITY_VALIDATION_2026_07_14.md](TARGET_AUDIT_INTEGRITY_VALIDATION_2026_07_14.md)
+subsequently confirmed all 16 checksums, administrator UPDATE/DELETE rejection,
+the transaction-local retention exception and checksum-mismatch startup
+failure on PostgreSQL 17. The remaining evidence gap is the installed,
+long-running signed retention schedule—not trigger or checksum behavior.
+
 ## Remaining gate
 
 No deterministic extractor can safely infer all paraphrases, negations or
