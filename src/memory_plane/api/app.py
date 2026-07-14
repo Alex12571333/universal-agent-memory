@@ -2084,20 +2084,37 @@ def create_app(
         namespace: str | None = None,
         status: MemoryProposalStatus | None = None,
         limit: int = 50,
+        before_created_at: datetime | None = None,
+        before_proposal_id: UUID | None = None,
     ) -> dict[str, Any]:
         """List proposed memory updates for review."""
+        if (before_created_at is None) != (before_proposal_id is None):
+            raise HTTPException(
+                status_code=422,
+                detail="before_created_at and before_proposal_id must be supplied together",
+            )
+        safe_limit = max(1, min(int(limit), 200))
         proposals = services.proposals.list(
             tenant_id,
             workspace_id,
             namespace=namespace,
             status=status,
-            limit=max(1, min(int(limit), 200)),
+            before_created_at=before_created_at,
+            before_proposal_id=before_proposal_id,
+            limit=safe_limit + 1,
         )
+        has_more = len(proposals) > safe_limit
+        rows = proposals[:safe_limit]
+        cursor = rows[-1] if has_more and rows else None
         return {
             "tenant_id": str(tenant_id),
             "workspace_id": str(workspace_id),
-            "count": len(proposals),
-            "proposals": [_memory_proposal_response(proposal) for proposal in proposals],
+            "count": len(rows),
+            "limit": safe_limit,
+            "has_more": has_more,
+            "next_before_created_at": cursor.created_at.isoformat() if cursor else None,
+            "next_before_proposal_id": str(cursor.id) if cursor else None,
+            "proposals": [_memory_proposal_response(proposal) for proposal in rows],
         }
 
     @app.post("/v1/memory/proposals/{proposal_id}/accept", status_code=201)

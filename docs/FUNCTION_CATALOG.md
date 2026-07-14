@@ -239,7 +239,7 @@
 | `POST /v1/conversations/turns/{id}/curate` | Raw turn → evidence-backed proposal | По умолчанию auto-accept только для строгой evidence policy; иначе proposal вне recall. `auto_accept:false` принудительно оставляет review; `curated_only` затем purge raw text |
 | `POST /v1/workspaces/{id}/conversations/purge-expired` | Purge expired `curated_only` staging text | Operator-only, bounded batch, audit event |
 | `POST /v1/memory/proposals` | Создаёт evidence-backed memory proposal | Proposal остаётся вне recall до accept |
-| `GET /v1/memory/proposals` | Proposal review listing | Namespace/status filters |
+| `GET /v1/memory/proposals` | Proposal review listing | Namespace/status filters; bounded stable keyset cursor |
 | `POST /v1/memory/proposals/{id}/accept` | Accept proposal → `MemoryItem` | Идемпотентный append с provenance |
 | `POST /v1/memory/proposals/{id}/reject` | Reject proposal | Не создаёт recallable memory |
 | `PUT /v1/memory/{id}/supersede` | CAS replacement; stale revision → `409 revision_conflict` |

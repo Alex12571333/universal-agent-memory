@@ -1690,6 +1690,8 @@ class PostgresMemoryLedger:
         *,
         namespace: str | None = None,
         status: MemoryProposalStatus | None = None,
+        before_created_at: datetime | None = None,
+        before_proposal_id: UUID | None = None,
         limit: int = 50,
     ) -> tuple[MemoryProposal, ...]:
         """List recent memory proposals under RLS."""
@@ -1707,6 +1709,10 @@ class PostgresMemoryLedger:
                 where workspace_id = %s
                   and (%s::text is null or namespace = %s::text)
                   and (%s::text is null or status = %s::text)
+                  and (
+                    %s::timestamptz is null
+                    or (created_at, id) < (%s::timestamptz, %s::uuid)
+                  )
                 order by created_at desc, id desc
                 limit %s
                 """,
@@ -1716,6 +1722,9 @@ class PostgresMemoryLedger:
                     namespace,
                     status.value if status else None,
                     status.value if status else None,
+                    before_created_at,
+                    before_created_at,
+                    before_proposal_id,
                     safe_limit,
                 ),
             ).fetchall()

@@ -43,6 +43,8 @@ class MemoryProposalRepository(Protocol):
         *,
         namespace: str | None = None,
         status: MemoryProposalStatus | None = None,
+        before_created_at: datetime | None = None,
+        before_proposal_id: UUID | None = None,
         limit: int = 50,
     ) -> tuple[MemoryProposal, ...]:
         """List recent proposals for operator or curator review."""
@@ -279,6 +281,8 @@ class MemoryProposalService:
         *,
         namespace: str | None = None,
         status: MemoryProposalStatus | None = None,
+        before_created_at: datetime | None = None,
+        before_proposal_id: UUID | None = None,
         limit: int = 50,
     ) -> tuple[MemoryProposal, ...]:
         """List proposals for review."""
@@ -287,6 +291,8 @@ class MemoryProposalService:
             workspace_id,
             namespace=namespace,
             status=status,
+            before_created_at=before_created_at,
+            before_proposal_id=before_proposal_id,
             limit=limit,
         )
 
