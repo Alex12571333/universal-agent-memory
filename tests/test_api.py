@@ -1275,6 +1275,43 @@ def test_memory_proposal_accept_creates_recallable_memory() -> None:
     assert recalled.json()["results"][0]["layer"] == "social"
 
 
+def test_graph_proposal_cannot_be_accepted_as_recallable_text_memory() -> None:
+    client = TestClient(create_app(build_in_memory_container()))
+    proposal = client.post(
+        "/v1/memory/proposals",
+        json={
+            "namespace": "graph-maintenance",
+            "target": "graph",
+            "requester": "vault-health",
+            "proposal": "Link two memories because they look related.",
+            "evidence": "No typed edge evidence has been validated yet.",
+            "confidence": 0.99,
+            "importance": 0.9,
+        },
+    )
+
+    accepted = client.post(
+        f"/v1/memory/proposals/{proposal.json()['id']}/accept",
+        json={"reviewer": "operator", "reason": "Attempt generic acceptance."},
+    )
+    listed = client.get(
+        "/v1/memory/proposals?namespace=graph-maintenance&status=open"
+    )
+    recalled = client.post(
+        "/v1/memory/recall",
+        json={"query": "Link two memories related"},
+    )
+
+    assert proposal.status_code == 201
+    assert accepted.status_code == 422
+    assert accepted.json()["detail"] == (
+        "graph proposals require the dedicated evidence-bound graph review path"
+    )
+    assert listed.json()["count"] == 1
+    assert listed.json()["proposals"][0]["status"] == "open"
+    assert recalled.json()["results"] == []
+
+
 def test_memory_proposal_reject_does_not_create_memory_and_blocks_accept() -> None:
     client = TestClient(create_app(build_in_memory_container()))
     proposal = client.post(

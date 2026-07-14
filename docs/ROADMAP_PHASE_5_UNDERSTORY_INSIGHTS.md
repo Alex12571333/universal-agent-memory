@@ -294,3 +294,10 @@ recorded in
 Evidence-bound graph maintenance proposals, the optional portable projection
 and the graph replay overlay remain separate follow-up work. They are not
 claimed as implemented by this phase.
+
+The first graph-maintenance safety boundary is now enforced: a proposal whose
+target is `graph` cannot pass through the generic memory-acceptance endpoint and
+become recallable prose. It remains open and non-recallable until the dedicated
+path can atomically validate source, destination, typed relation and provenance
+before writing a canonical edge. This closes the unsafe compatibility fallback
+without pretending that graph proposal acceptance is complete.
