@@ -376,6 +376,27 @@ verified its signed export; the adapter enables the deletion exception only
 for the current retention transaction. Do not set
 `uam.audit_retention_mode` in general application or administrator sessions.
 
+Authorization failures are recorded as `auth.request.denied` with status
+`denied`. Operators can distinguish `missing_credential`,
+`invalid_credential`, `revoked_credential`, `insufficient_scope`,
+`csrf_validation_failed` and `identity_boundary_violation` without storing the
+submitted credential, CSRF token, request body, query string, IP address or an
+arbitrary path. `resource_id` and `metadata.route_family` contain only a
+bounded route family such as `/v1/memory` or `/metrics`. During incident review,
+filter these events separately:
+
+```bash
+curl -fsS \
+  -H "Authorization: Bearer $UAM_OPERATOR_API_KEY" \
+  "http://127.0.0.1:6798/v1/audit/events?action=auth.request.denied&limit=500"
+```
+
+If the audit repository is unavailable, authorization still fails closed and
+the process emits `failed to persist authorization denial audit event` without
+including the database exception. Treat any such log as loss of security
+evidence: restore canonical storage, preserve surrounding logs, and run an
+incident audit export before returning the appliance to service.
+
 Export recent operator/agent audit events before upgrades, incident response, or
 security review:
 

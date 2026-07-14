@@ -94,7 +94,8 @@ def test_memory_supersede_endpoint_returns_revision_and_conflict() -> None:
 
 
 def test_api_key_protects_memory_routes_but_not_health() -> None:
-    client = TestClient(create_app(build_in_memory_container(), api_key="secret"))
+    container = build_in_memory_container()
+    client = TestClient(create_app(container, api_key="secret"))
     body = {
         "layer": "semantic",
         "scope": "workspace",
@@ -119,6 +120,39 @@ def test_api_key_protects_memory_routes_but_not_health() -> None:
     assert missing.headers["www-authenticate"] == "Bearer"
     assert invalid.status_code == 401
     assert valid.status_code == 201
+    denials = container.audit.list_events(
+        DEFAULT_SERVER_ID,
+        action="auth.request.denied",
+    )
+    assert {event.metadata["reason"] for event in denials} == {
+        "missing_credential",
+        "invalid_credential",
+    }
+    assert all(event.status == "denied" for event in denials)
+    assert all(event.actor == "anonymous" for event in denials)
+    assert all(event.resource_id == "/v1/memory" for event in denials)
+    assert "wrong" not in str(denials)
+    assert "secret" not in str(denials)
+
+
+def test_auth_denial_audit_is_fail_closed_when_audit_store_fails(
+    monkeypatch,
+    caplog,
+) -> None:
+    container = build_in_memory_container()
+
+    def fail_audit(**_kwargs) -> None:  # type: ignore[no-untyped-def]
+        raise RuntimeError("postgresql://operator:credential@database/memory")
+
+    monkeypatch.setattr(container.audit, "record", fail_audit)
+    client = TestClient(create_app(container, api_key="secret"))
+
+    response = client.get("/metrics")
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "invalid or missing API key"
+    assert "failed to persist authorization denial audit event" in caplog.text
+    assert "operator:credential" not in caplog.text
 
 
 def test_operator_browser_session_uses_httponly_cookie_and_csrf(monkeypatch) -> None:
@@ -128,7 +162,8 @@ def test_operator_browser_session_uses_httponly_cookie_and_csrf(monkeypatch) -> 
     )
     monkeypatch.setenv("UAM_UI_SESSION_SIGNING_KEY", "u" * 64)
     monkeypatch.setenv("UAM_UI_COOKIE_SECURE", "false")
-    client = TestClient(create_app(build_in_memory_container()))
+    container = build_in_memory_container()
+    client = TestClient(create_app(container))
 
     assert client.get("/ui").status_code == 200
     anonymous = client.get("/v1/ui/session")
@@ -169,6 +204,16 @@ def test_operator_browser_session_uses_httponly_cookie_and_csrf(monkeypatch) -> 
     assert bad_logout.status_code == 403
     assert logout.status_code == 200
     assert client.get("/v1/settings/models").status_code == 401
+    denials = container.audit.list_events(
+        DEFAULT_SERVER_ID,
+        action="auth.request.denied",
+    )
+    reasons = [event.metadata["reason"] for event in denials]
+    assert "insufficient_scope" in reasons
+    assert reasons.count("csrf_validation_failed") == 2
+    assert "missing_credential" in reasons
+    assert "agent-secret" not in str(denials)
+    assert login.json()["csrf_token"] not in str(denials)
 
 
 def test_browser_session_requires_signing_key_and_secure_cookie_is_configurable(
@@ -197,7 +242,8 @@ def test_browser_session_requires_signing_key_and_secure_cookie_is_configurable(
 def test_api_key_revocation_invalidates_existing_browser_session(monkeypatch) -> None:
     monkeypatch.setenv("UAM_API_KEYS", "operator:operator-secret:operator")
     monkeypatch.setenv("UAM_UI_SESSION_SIGNING_KEY", "u" * 64)
-    client = TestClient(create_app(build_in_memory_container()))
+    container = build_in_memory_container()
+    client = TestClient(create_app(container))
     login = client.post("/v1/ui/session", json={"api_key": "operator-secret"})
     csrf = login.json()["csrf_token"]
     listed = client.get("/v1/keys")
@@ -212,6 +258,13 @@ def test_api_key_revocation_invalidates_existing_browser_session(monkeypatch) ->
 
     assert revoked.status_code == 200
     assert denied.status_code == 401
+    denials = container.audit.list_events(
+        DEFAULT_SERVER_ID,
+        action="auth.request.denied",
+    )
+    assert len(denials) == 1
+    assert denials[0].metadata["reason"] == "invalid_credential"
+    assert denials[0].resource_id == "/v1/settings"
 
 
 def test_readiness_is_public_and_reports_optional_degradation(monkeypatch) -> None:
@@ -262,7 +315,8 @@ def test_scoped_api_keys_limit_agent_and_operator_access(monkeypatch) -> None:
         "UAM_API_KEYS",
         "reader:read-secret:read,agent:agent-secret:agent,operator:operator-secret:operator",
     )
-    client = TestClient(create_app(build_in_memory_container()))
+    container = build_in_memory_container()
+    client = TestClient(create_app(container))
     body = {
         "layer": "semantic",
         "scope": "workspace",
@@ -293,6 +347,13 @@ def test_scoped_api_keys_limit_agent_and_operator_access(monkeypatch) -> None:
     assert agent_write.status_code == 201
     assert agent_metrics.status_code == 403
     assert operator_metrics.status_code == 200
+    denials = container.audit.list_events(
+        DEFAULT_SERVER_ID,
+        action="auth.request.denied",
+    )
+    assert [event.metadata["reason"] for event in denials].count("insufficient_scope") == 2
+    assert {event.actor for event in denials} == {"reader", "agent"}
+    assert {event.resource_id for event in denials} == {"/v1/memory", "/metrics"}
 
 
 def test_identity_provisioning_is_operator_only_idempotent_and_scope_safe(monkeypatch) -> None:
@@ -413,7 +474,8 @@ def test_bound_agent_keys_enforce_identity_private_memory_and_thread_ownership(
         ),
     )
     monkeypatch.setenv("UAM_REQUIRE_IDENTITY_BINDINGS", "true")
-    client = TestClient(create_app(build_in_memory_container()))
+    container = build_in_memory_container()
+    client = TestClient(create_app(container))
     operator = {"Authorization": "Bearer operator-key"}
     headers_a = {"Authorization": "Bearer key-a"}
     headers_b = {"Authorization": "Bearer key-b"}
@@ -489,6 +551,16 @@ def test_bound_agent_keys_enforce_identity_private_memory_and_thread_ownership(
     assert forged_workspace.status_code == 403
     assert foreign_thread.status_code == 403
     assert operator_route.status_code == 403
+    denials = container.audit.list_events(
+        DEFAULT_SERVER_ID,
+        action="auth.request.denied",
+    )
+    assert [event.metadata["reason"] for event in denials].count(
+        "identity_boundary_violation"
+    ) == 3
+    assert [event.metadata["reason"] for event in denials].count("insufficient_scope") == 1
+    assert {event.actor for event in denials} == {"agent-a"}
+    assert {event.workspace_id for event in denials} == {DEFAULT_PROJECT_ID}
 
 
 def test_strict_binding_mode_rejects_unbound_agent_key(monkeypatch) -> None:
@@ -602,11 +674,15 @@ def test_audit_events_require_operator_scope(monkeypatch) -> None:
     assert retained.status_code == 201
     assert denied.status_code == 403
     assert allowed.status_code == 200
-    assert allowed.json()["count"] == 1
-    event = allowed.json()["events"][0]
-    assert event["action"] == "memory.retain"
-    assert event["actor"] == "agent"
-    assert event["actor_type"] == "agent"
+    assert allowed.json()["count"] == 2
+    events = {event["action"]: event for event in allowed.json()["events"]}
+    assert events["memory.retain"]["actor"] == "agent"
+    assert events["memory.retain"]["actor_type"] == "agent"
+    denial = events["auth.request.denied"]
+    assert denial["status"] == "denied"
+    assert denial["actor"] == "agent"
+    assert denial["metadata"]["reason"] == "insufficient_scope"
+    assert denial["resource_id"] == "/v1/audit"
 
 
 def test_audit_events_support_stable_cursor_pagination() -> None:
@@ -659,7 +735,8 @@ def test_api_key_registry_tracks_last_used_and_revocation(monkeypatch) -> None:
         "UAM_API_KEYS",
         "agent:agent-secret:agent,operator:operator-secret:operator",
     )
-    client = TestClient(create_app(build_in_memory_container()))
+    container = build_in_memory_container()
+    client = TestClient(create_app(container))
 
     agent_write = client.post(
         "/v1/memory/retain",
@@ -714,6 +791,14 @@ def test_api_key_registry_tracks_last_used_and_revocation(monkeypatch) -> None:
     assert audit.json()["count"] == 1
     assert audit.json()["events"][0]["metadata"]["name"] == "agent"
     assert revoked_key["revoked"] is True
+    denials = container.audit.list_events(
+        DEFAULT_SERVER_ID,
+        action="auth.request.denied",
+    )
+    assert len(denials) == 1
+    assert denials[0].metadata["reason"] == "revoked_credential"
+    assert denials[0].actor == "agent"
+    assert "agent-secret" not in str(denials)
 
 
 def test_metrics_endpoint_uses_prometheus_text_and_api_key() -> None:
@@ -738,7 +823,7 @@ def test_metrics_endpoint_uses_prometheus_text_and_api_key() -> None:
     assert response.headers["content-type"].startswith("text/plain")
     assert "uam_memory_items_total 1" in response.text
     assert "uam_outbox_pending_total 1" in response.text
-    assert "uam_audit_events_total 1" in response.text
+    assert "uam_audit_events_total 2" in response.text
     assert "uam_api_keys_total 1" in response.text
     assert "uam_embedding_operations_total 0" in response.text
     assert "uam_embedding_failures_total 0" in response.text

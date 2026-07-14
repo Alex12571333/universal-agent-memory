@@ -154,6 +154,9 @@ Manual checks:
   evidence.
 - Confirm signed audit bundles verify with `scripts/export_audit.py --verify`.
 - Confirm incident/audit exports use `--all-pages` for multi-day windows.
+- Send one invalid credential and one insufficient-scope request, then confirm
+  the operator audit endpoint contains redacted `auth.request.denied` rows with
+  fixed `reason` values and no submitted token, query string or request body.
 - Confirm `ops/audit-retention.json` reports `"ok": true`,
   `"verified_export": true` and `"signed_export": true` before any audit prune.
 - Confirm `backups/latest-backup-report.json` reports `"ok": true`.

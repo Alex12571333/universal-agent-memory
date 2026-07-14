@@ -10,6 +10,7 @@ import hashlib
 import hmac
 import ipaddress
 import json
+import logging
 import os
 import re
 import secrets
@@ -94,6 +95,22 @@ DEFAULT_THREAD_ID = UUID("00000000-0000-0000-0000-000000000003")
 DEFAULT_CONTEXT_BUDGET_TOKENS = int(os.getenv("UAM_CONTEXT_BUDGET_TOKENS", "8192"))
 DEFAULT_CONTEXT_PER_LAYER_LIMIT = int(os.getenv("UAM_CONTEXT_PER_LAYER_LIMIT", "1000"))
 PROCESS_STARTED_AT = time.time()
+LOGGER = logging.getLogger(__name__)
+
+
+def _audit_route_family(path: str) -> str:
+    """Return a bounded route family without retaining user-controlled path data."""
+    if path in {"/health", "/ready", "/metrics", "/docs", "/redoc", "/openapi.json"}:
+        return path
+    if path == "/ui" or path.startswith("/ui/"):
+        return "/ui"
+    match = re.match(
+        r"^/v1/(audit|checkpoints|context|conversations|graph|identities|ingest|keys|memory|settings|system|ui|workspaces)(?:/|$)",
+        path,
+    )
+    if match:
+        return f"/v1/{match.group(1)}"
+    return "/other"
 
 
 def _web_dist_dir() -> Path:
@@ -1241,6 +1258,63 @@ def create_app(
             return None
         return principal, claims
 
+    def record_auth_denial(
+        request: Request,
+        *,
+        reason: str,
+        required_scope: str,
+        principal: ApiPrincipal | None = None,
+    ) -> None:
+        """Persist a bounded denial record without request content or credentials."""
+        route_family = _audit_route_family(request.url.path)
+        try:
+            services.audit.record(
+                tenant_id=principal.tenant_id if principal and principal.tenant_id else auth_tenant_id,
+                workspace_id=principal.workspace_id if principal else None,
+                action="auth.request.denied",
+                actor=principal.name if principal else "anonymous",
+                actor_type=_audit_actor_type(principal) if principal else "unauthenticated",
+                resource_type="api_route",
+                resource_id=route_family,
+                status="denied",
+                metadata={
+                    "method": request.method.upper(),
+                    "route_family": route_family,
+                    "required_scope": required_scope,
+                    "reason": reason,
+                },
+            )
+        except Exception:
+            # The authorization decision remains fail-closed even if the audit
+            # store is unavailable. Never log the database exception here: a
+            # provider error can contain endpoint or credential material.
+            LOGGER.error(
+                "failed to persist authorization denial audit event",
+                extra={"route_family": route_family, "reason": reason},
+            )
+
+    async def denied_response(
+        request: Request,
+        *,
+        status_code: int,
+        content: dict[str, Any],
+        reason: str,
+        required_scope: str,
+        principal: ApiPrincipal | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> JSONResponse:
+        """Record an authorization denial before returning its safe response."""
+        await asyncio.to_thread(
+            record_auth_denial,
+            request,
+            reason=reason,
+            required_scope=required_scope,
+            principal=principal,
+        )
+        return _apply_security_headers(
+            JSONResponse(status_code=status_code, content=content, headers=headers)
+        )
+
     @app.middleware("http")
     async def require_api_key(request: Request, call_next: Any) -> Any:
         """Protect every endpoint except liveness when API keys are configured."""
@@ -1260,30 +1334,39 @@ def create_app(
             if session is not None:
                 principal, session_claims = session
         if principal is None:
-            return _apply_security_headers(
-                JSONResponse(
-                    status_code=401,
-                    content={"detail": "invalid or missing API key"},
-                    headers={"WWW-Authenticate": "Bearer"},
-                )
+            return await denied_response(
+                request,
+                status_code=401,
+                content={"detail": "invalid or missing API key"},
+                headers={"WWW-Authenticate": "Bearer"},
+                reason=(
+                    "invalid_credential"
+                    if authorization or request.cookies.get(UI_SESSION_COOKIE)
+                    else "missing_credential"
+                ),
+                required_scope=required_scope,
             )
         if revoked(principal):
-            return _apply_security_headers(
-                JSONResponse(
-                    status_code=401,
-                    content={"detail": "API key has been revoked"},
-                    headers={"WWW-Authenticate": "Bearer"},
-                )
+            return await denied_response(
+                request,
+                status_code=401,
+                content={"detail": "API key has been revoked"},
+                headers={"WWW-Authenticate": "Bearer"},
+                reason="revoked_credential",
+                required_scope=required_scope,
+                principal=principal,
             )
         if not _scope_allowed(principal, required_scope):
-            return _apply_security_headers(
-                JSONResponse(
-                    status_code=403,
-                    content={
-                        "detail": "API key scope is insufficient",
-                        "required_scope": required_scope,
-                    },
-                )
+            return await denied_response(
+                request,
+                status_code=403,
+                content={
+                    "detail": "API key scope is insufficient",
+                    "required_scope": required_scope,
+                },
+                reason="insufficient_scope",
+                required_scope=required_scope,
+                principal=principal,
             )
         if session_claims is not None and request.method.upper() not in {
             "GET",
@@ -1292,11 +1375,13 @@ def create_app(
         }:
             supplied_csrf = request.headers.get("X-CSRF-Token", "")
             if not secrets.compare_digest(supplied_csrf, str(session_claims["csrf"])):
-                return _apply_security_headers(
-                    JSONResponse(
-                        status_code=403,
-                        content={"detail": "missing or invalid CSRF token"},
-                    )
+                return await denied_response(
+                    request,
+                    status_code=403,
+                    content={"detail": "missing or invalid CSRF token"},
+                    reason="csrf_validation_failed",
+                    required_scope=required_scope,
+                    principal=principal,
                 )
         binding_error = await _agent_binding_error(
             request,
@@ -1305,14 +1390,16 @@ def create_app(
             require_binding=require_identity_bindings,
         )
         if binding_error is not None:
-            return _apply_security_headers(
-                JSONResponse(
-                    status_code=403,
-                    content={
-                        "detail": binding_error,
-                        "error": "identity_boundary_violation",
-                    },
-                )
+            return await denied_response(
+                request,
+                status_code=403,
+                content={
+                    "detail": binding_error,
+                    "error": "identity_boundary_violation",
+                },
+                reason="identity_boundary_violation",
+                required_scope=required_scope,
+                principal=principal,
             )
         request.state.api_principal = principal
         request.state.ui_session_claims = session_claims
@@ -1375,7 +1462,7 @@ def create_app(
         )
 
     @app.post("/v1/ui/session")
-    def create_ui_session(body: UiSessionLoginBody) -> JSONResponse:
+    def create_ui_session(body: UiSessionLoginBody, request: Request) -> JSONResponse:
         """Exchange an operator key for a signed HttpOnly same-origin session."""
         if not configured_key and not configured_scoped_keys:
             return JSONResponse(
@@ -1387,9 +1474,28 @@ def create_app(
                 detail="browser sessions are not configured",
             )
         principal = principal_for_credential(body.api_key)
-        if principal is None or revoked(principal):
+        if principal is None:
+            record_auth_denial(
+                request,
+                reason="invalid_credential",
+                required_scope="operator",
+            )
+            raise HTTPException(status_code=401, detail="invalid operator credential")
+        if revoked(principal):
+            record_auth_denial(
+                request,
+                reason="revoked_credential",
+                required_scope="operator",
+                principal=principal,
+            )
             raise HTTPException(status_code=401, detail="invalid operator credential")
         if not _scope_allowed(principal, "operator"):
+            record_auth_denial(
+                request,
+                reason="insufficient_scope",
+                required_scope="operator",
+                principal=principal,
+            )
             raise HTTPException(status_code=403, detail="operator scope is required")
         token, csrf_token, expires_at = _issue_ui_session(
             principal,
@@ -1459,6 +1565,12 @@ def create_app(
             principal, claims = session
             supplied_csrf = request.headers.get("X-CSRF-Token", "")
             if not secrets.compare_digest(supplied_csrf, str(claims["csrf"])):
+                record_auth_denial(
+                    request,
+                    reason="csrf_validation_failed",
+                    required_scope="operator",
+                    principal=principal,
+                )
                 raise HTTPException(status_code=403, detail="missing or invalid CSRF token")
             services.audit.record(
                 tenant_id=auth_tenant_id,
