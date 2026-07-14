@@ -46,20 +46,26 @@ The dashboard covers:
 - worker embedding throughput/failures and API reindex throughput/failures;
 - embedding/reindex latency;
 - degraded retrieval sources and cumulative source failures;
+- durable required/ready/missing/stale worker-role counts;
 - memory, audit and API-key ledger growth.
 
 The alert rules cover the same production failure modes used by
 `scripts/check_metrics_health.py`: dead letters, outbox backlog, outbox lag,
-stuck leases, embedding failures, reindex failures and recall-source outages.
+stuck leases, embedding failures, reindex failures, missing/stale worker
+heartbeats and recall-source outages.
 
 ## Runtime dependency gate
 
-`/ready` intentionally proves only the canonical PostgreSQL ledger and
-retrieval degradation. It must not become unavailable merely because an
-asynchronous worker is restarting. Operators should separately run this
-authenticated scheduled check; it fails when NATS or the embedding worker is
-not healthy according to the private dependency probes exposed by
-`/v1/system/status`:
+Production Compose configures `UAM_REQUIRED_WORKERS` with `outbox-relay`,
+`embedding-worker` and `maintenance-worker`. Each process writes a tenant-scoped
+heartbeat to PostgreSQL every `UAM_WORKER_HEARTBEAT_SECONDS`; `/ready` returns
+`503 not_ready` when no running replica for a required role is newer than
+`UAM_WORKER_HEARTBEAT_TTL_SECONDS`. The public response contains only role
+names and aggregate replica counts, never worker IDs, hostnames or internal
+addresses. Basic development Compose leaves this gate opt-in.
+
+The authenticated scheduled dependency check remains defense in depth for NATS
+and the embedding worker's private HTTP endpoint:
 
 ```bash
 UAM_RUNTIME_DEPENDENCY_PROBES=true \
@@ -80,6 +86,7 @@ Before claiming a production release:
 ```bash
 UAM_API_KEY=... PYTHONPATH=src python scripts/check_metrics_health.py \
   --metrics-url http://localhost:6798/metrics \
+  --max-worker-unready 0 \
   --require-metric uam_outbox_pending_total \
   --require-metric uam_outbox_dead_letter_total \
   --require-metric uam_outbox_lag_seconds \
@@ -87,6 +94,11 @@ UAM_API_KEY=... PYTHONPATH=src python scripts/check_metrics_health.py \
   --require-metric uam_embedding_failures_total \
   --require-metric uam_retrieval_degraded_sources \
   --require-metric uam_retrieval_source_failures_total \
+  --require-metric uam_worker_required \
+  --require-metric uam_worker_ready \
+  --require-metric uam_worker_unready \
+  --require-metric uam_worker_missing \
+  --require-metric uam_worker_stale \
   --report ./ops/metrics-health.json
 
 PYTHONPATH=src python scripts/observability_preflight.py \

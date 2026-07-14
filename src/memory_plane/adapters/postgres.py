@@ -8,7 +8,7 @@ import re
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
@@ -41,6 +41,7 @@ from memory_plane.domain.proposal import (
     MemoryProposalStatus,
     MemoryProposalTarget,
 )
+from memory_plane.domain.worker import WorkerHeartbeat, WorkerKindReadiness, WorkerReadiness
 from memory_plane.services.protected_search import (
     protected_document_marker,
     protected_index_digests,
@@ -57,6 +58,8 @@ _PGCRYPTO_JSON_KEY = "_uam_encrypted_json_v1"
 _RUNTIME_ACL_REQUIRED = {
     "outbox_events_update": ("outbox_events", "update"),
     "checkpoints_delete": ("checkpoints", "delete"),
+    "worker_heartbeats_update": ("worker_heartbeats", "update"),
+    "worker_heartbeats_delete": ("worker_heartbeats", "delete"),
 }
 _RUNTIME_ACL_FORBIDDEN = {
     "memory_items_update": ("memory_items", "update"),
@@ -304,6 +307,93 @@ class PostgresMemoryLedger:
         with self._connection() as connection:
             row = connection.execute("select 1 as ready").fetchone()
         return bool(row and row["ready"] == 1)
+
+    def record_worker_heartbeat(self, heartbeat: WorkerHeartbeat) -> WorkerHeartbeat:
+        """Upsert one process heartbeat under the tenant RLS boundary."""
+        with self._connection() as connection:
+            self._set_tenant(connection, heartbeat.tenant_id)
+            row = connection.execute(
+                """
+                insert into worker_heartbeats (
+                  tenant_id, worker_kind, worker_id, status, started_at, last_seen_at
+                ) values (%s, %s, %s, %s, %s, clock_timestamp())
+                on conflict (tenant_id, worker_kind, worker_id) do update set
+                  status = excluded.status,
+                  started_at = excluded.started_at,
+                  last_seen_at = clock_timestamp()
+                returning tenant_id, worker_kind, worker_id, status, started_at, last_seen_at
+                """,
+                (
+                    heartbeat.tenant_id,
+                    heartbeat.worker_kind,
+                    heartbeat.worker_id,
+                    heartbeat.status,
+                    heartbeat.started_at,
+                ),
+            ).fetchone()
+            connection.execute(
+                """
+                delete from worker_heartbeats
+                where tenant_id = %s
+                  and last_seen_at < clock_timestamp() - interval '24 hours'
+                """,
+                (heartbeat.tenant_id,),
+            )
+        if row is None:
+            raise RuntimeError("worker heartbeat upsert returned no row")
+        return WorkerHeartbeat(
+            tenant_id=row["tenant_id"],
+            worker_kind=row["worker_kind"],
+            worker_id=row["worker_id"],
+            status=row["status"],
+            started_at=row["started_at"],
+            last_seen_at=row["last_seen_at"],
+        )
+
+    def worker_readiness(
+        self,
+        tenant_id: UUID,
+        required_kinds: tuple[str, ...],
+        *,
+        stale_after_seconds: int,
+    ) -> WorkerReadiness:
+        """Aggregate required worker kinds using the PostgreSQL clock."""
+        if stale_after_seconds < 1:
+            raise ValueError("worker heartbeat TTL must be positive")
+        normalized = tuple(
+            dict.fromkeys(
+                kind.strip().lower() for kind in required_kinds if kind.strip()
+            )
+        )
+        with self._connection() as connection:
+            self._set_tenant(connection, tenant_id)
+            observed_at = connection.execute(
+                "select statement_timestamp() as observed_at"
+            ).fetchone()["observed_at"]
+            rows = connection.execute(
+                """
+                select worker_kind, status, last_seen_at
+                from worker_heartbeats
+                where worker_kind = any(%s)
+                """,
+                (list(normalized),),
+            ).fetchall()
+        cutoff = observed_at - timedelta(seconds=stale_after_seconds)
+        states = []
+        for kind in normalized:
+            matching = tuple(row for row in rows if row["worker_kind"] == kind)
+            fresh = sum(
+                row["status"] == "running" and row["last_seen_at"] >= cutoff
+                for row in matching
+            )
+            states.append(
+                WorkerKindReadiness(
+                    worker_kind=kind,
+                    fresh_instances=fresh,
+                    stale_instances=len(matching) - fresh,
+                )
+            )
+        return WorkerReadiness(required=tuple(states), observed_at=observed_at)
 
     @contextmanager
     def workspace_operation_lock(

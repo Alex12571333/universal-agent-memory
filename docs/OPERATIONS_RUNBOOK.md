@@ -59,6 +59,12 @@ curl http://localhost:6798/ready
 curl -H "Authorization: Bearer $UAM_API_KEY" http://localhost:6798/metrics
 UAM_API_KEY=... PYTHONPATH=src python scripts/check_metrics_health.py \
   --metrics-url http://localhost:6798/metrics \
+  --max-worker-unready 0 \
+  --require-metric uam_worker_required \
+  --require-metric uam_worker_ready \
+  --require-metric uam_worker_unready \
+  --require-metric uam_worker_missing \
+  --require-metric uam_worker_stale \
   --report ./ops/metrics-health.json
 docker compose -f docker-compose.prod.yml --env-file .env.production ps
 ```
@@ -74,8 +80,16 @@ Healthy production means:
   recall hydrates memory text from PostgreSQL;
 - `postgres` is healthy;
 - `nats` is healthy;
-- `outbox-relay` and `embedding-worker` are running;
+- `/ready` reports every required worker role as ready. Production requires
+  `outbox-relay`, `embedding-worker` and `maintenance-worker`; a missing or
+  stale role makes readiness fail closed with HTTP 503;
 - `/metrics` does not show growing pending/dead-letter backlogs.
+
+Workers record tenant-scoped liveness in PostgreSQL. The public readiness and
+metrics surfaces expose only role-level aggregates, never worker IDs or host
+names. Rows older than 24 hours are pruned during heartbeat writes; this table
+is operational state and is included in backup/restore parity checks so a
+restore cannot silently omit its schema or RLS policy.
 
 ### Encrypting legacy PostgreSQL rows
 
@@ -104,8 +118,8 @@ application-field encryption, not a claim that every PostgreSQL column or an
 entire disk volume is encrypted.
 
 `check_metrics_health.py` turns Prometheus text into an operator gate. It fails
-when outbox pending, dead-letter, lag or in-flight values exceed configured
-thresholds, writes a JSON report, and can post failed reports through
+when outbox pending, dead-letter, lag, in-flight or required-worker values
+exceed configured thresholds, writes a JSON report, and can post failed reports through
 `UAM_METRICS_ALERT_WEBHOOK`. The embedding worker exposes private Prometheus
 metrics on `embedding-worker:9091/metrics`; scrape that target separately from
 the API. API-side reindex counters and worker embedding counters are distinct.

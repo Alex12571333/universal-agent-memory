@@ -53,6 +53,7 @@ def main() -> int:
     parser.add_argument("--max-outbox-dead-letter", type=float, default=0)
     parser.add_argument("--max-outbox-lag-seconds", type=float, default=300)
     parser.add_argument("--max-inflight", type=float, default=100)
+    parser.add_argument("--max-worker-unready", type=float, default=0)
     parser.add_argument(
         "--require-metric",
         action="append",
@@ -71,6 +72,7 @@ def main() -> int:
             max_outbox_dead_letter=args.max_outbox_dead_letter,
             max_outbox_lag_seconds=args.max_outbox_lag_seconds,
             max_inflight=args.max_inflight,
+            max_worker_unready=args.max_worker_unready,
             required_metrics=tuple(args.require_metric),
         )
     except Exception as exc:  # pragma: no cover - defensive CLI boundary
@@ -99,6 +101,7 @@ def main() -> int:
             for key in sorted(metrics)
             if key.startswith("outbox_")
             or key.startswith("processed_events_")
+            or key.startswith("worker_")
             or key in {"memory_items_total", "audit_events_total"}
         },
     }
@@ -144,6 +147,7 @@ def evaluate_metrics(
     max_outbox_dead_letter: float,
     max_outbox_lag_seconds: float,
     max_inflight: float,
+    max_worker_unready: float = 0,
     required_metrics: tuple[str, ...] = (),
 ) -> list[dict[str, Any]]:
     """Evaluate production health checks from parsed metric values."""
@@ -153,6 +157,11 @@ def evaluate_metrics(
         _lte_check(metrics, "outbox_lag_seconds", max_outbox_lag_seconds),
         _lte_check(metrics, "processed_events_inflight_total", max_inflight),
     ]
+    required_normalized = {
+        metric.removeprefix("uam_") for metric in required_metrics
+    }
+    if "worker_unready" in metrics or "worker_unready" in required_normalized:
+        checks.append(_lte_check(metrics, "worker_unready", max_worker_unready))
     for metric in required_metrics:
         normalized = metric.removeprefix("uam_")
         checks.append(

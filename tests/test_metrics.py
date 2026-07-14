@@ -89,6 +89,32 @@ def test_metrics_health_fails_on_dead_letters_lag_and_missing_metric() -> None:
     }
 
 
+def test_metrics_health_fails_when_required_worker_role_is_unready() -> None:
+    metrics = check_metrics_health.parse_prometheus_metrics(
+        """
+        uam_outbox_pending_total 0
+        uam_outbox_dead_letter_total 0
+        uam_outbox_lag_seconds 0
+        uam_processed_events_inflight_total 0
+        uam_worker_unready 1
+        """
+    )
+
+    checks = check_metrics_health.evaluate_metrics(
+        metrics,
+        max_outbox_pending=10,
+        max_outbox_dead_letter=0,
+        max_outbox_lag_seconds=60,
+        max_inflight=5,
+        max_worker_unready=0,
+        required_metrics=("uam_worker_unready",),
+    )
+
+    assert "worker_unready" in {
+        check["name"] for check in checks if not check["ok"]
+    }
+
+
 def test_metrics_health_cli_writes_report_and_alerts_on_failure(
     monkeypatch,
     tmp_path: Path,

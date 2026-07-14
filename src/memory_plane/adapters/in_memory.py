@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from contextlib import contextmanager
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from threading import RLock
 from uuid import UUID
 
@@ -31,6 +31,7 @@ from memory_plane.domain.models import (
     Observation,
 )
 from memory_plane.domain.proposal import MemoryProposal, MemoryProposalStatus
+from memory_plane.domain.worker import WorkerHeartbeat, WorkerKindReadiness, WorkerReadiness
 
 _WORD = re.compile(r"\w+", re.UNICODE)
 
@@ -59,6 +60,7 @@ class InMemoryMemoryStore:
         self._workspaces: dict[UUID, WorkspaceIdentity] = {}
         self._agents: dict[UUID, AgentIdentity] = {}
         self._threads: dict[UUID, ThreadIdentity] = {}
+        self._worker_heartbeats: dict[tuple[UUID, str, str], WorkerHeartbeat] = {}
         self.events: list[IntegrationEvent] = []
         self._lock = RLock()
 
@@ -70,6 +72,44 @@ class InMemoryMemoryStore:
     def ping(self) -> bool:
         """In-process canonical storage is ready while the process is alive."""
         return True
+
+    def record_worker_heartbeat(self, heartbeat: WorkerHeartbeat) -> WorkerHeartbeat:
+        """Upsert one deterministic in-process worker heartbeat."""
+        key = (heartbeat.tenant_id, heartbeat.worker_kind, heartbeat.worker_id)
+        with self._lock:
+            self._worker_heartbeats[key] = heartbeat
+        return heartbeat
+
+    def worker_readiness(
+        self,
+        tenant_id: UUID,
+        required_kinds: tuple[str, ...],
+        *,
+        stale_after_seconds: int,
+    ) -> WorkerReadiness:
+        """Aggregate fresh and stale replicas without exposing their identities."""
+        observed_at = datetime.now(UTC)
+        cutoff = observed_at - timedelta(seconds=stale_after_seconds)
+        with self._lock:
+            rows = tuple(
+                row
+                for row in self._worker_heartbeats.values()
+                if row.tenant_id == tenant_id and row.worker_kind in required_kinds
+            )
+        states = []
+        for kind in required_kinds:
+            matching = tuple(row for row in rows if row.worker_kind == kind)
+            fresh = sum(
+                row.status == "running" and row.last_seen_at >= cutoff for row in matching
+            )
+            states.append(
+                WorkerKindReadiness(
+                    worker_kind=kind,
+                    fresh_instances=fresh,
+                    stale_instances=len(matching) - fresh,
+                )
+            )
+        return WorkerReadiness(required=tuple(states), observed_at=observed_at)
 
     @contextmanager
     def workspace_operation_lock(

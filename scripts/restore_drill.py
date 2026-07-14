@@ -31,6 +31,7 @@ REQUIRED_TABLES = (
     "memory_proposals",
     "audit_events",
     "api_key_registry",
+    "worker_heartbeats",
 )
 
 RLS_TABLES = (
@@ -54,6 +55,7 @@ RLS_TABLES = (
     "memory_proposal_idempotency_keys",
     "audit_events",
     "api_key_registry",
+    "worker_heartbeats",
 )
 
 REPORT_FORMAT = "obelisk-restore-drill-v1"
@@ -273,6 +275,7 @@ def _verify_schema(container: str, dsn: str) -> None:
     select count(*) from memory_items;
     select count(*) from audit_events;
     select count(*) from api_key_registry;
+    select count(*) from worker_heartbeats;
     """
     result = _run(
         [

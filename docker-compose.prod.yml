@@ -59,6 +59,8 @@ services:
       UAM_MEMORY_LLM_EXTRA_BODY_JSON: ${UAM_MEMORY_LLM_EXTRA_BODY_JSON:-}
       UAM_MODEL_ENDPOINT_ALLOWLIST: ${UAM_MODEL_ENDPOINT_ALLOWLIST:?UAM_MODEL_ENDPOINT_ALLOWLIST must be set}
       UAM_RUNTIME_DEPENDENCY_PROBES: "true"
+      UAM_REQUIRED_WORKERS: ${UAM_REQUIRED_WORKERS:-outbox-relay,embedding-worker,maintenance-worker}
+      UAM_WORKER_HEARTBEAT_TTL_SECONDS: ${UAM_WORKER_HEARTBEAT_TTL_SECONDS:-30}
       # Desired UI settings only; provider credentials are deliberately never
       # written here and continue to come from environment/secret files.
       UAM_MODEL_SETTINGS_PATH: /var/lib/obelisk/model-settings.json
@@ -185,6 +187,7 @@ services:
       UAM_MEMORY_TEXT_ENCRYPTION: ${UAM_MEMORY_TEXT_ENCRYPTION:-pgcrypto}
       UAM_MEMORY_TEXT_ENCRYPTION_SCOPES: ${UAM_MEMORY_TEXT_ENCRYPTION_SCOPES:-all}
       UAM_MEMORY_TEXT_ENCRYPTION_KEY_FILE: /run/secrets/memory_text_key
+      UAM_WORKER_HEARTBEAT_SECONDS: ${UAM_WORKER_HEARTBEAT_SECONDS:-5}
     secrets:
       - app_db_password
       - nats_auth_token
@@ -226,6 +229,7 @@ services:
       UAM_EMBEDDING_API_KEY: ${UAM_EMBEDDING_API_KEY:-}
       UAM_EMBEDDING_API_KEY_FILE: ${UAM_EMBEDDING_API_KEY_FILE:-}
       UAM_WORKER_METRICS_PORT: ${UAM_WORKER_METRICS_PORT:-9091}
+      UAM_WORKER_HEARTBEAT_SECONDS: ${UAM_WORKER_HEARTBEAT_SECONDS:-5}
     secrets:
       - app_db_password
       - nats_auth_token
@@ -257,6 +261,7 @@ services:
       UAM_MEMORY_TEXT_ENCRYPTION: ${UAM_MEMORY_TEXT_ENCRYPTION:-pgcrypto}
       UAM_MEMORY_TEXT_ENCRYPTION_SCOPES: ${UAM_MEMORY_TEXT_ENCRYPTION_SCOPES:-all}
       UAM_MEMORY_TEXT_ENCRYPTION_KEY_FILE: /run/secrets/memory_text_key
+      UAM_WORKER_HEARTBEAT_SECONDS: ${UAM_WORKER_HEARTBEAT_SECONDS:-5}
     secrets:
       - app_db_password
       - nats_auth_token

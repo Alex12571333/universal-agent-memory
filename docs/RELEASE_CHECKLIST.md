@@ -57,6 +57,12 @@ UAM_VAULT_SIGNING_KEY=... python scripts/import_vault.py ./vault-release \
   --json-report ./ops/vault-import.json
 UAM_API_KEY=... PYTHONPATH=src python scripts/check_metrics_health.py \
   --metrics-url http://localhost:6798/metrics \
+  --max-worker-unready 0 \
+  --require-metric uam_worker_required \
+  --require-metric uam_worker_ready \
+  --require-metric uam_worker_unready \
+  --require-metric uam_worker_missing \
+  --require-metric uam_worker_stale \
   --report ./ops/metrics-health.json
 UAM_API_KEY=... python scripts/agent_soak_eval.py \
   --base-url "$RELEASE_API_URL" \
@@ -190,6 +196,11 @@ Manual checks:
   `scripts/generate_release_evidence_manifest.py` so it includes every required
   artifact.
 - Confirm worker logs do not show repeated NATS/Qdrant connection failures.
+- Confirm `/ready` fails after stopping each required worker role, recovers only
+  after a fresh PostgreSQL heartbeat, and does not expose worker IDs, hostnames
+  or process metadata.
+- Confirm `ops/metrics-health.json` reports zero `uam_worker_unready`,
+  `uam_worker_missing` and `uam_worker_stale` for the release tenant.
 - When the embedding model or dimension changes, confirm
   `ops/vector-collection-migration.json` verifies the new collection count and
   the previous collection remains available for rollback.
@@ -229,3 +240,6 @@ Do not release if:
   pruning rather than before pruning.
 - observability dashboard/alert rules are not installed for the target
   production environment.
+- any required worker role is missing or stale, or the production environment
+  does not require all three roles: `outbox-relay`, `embedding-worker` and
+  `maintenance-worker`.

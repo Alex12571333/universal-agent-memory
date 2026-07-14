@@ -27,6 +27,8 @@ def _safe_row() -> dict[str, bool]:
     return {
         "outbox_events_update": True,
         "checkpoints_delete": True,
+        "worker_heartbeats_update": True,
+        "worker_heartbeats_delete": True,
         "memory_items_update": False,
         "memory_items_delete": False,
         "audit_events_update": False,
@@ -46,6 +48,10 @@ def test_runtime_acl_verification_allows_only_required_mutations() -> None:
         "outbox_events",
         "update",
         "checkpoints",
+        "delete",
+        "worker_heartbeats",
+        "update",
+        "worker_heartbeats",
         "delete",
         "memory_items",
         "update",
@@ -74,4 +80,20 @@ def test_runtime_acl_verification_rejects_missing_operational_privilege() -> Non
     row["outbox_events_update"] = False
 
     with pytest.raises(RuntimeError, match="missing:outbox_events_update"):
+        PostgresMemoryLedger._verify_runtime_acl(_AclConnection(row))
+
+
+def test_runtime_acl_requires_worker_heartbeat_update() -> None:
+    row = _safe_row()
+    row["worker_heartbeats_update"] = False
+
+    with pytest.raises(RuntimeError, match="missing:worker_heartbeats_update"):
+        PostgresMemoryLedger._verify_runtime_acl(_AclConnection(row))
+
+
+def test_runtime_acl_requires_worker_heartbeat_retention_delete() -> None:
+    row = _safe_row()
+    row["worker_heartbeats_delete"] = False
+
+    with pytest.raises(RuntimeError, match="missing:worker_heartbeats_delete"):
         PostgresMemoryLedger._verify_runtime_acl(_AclConnection(row))

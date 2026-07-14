@@ -31,6 +31,7 @@ MIGRATIONS = (
     ROOT / "migrations/014_protected_search_scope_integrity.sql",
     ROOT / "migrations/015_encrypt_json_payloads.sql",
     ROOT / "migrations/016_audit_immutability.sql",
+    ROOT / "migrations/017_worker_heartbeats.sql",
 )
 
 
@@ -144,10 +145,12 @@ def provision_application_role(
         sql.SQL(
             "grant update on outbox_events, processed_events, api_key_registry, "
             "conversation_turns, conversation_messages, memory_proposals, agents, "
-            "threads, conflict_reviews to {}"
+            "threads, conflict_reviews, worker_heartbeats to {}"
         ).format(identifier)
     )
-    connection.execute(sql.SQL("grant delete on checkpoints to {}").format(identifier))
+    connection.execute(
+        sql.SQL("grant delete on checkpoints, worker_heartbeats to {}").format(identifier)
+    )
     connection.execute(
         sql.SQL("grant usage, select on all sequences in schema public to {}").format(
             identifier

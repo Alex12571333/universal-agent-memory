@@ -73,6 +73,7 @@ from memory_plane.domain.models import (
     Provenance,
 )
 from memory_plane.domain.proposal import MemoryProposalStatus, MemoryProposalTarget
+from memory_plane.domain.worker import WorkerReadiness
 from memory_plane.services.conversations import (
     AppendConversationTurnCommand,
     CurateConversationTurnCommand,
@@ -111,6 +112,61 @@ def _audit_route_family(path: str) -> str:
     if match:
         return f"/v1/{match.group(1)}"
     return "/other"
+
+
+def _parse_required_workers(raw: str | None) -> tuple[str, ...]:
+    """Normalize an explicit fail-closed set of asynchronous worker kinds."""
+    if not raw:
+        return ()
+    workers = tuple(
+        dict.fromkeys(value.strip().lower() for value in raw.split(",") if value.strip())
+    )
+    invalid = [
+        value
+        for value in workers
+        if not re.fullmatch(r"[a-z][a-z0-9-]{0,63}", value)
+    ]
+    if invalid:
+        raise ValueError("UAM_REQUIRED_WORKERS contains an invalid worker kind")
+    return workers
+
+
+def _worker_readiness_response(
+    snapshot: WorkerReadiness | None,
+    required_workers: tuple[str, ...],
+) -> dict[str, Any]:
+    """Expose aggregate liveness without process IDs, hosts or timestamps."""
+    if not required_workers:
+        return {
+            "status": "not_configured",
+            "required": [],
+            "ready_count": 0,
+            "missing": [],
+            "stale": [],
+        }
+    if snapshot is None:
+        return {
+            "status": "unavailable",
+            "required": list(required_workers),
+            "ready_count": 0,
+            "missing": list(required_workers),
+            "stale": [],
+        }
+    return {
+        "status": "ready" if snapshot.ready else "not_ready",
+        "required": [
+            {
+                "kind": row.worker_kind,
+                "status": "ready" if row.ready else "not_ready",
+                "fresh_instances": row.fresh_instances,
+                "stale_instances": row.stale_instances,
+            }
+            for row in snapshot.required
+        ],
+        "ready_count": sum(row.ready for row in snapshot.required),
+        "missing": list(snapshot.missing_kinds),
+        "stale": list(snapshot.stale_kinds),
+    }
 
 
 def _web_dist_dir() -> Path:
@@ -1159,6 +1215,17 @@ def create_app(
                 + ", ".join(missing_bindings)
             )
     auth_tenant_id = _registry_tenant_id()
+    required_workers = _parse_required_workers(os.getenv("UAM_REQUIRED_WORKERS"))
+    try:
+        worker_heartbeat_ttl_seconds = int(
+            os.getenv("UAM_WORKER_HEARTBEAT_TTL_SECONDS", "30")
+        )
+    except ValueError as exc:
+        raise ValueError("UAM_WORKER_HEARTBEAT_TTL_SECONDS must be an integer") from exc
+    if not 5 <= worker_heartbeat_ttl_seconds <= 600:
+        raise ValueError(
+            "UAM_WORKER_HEARTBEAT_TTL_SECONDS must be between 5 and 600"
+        )
     model_settings = _load_model_settings()
     build_info = BuildInfo.from_env()
     app = FastAPI(
@@ -1430,6 +1497,22 @@ def create_app(
             metadata=metadata or {},
         )
 
+    def worker_readiness_snapshot() -> WorkerReadiness | None:
+        """Load aggregate worker state or fail closed when the probe is unavailable."""
+        if not required_workers:
+            return WorkerReadiness()
+        probe = getattr(services.store, "worker_readiness", None)
+        if not callable(probe):
+            return None
+        try:
+            return probe(
+                auth_tenant_id,
+                required_workers,
+                stale_after_seconds=worker_heartbeat_ttl_seconds,
+            )
+        except Exception:
+            return None
+
     @app.get("/health")
     def health() -> dict[str, str]:
         """Report process liveness; adapters should extend readiness separately."""
@@ -1444,11 +1527,17 @@ def create_app(
         except Exception:
             canonical_ready = False
         sources = services.retrieval.source_health()
-        status = "ready" if canonical_ready else "not_ready"
-        if canonical_ready and any(row["status"] == "degraded" for row in sources.values()):
+        worker_snapshot = worker_readiness_snapshot() if canonical_ready else None
+        workers_ready = not required_workers or bool(worker_snapshot and worker_snapshot.ready)
+        status = "ready" if canonical_ready and workers_ready else "not_ready"
+        if (
+            canonical_ready
+            and workers_ready
+            and any(row["status"] == "degraded" for row in sources.values())
+        ):
             status = "degraded"
         return JSONResponse(
-            status_code=200 if canonical_ready else 503,
+            status_code=200 if canonical_ready and workers_ready else 503,
             content={
                 "status": status,
                 # Release identity is deliberately public: agents and probes must
@@ -1458,6 +1547,10 @@ def create_app(
                 "build": build_info.public_dict(),
                 "canonical_store": "healthy" if canonical_ready else "failed",
                 "retrieval_sources": sources,
+                "worker_pipeline": _worker_readiness_response(
+                    worker_snapshot,
+                    required_workers,
+                ),
             },
         )
 
@@ -1873,6 +1966,28 @@ def create_app(
         if callable(embedding_collector):
             rows = {**rows, **embedding_collector()}
         rows = {**rows, **services.retrieval.collect_metrics()}
+        worker_snapshot = worker_readiness_snapshot()
+        worker_ready_count = (
+            sum(state.ready for state in worker_snapshot.required)
+            if worker_snapshot is not None
+            else 0
+        )
+        worker_stale_count = (
+            len(worker_snapshot.stale_kinds) if worker_snapshot is not None else 0
+        )
+        worker_missing_count = (
+            len(worker_snapshot.missing_kinds)
+            if worker_snapshot is not None
+            else len(required_workers)
+        )
+        rows = {
+            **rows,
+            "worker_required": len(required_workers),
+            "worker_ready": worker_ready_count,
+            "worker_unready": max(0, len(required_workers) - worker_ready_count),
+            "worker_missing": worker_missing_count,
+            "worker_stale": worker_stale_count,
+        }
         return render_prometheus(rows)
 
     @app.get("/ui", response_class=HTMLResponse)

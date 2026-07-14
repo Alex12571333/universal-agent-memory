@@ -420,6 +420,65 @@
       ],
       "title": "Retrieval dependency health",
       "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 20
+      },
+      "id": 9,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "expr": "uam_worker_required",
+          "legendFormat": "required roles",
+          "refId": "A"
+        },
+        {
+          "expr": "uam_worker_ready",
+          "legendFormat": "ready roles",
+          "refId": "B"
+        },
+        {
+          "expr": "uam_worker_missing",
+          "legendFormat": "missing roles",
+          "refId": "C"
+        },
+        {
+          "expr": "uam_worker_stale",
+          "legendFormat": "stale roles",
+          "refId": "D"
+        },
+        {
+          "expr": "uam_worker_unready",
+          "legendFormat": "unready roles",
+          "refId": "E"
+        }
+      ],
+      "title": "Durable worker heartbeat readiness",
+      "type": "timeseries"
     }
   ],
   "refresh": "30s",

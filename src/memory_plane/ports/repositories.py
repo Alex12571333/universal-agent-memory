@@ -14,6 +14,7 @@ from memory_plane.domain.conflict import ConflictReviewDecision
 from memory_plane.domain.graph import MemoryEdge, MemoryEdgeType
 from memory_plane.domain.identity import AgentIdentity, ThreadIdentity, WorkspaceIdentity
 from memory_plane.domain.models import MemoryItem, MemoryLayer, Observation
+from memory_plane.domain.worker import WorkerHeartbeat, WorkerReadiness
 
 
 class MemoryLedger(Protocol):
@@ -309,6 +310,24 @@ class AuditRepository(Protocol):
         limit: int = 500,
     ) -> int:
         """Delete old audit events after external export has been verified."""
+        ...
+
+
+class WorkerHeartbeatRepository(Protocol):
+    """Durable tenant-scoped liveness ledger for asynchronous workers."""
+
+    def record_worker_heartbeat(self, heartbeat: WorkerHeartbeat) -> WorkerHeartbeat:
+        """Upsert the latest state for one process identity."""
+        ...
+
+    def worker_readiness(
+        self,
+        tenant_id: UUID,
+        required_kinds: tuple[str, ...],
+        *,
+        stale_after_seconds: int,
+    ) -> WorkerReadiness:
+        """Aggregate required kinds without exposing worker identities."""
         ...
 
 

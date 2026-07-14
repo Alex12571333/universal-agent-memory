@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 import socket
+from contextlib import suppress
 from uuid import UUID
 
 from memory_plane.bootstrap import build_postgres_container
@@ -13,6 +14,7 @@ from memory_plane.config.secrets import read_secret_env
 from memory_plane.contracts.events import IntegrationEvent
 from memory_plane.services.consumer import IdempotentEventConsumer
 from memory_plane.services.conversations import CurateConversationTurnCommand
+from memory_plane.workers.heartbeat import WorkerHeartbeatEmitter
 from memory_plane.workers.logging import log_event
 from memory_plane.workers.nats_consumer import NatsPullWorker
 
@@ -22,9 +24,11 @@ async def run() -> None:
     dsn = read_database_dsn()
     if not dsn:
         raise RuntimeError("PostgreSQL connection configuration is required")
+    server_id = UUID(os.environ["UAM_SERVER_ID"])
+    worker_id = os.getenv("UAM_WORKER_ID", socket.gethostname())
     container = build_postgres_container(
         dsn,
-        server_id=UUID(os.environ["UAM_SERVER_ID"]),
+        server_id=server_id,
         project_id=UUID(os.environ.get("UAM_PROJECT_ID", "00000000-0000-0000-0000-000000000002")),
     )
 
@@ -71,7 +75,7 @@ async def run() -> None:
         container.store,  # type: ignore[arg-type]
         handler,
         consumer="maintenance-reflect-v1",
-        worker_id=os.getenv("UAM_WORKER_ID", socket.gethostname()),
+        worker_id=worker_id,
     )
     worker = NatsPullWorker(
         os.getenv("UAM_NATS_URL", "nats://nats:4222"),
@@ -90,18 +94,46 @@ async def run() -> None:
         ),
         auth_token=read_secret_env("UAM_NATS_AUTH_TOKEN"),
     )
-    await worker.connect()
-    log_event("worker_started", worker="maintenance")
+    heartbeat = WorkerHeartbeatEmitter(
+        container.store,  # type: ignore[arg-type]
+        tenant_id=server_id,
+        worker_kind="maintenance-worker",
+        worker_id=worker_id,
+        interval_seconds=float(os.getenv("UAM_WORKER_HEARTBEAT_SECONDS", "5")),
+    )
+    heartbeat_task: asyncio.Task[None] | None = None
+    heartbeat_started = False
     try:
+        await worker.connect()
+        await heartbeat.start()
+        heartbeat_started = True
+        heartbeat_task = asyncio.create_task(heartbeat.run())
+        log_event("worker_started", worker="maintenance")
         while True:
             acked = await worker.run_once(batch_size=10, timeout=0.5)
+            if heartbeat_task is not None and heartbeat_task.done():
+                heartbeat_task.result()
             if acked:
                 log_event("worker_batch_completed", worker="maintenance", acknowledged=acked)
             if acked == 0:
                 await asyncio.sleep(0.5)
     finally:
+        if heartbeat_task is not None:
+            heartbeat_task.cancel()
+            with suppress(asyncio.CancelledError, Exception):
+                await heartbeat_task
+        if heartbeat_started:
+            try:
+                await heartbeat.stop()
+            except Exception as error:  # noqa: BLE001 - still release transport.
+                log_event(
+                    "worker_heartbeat_stop_failed",
+                    worker="maintenance",
+                    error_type=type(error).__name__,
+                )
         log_event("worker_stopped", worker="maintenance")
         await worker.close()
+        container.store.close()
 
 
 def main() -> None:

@@ -156,6 +156,7 @@ def test_migration_runner_includes_every_versioned_sql_file() -> None:
         "014_protected_search_scope_integrity.sql",
         "015_encrypt_json_payloads.sql",
         "016_audit_immutability.sql",
+        "017_worker_heartbeats.sql",
     }
     configured = {path.name for path in migrate.MIGRATIONS}
 
@@ -172,6 +173,18 @@ def test_migration_checksums_and_audit_immutability_are_enforced() -> None:
     assert "before update or delete on audit_events" in sql
     assert "current_setting('uam.audit_retention_mode', true) = 'on'" in sql
     assert "audit_events is append-only" in sql
+
+
+def test_worker_heartbeat_migration_is_tenant_scoped_and_indexed() -> None:
+    heartbeat_migration = next(
+        path for path in migrate.MIGRATIONS if path.name == "017_worker_heartbeats.sql"
+    )
+    sql = heartbeat_migration.read_text(encoding="utf-8").lower()
+
+    assert "primary key (tenant_id, worker_kind, worker_id)" in sql
+    assert "worker_heartbeats_kind_seen_idx" in sql
+    assert "force row level security" in sql
+    assert "create policy tenant_isolation on worker_heartbeats" in sql
 
 
 def test_migration_runner_rejects_changed_applied_sql(
@@ -257,7 +270,8 @@ def test_application_role_provisioning_parameterizes_secret_and_identifier(
     assert "revoke update, delete on all tables" in statements
     assert "grant select, insert, update, delete on all tables" not in statements
     assert "grant update on outbox_events" in statements
-    assert "grant delete on checkpoints" in statements
+    assert "worker_heartbeats" in statements
+    assert "grant delete on checkpoints, worker_heartbeats" in statements
 
 
 @pytest.mark.parametrize(
@@ -314,6 +328,9 @@ def test_validate_production_env_accepts_strict_real_config(tmp_path: Path) -> N
                 "UAM_NATS_AUTH_TOKEN=nats_" + "n" * 40,
                 "UAM_CONTEXT_BUDGET_TOKENS=131072",
                 "UAM_ENFORCE_RUNTIME_DB_ACL=true",
+                "UAM_REQUIRED_WORKERS=outbox-relay,embedding-worker,maintenance-worker",
+                "UAM_WORKER_HEARTBEAT_SECONDS=5",
+                "UAM_WORKER_HEARTBEAT_TTL_SECONDS=30",
                 "UAM_PRIVACY_ENABLED=true",
                 "UAM_PRIVACY_ACTION=redact",
                 "UAM_MEMORY_TEXT_ENCRYPTION=pgcrypto",
@@ -401,9 +418,12 @@ def test_validate_production_env_accepts_secret_files(tmp_path: Path) -> None:
                 "UAM_PROJECT_ID=00000000-0000-0000-0000-000000000002",
                 "UAM_PUBLIC_HOST=memory.example.com",
                 "UAM_PUBLIC_EMAIL=ops@example.com",
-                "UAM_CONTEXT_BUDGET_TOKENS=131072",
-                "UAM_ENFORCE_RUNTIME_DB_ACL=true",
-                "UAM_PRIVACY_ENABLED=true",
+                    "UAM_CONTEXT_BUDGET_TOKENS=131072",
+                    "UAM_ENFORCE_RUNTIME_DB_ACL=true",
+                    "UAM_REQUIRED_WORKERS=outbox-relay,embedding-worker,maintenance-worker",
+                    "UAM_WORKER_HEARTBEAT_SECONDS=5",
+                    "UAM_WORKER_HEARTBEAT_TTL_SECONDS=30",
+                    "UAM_PRIVACY_ENABLED=true",
                 "UAM_PRIVACY_ACTION=redact",
                 "UAM_MEMORY_TEXT_ENCRYPTION=pgcrypto",
                 "UAM_MEMORY_TEXT_ENCRYPTION_SCOPES=private,thread",
@@ -433,10 +453,31 @@ def test_validate_production_env_accepts_secret_files(tmp_path: Path) -> None:
 
     assert all(check.ok for check in checks)
     assert any(
-        check.name == "UAM_API_KEY" and "UAM_API_KEY_FILE" in check.detail for check in checks
+        check.name == "UAM_API_KEY" and "UAM_API_KEY_FILE" in check.detail
+        for check in checks
     )
 
 
+def test_validate_production_env_requires_safe_worker_heartbeat_policy() -> None:
+    valid = {
+        "UAM_REQUIRED_WORKERS": "outbox-relay,embedding-worker,maintenance-worker",
+        "UAM_WORKER_HEARTBEAT_SECONDS": "5",
+        "UAM_WORKER_HEARTBEAT_TTL_SECONDS": "30",
+    }
+
+    assert validate_production_env._check_worker_heartbeat_policy(valid).ok is True
+    assert (
+        validate_production_env._check_worker_heartbeat_policy(
+            {**valid, "UAM_REQUIRED_WORKERS": "embedding-worker"}
+        ).ok
+        is False
+    )
+    assert (
+        validate_production_env._check_worker_heartbeat_policy(
+            {**valid, "UAM_WORKER_HEARTBEAT_TTL_SECONDS": "10"}
+        ).ok
+        is False
+    )
 def test_validate_production_env_rejects_placeholders_and_missing_public_tls() -> None:
     values = validate_production_env.parse_env_file(ROOT / ".env.production.example")
 
