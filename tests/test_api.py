@@ -1786,6 +1786,61 @@ def test_graph_edge_endpoints_create_and_list_neighbors() -> None:
     assert neighbors.json()["edges"][0]["dst_id"] == target["id"]
 
 
+def test_graph_neighbors_support_stable_bounded_pagination() -> None:
+    client = TestClient(create_app(build_in_memory_container()))
+    source = client.post(
+        "/v1/memory/retain",
+        json={
+            "layer": "semantic",
+            "scope": "workspace",
+            "kind": "fact",
+            "text": "Graph pagination source",
+        },
+    ).json()
+    for index in range(3):
+        target = client.post(
+            "/v1/memory/retain",
+            json={
+                "layer": "semantic",
+                "scope": "workspace",
+                "kind": "fact",
+                "text": f"Graph pagination target {index}",
+                "idempotency_key": f"graph-page-target-{index}",
+            },
+        ).json()
+        linked = client.post(
+            "/v1/graph/edges",
+            json={"src_id": source["id"], "dst_id": target["id"], "edge_type": "supports"},
+        )
+        assert linked.status_code == 201
+
+    first = client.get(f"/v1/memory/{source['id']}/neighbors?limit=2")
+    assert first.status_code == 200
+    first_body = first.json()
+    assert first_body["count"] == 2
+    assert first_body["has_more"] is True
+    first_ids = {row["id"] for row in first_body["edges"]}
+
+    second = client.get(
+        f"/v1/memory/{source['id']}/neighbors",
+        params={
+            "limit": 2,
+            "after_created_at": first_body["next_after_created_at"],
+            "after_edge_id": first_body["next_after_edge_id"],
+        },
+    )
+    assert second.status_code == 200
+    assert second.json()["count"] == 1
+    assert second.json()["has_more"] is False
+    assert not (first_ids & {row["id"] for row in second.json()["edges"]})
+
+    incomplete = client.get(
+        f"/v1/memory/{source['id']}/neighbors",
+        params={"after_created_at": first_body["next_after_created_at"]},
+    )
+    assert incomplete.status_code == 422
+
+
 def test_vault_endpoint_exports_markdown_files() -> None:
     client = TestClient(create_app(build_in_memory_container()))
     retained = client.post(

@@ -90,6 +90,13 @@ records, exposes an explicit `has_more`/next-cursor contract and rejects partial
 cursors. This prevents concurrent proposal ingestion from shifting an offset
 and causing skipped or duplicated operator review rows.
 
+Graph-neighbor traversal now has the same bounded property: at most 500 edges
+per public page with an ascending `(created_at, id)` cursor threaded through
+the API, service and both adapters. PostgreSQL list adapters for audit,
+conversation turns, proposals and graph edges now allow exactly one internal
+sentinel row beyond their public cap, fixing false `has_more: false` responses
+at the maximum page size.
+
 ## Remaining gate
 
 No deterministic extractor can safely infer all paraphrases, negations or

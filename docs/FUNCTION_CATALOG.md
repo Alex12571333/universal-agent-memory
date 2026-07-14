@@ -242,6 +242,7 @@
 | `GET /v1/memory/proposals` | Proposal review listing | Namespace/status filters; bounded stable keyset cursor |
 | `POST /v1/memory/proposals/{id}/accept` | Accept proposal → `MemoryItem` | Идемпотентный append с provenance |
 | `POST /v1/memory/proposals/{id}/reject` | Reject proposal | Не создаёт recallable memory |
+| `GET /v1/memory/{id}/neighbors` | Typed graph-neighbor listing | Tenant/workspace scoped; bounded stable keyset cursor |
 | `PUT /v1/memory/{id}/supersede` | CAS replacement; stale revision → `409 revision_conflict` |
 | `POST /v1/memory/recall` | Recall + context compilation | Status/scope filters и token budget |
 | `POST /v1/workspaces/{id}/vault/import` | Dry-run/apply edited vault notes | Applies through `supersede`; conflicts on stale revisions |

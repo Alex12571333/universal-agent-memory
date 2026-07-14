@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from uuid import UUID
 
 from memory_plane.domain.audit import AuditEvent
@@ -54,6 +55,9 @@ class GraphService:
         workspace_id: UUID,
         item_id: UUID,
         edge_type: MemoryEdgeType | None = None,
+        after_created_at: datetime | None = None,
+        after_edge_id: UUID | None = None,
+        limit: int = 100,
     ) -> tuple[MemoryEdge, ...]:
         """List incoming and outgoing edges for one memory item."""
         return self._graph.list_neighbors(
@@ -61,4 +65,7 @@ class GraphService:
             workspace_id,
             item_id,
             edge_type=edge_type,
+            after_created_at=after_created_at,
+            after_edge_id=after_edge_id,
+            limit=limit,
         )

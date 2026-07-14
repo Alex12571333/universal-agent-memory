@@ -877,6 +877,41 @@ class PostgresMemoryLedgerTest(unittest.TestCase):
             self.store.list_neighbors(self.tenant, self.workspace, source.id),
         )
 
+    def test_graph_neighbor_listing_uses_stable_keyset_cursor(self) -> None:
+        source = self._item("graph page source")
+        self.store.retain(source, self._event(source))
+        for index in range(3):
+            target = self._item(f"graph page target {index}")
+            self.store.retain(target, self._event(target))
+            self.store.save_edge(
+                MemoryEdge(
+                    tenant_id=self.tenant,
+                    workspace_id=self.workspace,
+                    src_id=source.id,
+                    dst_id=target.id,
+                    edge_type=MemoryEdgeType.SUPPORTS,
+                )
+            )
+
+        first = self.store.list_neighbors(
+            self.tenant,
+            self.workspace,
+            source.id,
+            limit=2,
+        )
+        second = self.store.list_neighbors(
+            self.tenant,
+            self.workspace,
+            source.id,
+            after_created_at=first[-1].created_at,
+            after_edge_id=first[-1].id,
+            limit=2,
+        )
+
+        self.assertEqual(2, len(first))
+        self.assertEqual(1, len(second))
+        self.assertFalse({row.id for row in first} & {row.id for row in second})
+
     def test_proposal_accept_audit_failure_rolls_back_memory_and_status(self) -> None:
         service = MemoryProposalService(self.store, RetentionService(self.store))
         submitted = service.submit(
