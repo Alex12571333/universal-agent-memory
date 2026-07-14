@@ -7,6 +7,7 @@ import type {
   SystemStatus,
   VaultFile,
   VaultHealthResponse,
+  VaultPatchResponse,
   VaultResponse
 } from "./types";
 
@@ -154,6 +155,25 @@ export const api = {
         files
       })
     });
+  },
+  patchVaultMemory(
+    workspace: string,
+    tenant: string,
+    itemId: string,
+    expectedRevision: number,
+    replaceBody: string
+  ) {
+    return request<VaultPatchResponse>(
+      `/v1/workspaces/${workspace}/vault/memories/${itemId}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({
+          tenant_id: tenant,
+          expected_revision: expectedRevision,
+          replace_body: replaceBody
+        })
+      }
+    );
   },
   archiveVaultFile(workspace: string, tenant: string, file: VaultFile) {
     return request<ImportVaultResponse>(`/v1/workspaces/${workspace}/vault/archive`, {

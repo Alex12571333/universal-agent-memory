@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -79,6 +81,49 @@ class VaultImportResult:
     def supersede_count(self) -> int:
         """Number of files that require or performed a supersede action."""
         return sum(1 for change in self.changes if change.action == "supersede")
+
+
+@dataclass(frozen=True, slots=True)
+class VaultPatchCommand:
+    """One bounded CAS edit against a canonical memory head."""
+
+    tenant_id: UUID
+    workspace_id: UUID
+    item_id: UUID
+    expected_revision: int
+    replace_body: str | None = None
+    section_heading: str | None = None
+    section_content: str | None = None
+    confidence: float | None = None
+    idempotency_key: str | None = None
+
+    def __post_init__(self) -> None:
+        """Reject ambiguous or unbounded patch instructions."""
+        if self.expected_revision < 1:
+            raise ValueError("expected_revision must be positive")
+        has_body = self.replace_body is not None
+        has_section = self.section_heading is not None or self.section_content is not None
+        if has_body and has_section:
+            raise ValueError("replace_body and section patch are mutually exclusive")
+        if has_section and (not self.section_heading or self.section_content is None):
+            raise ValueError("section_heading and section_content are required together")
+        if not has_body and not has_section and self.confidence is None:
+            raise ValueError("patch must change body, one section, or confidence")
+        if self.section_heading and (
+            "\n" in self.section_heading or "\r" in self.section_heading
+        ):
+            raise ValueError("section heading must be one line")
+        if self.confidence is not None and not 0.0 <= self.confidence <= 1.0:
+            raise ValueError("confidence must be between 0 and 1")
+
+
+@dataclass(frozen=True, slots=True)
+class VaultPatchResult:
+    """Canonical outcome of a targeted vault edit."""
+
+    item: MemoryItem
+    changed: bool
+    queued_event_ids: tuple[UUID, ...] = ()
 
 
 class VaultExporter:
@@ -271,6 +316,63 @@ class VaultExporter:
             workspace_id=workspace_id,
             dry_run=False,
             changes=(change,),
+        )
+
+    def patch_memory(self, command: VaultPatchCommand) -> VaultPatchResult:
+        """Apply a body/section edit as an append-only CAS supersede revision."""
+        if self._retention is None:
+            raise RuntimeError("vault patch requires a retention service")
+        current = self._ledger.get(command.tenant_id, command.item_id)
+        if current is None or current.workspace_id != command.workspace_id:
+            raise KeyError("memory item not found")
+        if current.revision != command.expected_revision:
+            raise MemoryRevisionConflictError(
+                command.item_id,
+                command.expected_revision,
+                current.revision,
+            )
+        if current.status in {MemoryStatus.ARCHIVED, MemoryStatus.REJECTED}:
+            raise ValueError("archived or rejected memory cannot be patched")
+
+        replacement_text = current.text
+        if command.replace_body is not None:
+            replacement_text = _sanitize_editable_body(command.replace_body)
+        elif command.section_heading is not None and command.section_content is not None:
+            replacement_text = _replace_markdown_section(
+                current.text,
+                heading=command.section_heading,
+                content=command.section_content,
+            )
+        if not replacement_text.strip():
+            raise ValueError("replacement text must not be empty")
+
+        next_confidence = (
+            current.confidence if command.confidence is None else command.confidence
+        )
+        if (
+            replacement_text.strip() == current.text.strip()
+            and next_confidence == current.confidence
+        ):
+            return VaultPatchResult(item=current, changed=False)
+
+        idempotency_key = command.idempotency_key or _vault_patch_idempotency_key(
+            command,
+            replacement_text,
+        )
+        retained = self._retention.supersede(
+            SupersedeMemoryCommand(
+                tenant_id=command.tenant_id,
+                item_id=command.item_id,
+                replacement_text=replacement_text,
+                expected_revision=command.expected_revision,
+                confidence=command.confidence,
+                idempotency_key=idempotency_key,
+            )
+        )
+        return VaultPatchResult(
+            item=retained.item,
+            changed=retained.created,
+            queued_event_ids=retained.queued_event_ids,
         )
 
     _MEMORY_PREFIXES = (
@@ -598,6 +700,54 @@ def editable_vault_content(content: str) -> str:
         return _parse_markdown_note(content).body
     except ValueError:
         return _sanitize_editable_body(content)
+
+
+def _replace_markdown_section(text: str, *, heading: str, content: str) -> str:
+    """Replace exactly one Markdown section without touching adjacent sections."""
+    requested = heading.strip().lstrip("#").strip()
+    if not requested:
+        raise ValueError("section heading must not be empty")
+    if _is_system_heading(f"## {requested}"):
+        raise ValueError("system-managed sections cannot be patched")
+
+    lines = text.splitlines()
+    matches: list[tuple[int, int]] = []
+    for index, line in enumerate(lines):
+        match = re.match(r"^(#{1,6})\s+(.+?)\s*#*\s*$", line)
+        if match and match.group(2).strip().casefold() == requested.casefold():
+            matches.append((index, len(match.group(1))))
+    if not matches:
+        raise ValueError(f"section not found: {requested}")
+    if len(matches) > 1:
+        raise ValueError(f"section heading is ambiguous: {requested}")
+
+    start, level = matches[0]
+    end = len(lines)
+    for index in range(start + 1, len(lines)):
+        match = re.match(r"^(#{1,6})\s+", lines[index])
+        if match and len(match.group(1)) <= level:
+            end = index
+            break
+    replacement_lines = content.strip().splitlines() if content.strip() else []
+    patched = "\n".join([*lines[: start + 1], *replacement_lines, *lines[end:]])
+    return _sanitize_editable_body(patched)
+
+
+def _vault_patch_idempotency_key(command: VaultPatchCommand, text: str) -> str:
+    """Derive a stable non-secret retry key from the complete patch outcome."""
+    digest = hashlib.sha256(
+        "\x1f".join(
+            (
+                str(command.tenant_id),
+                str(command.workspace_id),
+                str(command.item_id),
+                str(command.expected_revision),
+                text,
+                "" if command.confidence is None else str(command.confidence),
+            )
+        ).encode("utf-8")
+    ).hexdigest()
+    return f"vault-patch:{command.item_id}:{command.expected_revision}:{digest}"
 
 
 def _frontmatter(values: dict[str, Any]) -> str:

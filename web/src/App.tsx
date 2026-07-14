@@ -890,13 +890,36 @@ function VaultEditor(props: {
 
   async function save(dryRun: boolean) {
     if (!file || !canEdit) return;
-    const next = replaceBody(file.content, text);
-    const result = await api.importVault(props.workspace, props.tenant, [{ path: file.path, content: next }], dryRun);
-      props.setStatus(`${dryRun ? "Проверка" : "Сохранено"}: замен ${result.supersede_count}, изменений ${result.changes.length}`);
-    if (!dryRun) {
-      await api.reindex(props.workspace, props.tenant);
-      await props.refresh();
+    if (dryRun) {
+      const next = replaceBody(file.content, text);
+      const result = await api.importVault(
+        props.workspace,
+        props.tenant,
+        [{ path: file.path, content: next }],
+        true
+      );
+      props.setStatus(`Проверка: замен ${result.supersede_count}, изменений ${result.changes.length}`);
+      return;
     }
+    const itemId = vaultFrontmatterValue(file.content, "id").replace(/^mem-/, "");
+    const expectedRevision = Number(vaultFrontmatterValue(file.content, "revision"));
+    if (!itemId || !Number.isInteger(expectedRevision) || expectedRevision < 1) {
+      props.setStatus("Нельзя сохранить: у записи нет корректной ревизии");
+      return;
+    }
+    const result = await api.patchVaultMemory(
+      props.workspace,
+      props.tenant,
+      itemId,
+      expectedRevision,
+      text
+    );
+    props.setStatus(
+      result.changed
+        ? `Сохранено как ревизия ${result.revision}; пересчёт вектора поставлен в очередь`
+        : `Ревизия ${result.revision} уже содержит эту правку`
+    );
+    await props.refresh();
   }
 
   return (

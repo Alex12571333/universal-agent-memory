@@ -58,6 +58,7 @@ from memory_plane.services.proposals import (
     SubmitMemoryProposalCommand,
 )
 from memory_plane.services.retention import RetentionService
+from memory_plane.services.vault import VaultExporter, VaultPatchCommand
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -1350,6 +1351,45 @@ class PostgresMemoryLedgerTest(unittest.TestCase):
         self.assertEqual(1, raised.exception.expected)
         self.assertEqual(2, raised.exception.actual)
 
+    def test_targeted_vault_patch_is_postgres_cas_and_idempotent(self) -> None:
+        original = self._item(
+            "## Решение\nСтарая модель.\n\n## Ограничения\nТолько локально."
+        )
+        self.store.retain(original, self._event(original), "vault-patch-original")
+        vault = VaultExporter(
+            self.store,
+            self.store,
+            RetentionService(self.store),
+        )
+        command = VaultPatchCommand(
+            tenant_id=self.tenant,
+            workspace_id=self.workspace,
+            item_id=original.id,
+            expected_revision=1,
+            section_heading="Решение",
+            section_content="Новая локальная модель.",
+        )
+
+        first = vault.patch_memory(command)
+        retry = vault.patch_memory(command)
+
+        self.assertTrue(first.changed)
+        self.assertEqual(2, first.item.revision)
+        self.assertEqual(original.id, first.item.supersedes_id)
+        self.assertIn("Новая локальная модель.", first.item.text)
+        self.assertIn("Только локально.", first.item.text)
+        self.assertFalse(retry.changed)
+        self.assertEqual(first.item.id, retry.item.id)
+        with self.assertRaises(MemoryRevisionConflictError):
+            vault.patch_memory(
+                VaultPatchCommand(
+                    tenant_id=self.tenant,
+                    workspace_id=self.workspace,
+                    item_id=original.id,
+                    expected_revision=1,
+                    replace_body="Конкурирующая правка.",
+                )
+            )
     def test_outbox_failure_rolls_back_memory_and_provenance(self) -> None:
         first = self._item("first")
         duplicate_event_id = self._event(first).id

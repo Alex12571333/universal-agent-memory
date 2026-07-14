@@ -187,6 +187,31 @@ Response:
 
 Set `"dry_run": false` to apply planned changes.
 
+The operator UI uses a narrower endpoint for an actual edit:
+
+```http
+PATCH /v1/workspaces/{workspace_id}/vault/memories/{item_id}
+```
+
+Send `expected_revision` and exactly one of `replace_body` or
+`replace_section` (an existing heading plus replacement content). `confidence`
+is the only service field accepted by this targeted contract. A successful
+change creates an append-only superseding revision and enqueues its embedding
+through the transactional outbox. It never accepts vectors, tenant/workspace
+frontmatter, provenance, status, or arbitrary metadata. A concurrent edit
+returns HTTP `409`; retrying the identical patch is idempotent.
+
+```json
+{
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "expected_revision": 3,
+  "replace_section": {
+    "heading": "Решение",
+    "content": "Использовать локальный OpenAI-compatible endpoint."
+  }
+}
+```
+
 Docker users can dry-run the materialized `./vault` folder:
 
 ```bash
