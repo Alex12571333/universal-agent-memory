@@ -69,6 +69,19 @@ the transaction-local retention exception and checksum-mismatch startup
 failure on PostgreSQL 17. The remaining evidence gap is the installed,
 long-running signed retention schedule—not trigger or checksum behavior.
 
+### Protected-search key rotation target proof
+
+An isolated PostgreSQL 17 run on `192.168.0.14` completed the full protected
+search lifecycle: version 1 backfill, version 2 backfill, dual-version
+coexistence, complete-coverage/index-plan probe, guarded retirement of version
+1 and preservation of version 2. The evidence is recorded in
+[TARGET_PROTECTED_SEARCH_ROTATION_VALIDATION_2026_07_14.md](TARGET_PROTECTED_SEARCH_ROTATION_VALIDATION_2026_07_14.md).
+
+This closes the missing rotation-execution and query-plan behavior proof in P1
+finding 6. Production still requires a coordinated rollout in which every
+writer advertises the new version before retirement and the resulting reports
+are preserved with release evidence.
+
 ## Remaining gate
 
 No deterministic extractor can safely infer all paraphrases, negations or
