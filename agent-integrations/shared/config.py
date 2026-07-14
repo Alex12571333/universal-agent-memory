@@ -14,8 +14,15 @@ class AgentMemoryConfig:
     api_key: str | None = None
     enabled: bool = True
     integration_name: str = "native"
-    recall_top_k: int = 8
-    context_budget_tokens: int = 8192
+    recall_mode: str = "adaptive"
+    recall_top_k: int = 6
+    context_budget_tokens: int = 1200
+    context_per_layer_limit: int = 3
+    recall_minimum_score: float = 0.45
+    research_recall_top_k: int = 10
+    research_context_budget_tokens: int = 2500
+    research_context_per_layer_limit: int = 6
+    force_full_recall: bool = False
     retain_tool_traces: bool = True
     retain_messages: bool = True
     retain_errors: bool = True
@@ -28,8 +35,19 @@ class AgentMemoryConfig:
             api_key=os.getenv("UAM_API_KEY") or None,
             enabled=_env_bool("UAM_MEMORY_ENABLED", default=True),
             integration_name=os.getenv("UAM_AGENT_INTEGRATION", integration_name),
-            recall_top_k=int(os.getenv("UAM_MEMORY_RECALL_TOP_K", "8")),
-            context_budget_tokens=int(os.getenv("UAM_CONTEXT_BUDGET_TOKENS", "8192")),
+            recall_mode=os.getenv("UAM_RECALL_MODE", "adaptive").strip().lower(),
+            recall_top_k=int(os.getenv("UAM_MEMORY_RECALL_TOP_K", "6")),
+            context_budget_tokens=int(os.getenv("UAM_CONTEXT_BUDGET_TOKENS", "1200")),
+            context_per_layer_limit=int(os.getenv("UAM_CONTEXT_PER_LAYER_LIMIT", "3")),
+            recall_minimum_score=float(os.getenv("UAM_RECALL_MINIMUM_SCORE", "0.45")),
+            research_recall_top_k=int(os.getenv("UAM_RESEARCH_RECALL_TOP_K", "10")),
+            research_context_budget_tokens=int(
+                os.getenv("UAM_RESEARCH_CONTEXT_BUDGET_TOKENS", "2500")
+            ),
+            research_context_per_layer_limit=int(
+                os.getenv("UAM_RESEARCH_CONTEXT_PER_LAYER_LIMIT", "6")
+            ),
+            force_full_recall=_env_bool("UAM_FORCE_FULL_RECALL", default=False),
             retain_tool_traces=_env_bool("UAM_RETAIN_TOOL_TRACES", default=True),
             retain_messages=_env_bool("UAM_RETAIN_MESSAGES", default=True),
             retain_errors=_env_bool("UAM_RETAIN_ERRORS", default=True),

@@ -42,10 +42,22 @@ UAM_TENANT_ID=...
 UAM_WORKSPACE_ID=...
 UAM_AGENT_ID=...
 UAM_MEMORY_ENABLED=true
-UAM_MEMORY_RECALL_TOP_K=8
-UAM_CONTEXT_BUDGET_TOKENS=8192
-UAM_CONTEXT_PER_LAYER_LIMIT=1000
+UAM_RECALL_MODE=adaptive
+UAM_MEMORY_RECALL_TOP_K=6
+UAM_CONTEXT_BUDGET_TOKENS=1200
+UAM_CONTEXT_PER_LAYER_LIMIT=3
+UAM_RECALL_MINIMUM_SCORE=0.45
+UAM_RESEARCH_RECALL_TOP_K=10
+UAM_RESEARCH_CONTEXT_BUDGET_TOKENS=2500
+UAM_RESEARCH_CONTEXT_PER_LAYER_LIMIT=6
+UAM_FORCE_FULL_RECALL=false
 ```
+
+`adaptive` avoids the memory HTTP call for simple/self-contained turns. `always`
+uses the explicit research tier; `off` disables automatic injection while
+leaving explicit search tools available. Both adapters expose bounded local
+gate metrics (`decisions`, recall count, injected token total and latency sum)
+without storing query text.
 
 If IDs are omitted, adapters derive stable UUIDv5-style IDs from the runtime
 name/session/workspace so local testing works without SaaS-style onboarding.

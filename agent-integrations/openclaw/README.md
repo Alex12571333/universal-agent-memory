@@ -21,8 +21,8 @@ contract:
 Implemented behavior:
 
 1. Load UAM server URL/API key from OpenClaw plugin config or environment.
-2. `agent_turn_prepare`: recall project/core/working memory and prepend a
-   budgeted context package.
+2. `agent_turn_prepare`: run a local deterministic recall gate, then recall
+   project/core/working memory only when the turn needs historical context.
 3. `after_tool_call`: retain successful tool traces or tool errors.
 4. `agent_end`: retain final run summary.
 5. Reflection/reindex stay in the operator control plane and are not called by
@@ -47,7 +47,19 @@ UAM_URL=http://localhost:6798
 UAM_API_KEY=...
 UAM_AGENT_INTEGRATION=openclaw
 UAM_MEMORY_ENABLED=true
+UAM_RECALL_MODE=adaptive
+UAM_MEMORY_RECALL_TOP_K=6
+UAM_CONTEXT_BUDGET_TOKENS=1200
+UAM_CONTEXT_PER_LAYER_LIMIT=3
+UAM_RECALL_MINIMUM_SCORE=0.45
 ```
+
+The gate has `off`, `adaptive` and `always` modes. `always` (or
+`forceFullRecall: true`) uses the separately configurable research tier instead
+of silently restoring an 8192-token prompt. The plugin exports a text-free
+`recallGateMetricsSnapshot()` for host diagnostics and logs only outcome,
+bounded reason and tier—never the prompt. Retrieved Markdown is enclosed in an
+untrusted-reference wrapper before it reaches the model.
 
 Optional explicit identities:
 

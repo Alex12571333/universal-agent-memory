@@ -1,0 +1,18 @@
+[
+  {"query": "", "expected": {"should_recall": false, "reason": "empty", "tier": "none"}},
+  {"query": "Привет!", "expected": {"should_recall": false, "reason": "greeting", "tier": "none"}},
+  {"query": "hello", "expected": {"should_recall": false, "reason": "greeting", "tier": "none"}},
+  {"query": "Сколько будет 17 * 4?", "expected": {"should_recall": false, "reason": "simple_calculation", "tier": "none"}},
+  {"query": "Переведи на английский: доброе утро", "expected": {"should_recall": false, "reason": "single_phrase_translation", "tier": "none"}},
+  {"query": "Напиши функцию сортировки списка на Python", "expected": {"should_recall": false, "reason": "self_contained", "tier": "none"}},
+  {"query": "Какие настройки мы использовали в прошлый раз?", "expected": {"should_recall": true, "reason": "historical_reference", "tier": "compact"}},
+  {"query": "What are my preferences?", "expected": {"should_recall": true, "reason": "personal_context", "tier": "compact"}},
+  {"query": "Что осталось сделать в нашем проекте?", "expected": {"should_recall": true, "reason": "project_context", "tier": "compact"}},
+  {"query": "Это пофиксили?", "expected": {"should_recall": true, "reason": "ambiguous_reference", "tier": "compact"}},
+  {"query": "продолжай", "has_live_context": true, "expected": {"should_recall": false, "reason": "short_command", "tier": "none"}},
+  {"query": "продолжай", "has_live_context": false, "expected": {"should_recall": true, "reason": "continuation_with_context", "tier": "compact"}},
+  {"query": "embeddings?", "expected": {"should_recall": true, "reason": "conservative_fallback", "tier": "compact"}},
+  {"query": "fully specified request", "mode": "off", "expected": {"should_recall": false, "reason": "mode_off", "tier": "none"}},
+  {"query": "fully specified request", "mode": "always", "expected": {"should_recall": true, "reason": "mode_always", "tier": "full"}},
+  {"query": "research", "force_full_recall": true, "expected": {"should_recall": true, "reason": "explicit_full_recall", "tier": "full"}}
+]

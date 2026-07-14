@@ -45,6 +45,7 @@ export interface RecallRequest {
   minimum_score?: number;
   operation?: string;
   context_budget_tokens?: number;
+  context_per_layer_limit?: number;
 }
 
 export interface MemoryResult {

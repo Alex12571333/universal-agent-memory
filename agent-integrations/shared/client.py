@@ -33,6 +33,8 @@ class MemoryClient(Protocol):
         operation: str,
         top_k: int,
         context_budget_tokens: int,
+        context_per_layer_limit: int,
+        minimum_score: float,
         labels: tuple[str, ...] = (),
         agent_id: UUID | None = None,
         thread_id: UUID | None = None,
@@ -90,6 +92,8 @@ class MemoryServerClient:
         operation: str,
         top_k: int,
         context_budget_tokens: int,
+        context_per_layer_limit: int,
+        minimum_score: float,
         labels: tuple[str, ...] = (),
         agent_id: UUID | None = None,
         thread_id: UUID | None = None,
@@ -102,6 +106,8 @@ class MemoryServerClient:
             "operation": operation,
             "top_k": top_k,
             "context_budget_tokens": context_budget_tokens,
+            "context_per_layer_limit": context_per_layer_limit,
+            "minimum_score": minimum_score,
             "labels": list(labels),
         }
         if agent_id:

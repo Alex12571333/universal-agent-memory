@@ -19,7 +19,8 @@ Hermes memory provider contract:
 Implemented behavior:
 
 1. Load UAM server URL/API key from Hermes plugin config or environment.
-2. `prefetch`: recall and inject relevant cross-agent memory before turns.
+2. `prefetch`: run the deterministic recall gate and inject cross-agent memory
+   only for turns that need historical context.
 3. `sync_turn`: retain completed user/assistant turns.
 4. `on_session_end`: retain a compact session summary.
 5. Tools:
@@ -47,7 +48,19 @@ UAM_URL=http://localhost:6798
 UAM_API_KEY=...
 UAM_AGENT_INTEGRATION=hermes
 UAM_MEMORY_ENABLED=true
+UAM_RECALL_MODE=adaptive
+UAM_MEMORY_RECALL_TOP_K=6
+UAM_CONTEXT_BUDGET_TOKENS=1200
+UAM_CONTEXT_PER_LAYER_LIMIT=3
+UAM_RECALL_MINIMUM_SCORE=0.45
 ```
+
+`off` disables automatic prefetch but keeps the explicit search tool. `always`
+or `UAM_FORCE_FULL_RECALL=true` selects the configurable research tier (10
+records, 2500 tokens, 6 per layer by default). `recall_gate_metrics()` exposes
+text-free decision/reason, token and latency counters for Hermes diagnostics.
+Injected records are marked as untrusted reference data rather than replayed
+conversation or instructions.
 
 Optional explicit identities:
 

@@ -9,6 +9,22 @@
 - Canonical production-readiness audit with explicit runtime blockers and
   required target-environment evidence.
 
+### Added
+
+- Deterministic RU/EN automatic-recall gate for shared, OpenClaw and Hermes
+  integrations with `off`, `adaptive` and `always` modes.
+- Text-free in-process metrics for gate decisions/reasons, injected token totals
+  and recall latency.
+- Explicit configurable research tier and per-request context-per-layer bound.
+- Untrusted-reference prompt framing for every automatic memory injection.
+
+### Changed
+
+- Automatic recall defaults are now `top_k=6`, 1200 tokens, 3 records per layer
+  and minimum score 0.45.
+- The explicit research tier defaults to `top_k=10`, 2500 tokens and 6 records
+  per layer.
+
 ## 0.1.0
 
 - Self-hosted FastAPI memory server with PostgreSQL canonical storage,
