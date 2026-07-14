@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+from hashlib import sha256
 from pathlib import Path
 
 import psycopg
@@ -29,6 +30,7 @@ MIGRATIONS = (
     ROOT / "migrations/013_protected_search_tokens.sql",
     ROOT / "migrations/014_protected_search_scope_integrity.sql",
     ROOT / "migrations/015_encrypt_json_payloads.sql",
+    ROOT / "migrations/016_audit_immutability.sql",
 )
 
 
@@ -49,27 +51,45 @@ def migrate(
             """
             create table if not exists schema_migrations (
               name text primary key,
+              checksum_sha256 text,
               applied_at timestamptz not null default now()
             )
             """
         )
-        applied = {
-            row[0]
-            for row in connection.execute("select name from schema_migrations").fetchall()
-        }
+        connection.execute(
+            "alter table schema_migrations add column if not exists checksum_sha256 text"
+        )
+        applied = dict(
+            connection.execute(
+                "select name, checksum_sha256 from schema_migrations"
+            ).fetchall()
+        )
         if not applied:
             existing_schema = connection.execute(
                 "select to_regclass('memory_items') is not null"
             ).fetchone()[0]
             if existing_schema:
-                _record(connection, MIGRATIONS[0].name)
-                applied.add(MIGRATIONS[0].name)
+                checksum = _migration_checksum(MIGRATIONS[0])
+                _record(connection, MIGRATIONS[0].name, checksum)
+                applied[MIGRATIONS[0].name] = checksum
 
         for path in MIGRATIONS:
+            checksum = _migration_checksum(path)
+            stored_checksum = applied.get(path.name)
             if path.name in applied:
+                if stored_checksum is None:
+                    connection.execute(
+                        "update schema_migrations set checksum_sha256 = %s "
+                        "where name = %s and checksum_sha256 is null",
+                        (checksum, path.name),
+                    )
+                elif stored_checksum != checksum:
+                    raise RuntimeError(
+                        f"applied migration checksum mismatch: {path.name}"
+                    )
                 continue
             connection.execute(path.read_text())
-            _record(connection, path.name)
+            _record(connection, path.name, checksum)
             applied_now.append(path.name)
         if app_user is not None or app_password is not None:
             if not app_user or not app_password:
@@ -147,10 +167,16 @@ def provision_application_role(
     )
 
 
-def _record(connection: psycopg.Connection, name: str) -> None:
+def _migration_checksum(path: Path) -> str:
+    """Return the immutable SHA-256 identity of one migration file."""
+    return sha256(path.read_bytes()).hexdigest()
+
+
+def _record(connection: psycopg.Connection, name: str, checksum: str) -> None:
     connection.execute(
-        "insert into schema_migrations (name) values (%s) on conflict do nothing",
-        (name,),
+        "insert into schema_migrations (name, checksum_sha256) values (%s, %s) "
+        "on conflict do nothing",
+        (name, checksum),
     )
 
 
