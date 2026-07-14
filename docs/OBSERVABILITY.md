@@ -52,6 +52,27 @@ The alert rules cover the same production failure modes used by
 `scripts/check_metrics_health.py`: dead letters, outbox backlog, outbox lag,
 stuck leases, embedding failures, reindex failures and recall-source outages.
 
+## Runtime dependency gate
+
+`/ready` intentionally proves only the canonical PostgreSQL ledger and
+retrieval degradation. It must not become unavailable merely because an
+asynchronous worker is restarting. Operators should separately run this
+authenticated scheduled check; it fails when NATS or the embedding worker is
+not healthy according to the private dependency probes exposed by
+`/v1/system/status`:
+
+```bash
+UAM_RUNTIME_DEPENDENCY_PROBES=true \
+PYTHONPATH=src python scripts/check_runtime_dependencies.py \
+  --status-url http://localhost:6798/v1/system/status \
+  --report ./ops/runtime-dependencies-health.json
+```
+
+Its report format is `obelisk-runtime-dependencies-health-v1`. It records only
+component status and a scrubbed URL—never an API key, query string or endpoint
+credentials. Configure `UAM_METRICS_ALERT_WEBHOOK` or `UAM_ALERT_COMMAND` to
+route a failed run, and retain the report beside metrics evidence.
+
 ## Release gate
 
 Before claiming a production release:

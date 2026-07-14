@@ -81,6 +81,7 @@ def test_maintenance_retention_never_selects_pending_outbox() -> None:
     assert "published_at is not null or dead_lettered_at is not null" in connection.calls[0][0]
 scheduled_backup = _load_script("scheduled_backup")
 backup_history = _load_script("verify_backup_history")
+runtime_dependencies = _load_script("check_runtime_dependencies")
 deployment_preflight = _load_script("deployment_preflight")
 observability_preflight = _load_script("observability_preflight")
 export_vault = _load_script("export_vault")
@@ -1693,6 +1694,39 @@ def test_backup_history_requires_multiple_complete_signed_runs(
 
     (backup_dir / "obelisk-memory-20260713T020202Z.restore.json").unlink()
     assert backup_history.main() == 1
+
+
+def test_runtime_dependency_health_requires_each_selected_worker() -> None:
+    healthy = {
+        "runtime_dependencies": {
+            "nats": {"status": "healthy"},
+            "embedding_worker": {"status": "healthy"},
+        }
+    }
+    assert all(
+        row["ok"]
+        for row in runtime_dependencies.evaluate_status(
+            healthy,
+            ("nats", "embedding_worker"),
+        )
+    )
+
+    degraded = {
+        "runtime_dependencies": {
+            "nats": {"status": "healthy"},
+            "embedding_worker": {"status": "unavailable"},
+        }
+    }
+    checks = runtime_dependencies.evaluate_status(degraded, ("nats", "embedding_worker"))
+    assert checks[0]["ok"] is True
+    assert checks[1] == {
+        "name": "dependency:embedding_worker",
+        "ok": False,
+        "detail": "status=unavailable",
+    }
+    assert runtime_dependencies._safe_url("http://user:secret@worker:9091/status?key=x") == (
+        "http://worker:9091/status"
+    )
 
 
 def test_scheduled_backup_alerts_on_failure(
