@@ -3,11 +3,19 @@ from __future__ import annotations
 from pathlib import Path
 from uuid import uuid4
 
+import pytest
+
 from memory_plane.bootstrap import build_in_memory_container
 from memory_plane.contracts.dto import RetainCommand, SupersedeMemoryCommand
-from memory_plane.domain.models import MemoryLayer, MemoryScope, Provenance
+from memory_plane.domain.models import (
+    MemoryLayer,
+    MemoryRevisionConflictError,
+    MemoryScope,
+    Provenance,
+)
 from memory_plane.services.vault import (
     VaultImportSource,
+    VaultPatchCommand,
     VaultWriteResult,
     editable_vault_content,
 )
@@ -384,3 +392,90 @@ def test_vault_import_reports_conflict_for_stale_export() -> None:
     assert result.changes[0].action == "conflict"
     assert result.changes[0].expected_revision == 1
     assert "actual 2" in result.changes[0].message
+
+
+def test_vault_targeted_patch_replaces_one_section_and_is_idempotent() -> None:
+    container = build_in_memory_container()
+    tenant = uuid4()
+    workspace = uuid4()
+    retained = container.retention.retain(
+        RetainCommand(
+            tenant_id=tenant,
+            workspace_id=workspace,
+            layer=MemoryLayer.SEMANTIC,
+            scope=MemoryScope.WORKSPACE,
+            kind="project_note",
+            text="# Проект\n\n## Решение\nСтарая модель.\n\n## Ограничения\nТолько локально.",
+            provenance=Provenance(source_kind="operator-ui"),
+        )
+    )
+    command = VaultPatchCommand(
+        tenant_id=tenant,
+        workspace_id=workspace,
+        item_id=retained.item.id,
+        expected_revision=1,
+        section_heading="Решение",
+        section_content="Новая локальная модель.",
+    )
+
+    first = container.vault.patch_memory(command)
+    retry = container.vault.patch_memory(command)
+
+    assert first.changed is True
+    assert first.item.revision == 2
+    assert first.item.supersedes_id == retained.item.id
+    assert "## Решение\nНовая локальная модель." in first.item.text
+    assert "## Ограничения\nТолько локально." in first.item.text
+    assert first.queued_event_ids
+    assert retry.changed is False
+    assert retry.item.id == first.item.id
+    assert retry.queued_event_ids == ()
+
+
+def test_vault_targeted_patch_rejects_system_section_and_stale_revision() -> None:
+    container = build_in_memory_container()
+    tenant = uuid4()
+    workspace = uuid4()
+    retained = container.retention.retain(
+        RetainCommand(
+            tenant_id=tenant,
+            workspace_id=workspace,
+            layer=MemoryLayer.CORE,
+            scope=MemoryScope.WORKSPACE,
+            kind="decision",
+            text="## Решение\nИспользовать локальный сервер.",
+            provenance=Provenance(source_kind="api"),
+        )
+    )
+
+    with pytest.raises(ValueError, match="system-managed"):
+        container.vault.patch_memory(
+            VaultPatchCommand(
+                tenant_id=tenant,
+                workspace_id=workspace,
+                item_id=retained.item.id,
+                expected_revision=1,
+                section_heading="Provenance",
+                section_content="Поддельный источник",
+            )
+        )
+
+    container.vault.patch_memory(
+        VaultPatchCommand(
+            tenant_id=tenant,
+            workspace_id=workspace,
+            item_id=retained.item.id,
+            expected_revision=1,
+            replace_body="Обновлённое решение.",
+        )
+    )
+    with pytest.raises(MemoryRevisionConflictError):
+        container.vault.patch_memory(
+            VaultPatchCommand(
+                tenant_id=tenant,
+                workspace_id=workspace,
+                item_id=retained.item.id,
+                expected_revision=1,
+                replace_body="Конкурирующее решение.",
+            )
+        )

@@ -3,7 +3,7 @@ from __future__ import annotations
 import base64
 import json
 from datetime import datetime
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -1909,6 +1909,66 @@ def test_vault_import_endpoint_plans_and_applies_supersede() -> None:
     assert applied.json()["changes"][0]["new_item_id"] is not None
     rows = container.store.list_for_workspace(DEFAULT_SERVER_ID, DEFAULT_PROJECT_ID)
     assert any(row.text == "Vault import can apply through supersede." for row in rows)
+
+
+def test_vault_targeted_patch_endpoint_is_cas_and_queues_reindex() -> None:
+    container = build_in_memory_container()
+    client = TestClient(create_app(container))
+    retained = client.post(
+        "/v1/memory/retain",
+        json={
+            "layer": "semantic",
+            "scope": "workspace",
+            "kind": "project_note",
+            "text": "## Решение\nСтарая модель.\n\n## Ограничения\nТолько локально.",
+        },
+    ).json()
+    endpoint = (
+        f"/v1/workspaces/{DEFAULT_PROJECT_ID}/vault/memories/{retained['id']}"
+    )
+    payload = {
+        "expected_revision": 1,
+        "replace_section": {
+            "heading": "Решение",
+            "content": "Новая локальная модель.",
+        },
+    }
+
+    updated = client.patch(endpoint, json=payload)
+    retry = client.patch(endpoint, json=payload)
+    stale = client.patch(
+        endpoint,
+        json={"expected_revision": 1, "replace_body": "Конкурирующая правка."},
+    )
+    vector_payload = client.patch(
+        endpoint,
+        json={
+            "expected_revision": 2,
+            "replace_body": "Текст",
+            "embedding": [0.1, 0.2],
+        },
+    )
+    wrong_workspace = client.patch(
+        f"/v1/workspaces/{uuid4()}/vault/memories/{updated.json()['item_id']}",
+        json={"expected_revision": 2, "replace_body": "Чужая область."},
+    )
+
+    assert updated.status_code == 200
+    assert updated.json()["changed"] is True
+    assert updated.json()["revision"] == 2
+    assert updated.json()["supersedes_id"] == retained["id"]
+    assert updated.json()["reindex_queued"] is True
+    assert updated.json()["queued_event_ids"]
+    assert retry.status_code == 200
+    assert retry.json()["changed"] is False
+    assert retry.json()["item_id"] == updated.json()["item_id"]
+    assert stale.status_code == 409
+    assert vector_payload.status_code == 422
+    assert wrong_workspace.status_code == 404
+    rows = container.store.list_for_workspace(DEFAULT_SERVER_ID, DEFAULT_PROJECT_ID)
+    current = next(row for row in rows if row.id == UUID(updated.json()["item_id"]))
+    assert "Новая локальная модель." in current.text
+    assert "Только локально." in current.text
 
 
 def test_vault_archive_endpoint_hides_memory_from_recall() -> None:

@@ -148,6 +148,15 @@ export interface ImportVaultResponse {
   }>;
 }
 
+export interface VaultPatchResponse {
+  item_id: string;
+  supersedes_id: string | null;
+  revision: number;
+  changed: boolean;
+  reindex_queued: boolean;
+  queued_event_ids: string[];
+}
+
 export interface SystemStatus {
   status: "ok" | string;
   version: string;

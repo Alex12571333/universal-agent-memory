@@ -29,7 +29,7 @@ from uuid import UUID
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from memory_plane.adapters.documents import BinaryDocumentCommand, DocumentIngestor
 from memory_plane.adapters.embeddings import (
@@ -82,7 +82,11 @@ from memory_plane.services.proposals import (
     ReviewMemoryProposalCommand,
     SubmitMemoryProposalCommand,
 )
-from memory_plane.services.vault import VaultImportSource, editable_vault_content
+from memory_plane.services.vault import (
+    VaultImportSource,
+    VaultPatchCommand,
+    editable_vault_content,
+)
 
 DEFAULT_SERVER_ID = UUID("00000000-0000-0000-0000-000000000001")
 DEFAULT_PROJECT_ID = UUID("00000000-0000-0000-0000-000000000002")
@@ -496,6 +500,28 @@ class VaultDeleteBody(BaseModel):
 
     tenant_id: UUID = DEFAULT_SERVER_ID
     file: VaultImportFileBody
+
+
+class VaultPatchSectionBody(BaseModel):
+    """Replace the content of one existing human-owned Markdown section."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    heading: str = Field(min_length=1, max_length=200)
+    content: str = Field(max_length=1_000_000)
+
+
+class VaultPatchBody(BaseModel):
+    """Targeted append-only edit of one canonical memory head."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    tenant_id: UUID = DEFAULT_SERVER_ID
+    expected_revision: int = Field(ge=1)
+    replace_body: str | None = Field(default=None, max_length=1_000_000)
+    replace_section: VaultPatchSectionBody | None = None
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    idempotency_key: str | None = Field(default=None, min_length=1, max_length=255)
 
 
 class ConflictDecisionBody(BaseModel):
@@ -2764,6 +2790,66 @@ def create_app(
                 }
                 for change in result.changes
             ],
+        }
+
+    @app.patch("/v1/workspaces/{workspace_id}/vault/memories/{item_id}")
+    def patch_vault_memory(
+        workspace_id: UUID,
+        item_id: UUID,
+        body: VaultPatchBody,
+        request: Request,
+    ) -> dict[str, Any]:
+        """Patch text through CAS supersede; never expose or accept vector payloads."""
+        section = body.replace_section
+        try:
+            result = services.vault.patch_memory(
+                VaultPatchCommand(
+                    tenant_id=body.tenant_id,
+                    workspace_id=workspace_id,
+                    item_id=item_id,
+                    expected_revision=body.expected_revision,
+                    replace_body=body.replace_body,
+                    section_heading=section.heading if section else None,
+                    section_content=section.content if section else None,
+                    confidence=body.confidence,
+                    idempotency_key=body.idempotency_key,
+                )
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="memory item not found") from exc
+        except MemoryRevisionConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        record_audit(
+            request,
+            tenant_id=body.tenant_id,
+            workspace_id=workspace_id,
+            action="vault.memory.patch",
+            resource_type="memory_item",
+            resource_id=str(result.item.id),
+            metadata={
+                "parent_item_id": str(item_id),
+                "expected_revision": body.expected_revision,
+                "revision": result.item.revision,
+                "changed": result.changed,
+                "patch_kind": "section" if section else "body",
+                "reindex_queued": bool(result.queued_event_ids),
+            },
+        )
+        return {
+            "tenant_id": str(body.tenant_id),
+            "workspace_id": str(workspace_id),
+            "item_id": str(result.item.id),
+            "supersedes_id": str(result.item.supersedes_id)
+            if result.item.supersedes_id
+            else None,
+            "revision": result.item.revision,
+            "changed": result.changed,
+            "reindex_queued": bool(result.queued_event_ids),
+            "queued_event_ids": [str(event_id) for event_id in result.queued_event_ids],
         }
 
     # ── Checkpoint endpoints ────────────────────────────────────────

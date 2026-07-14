@@ -107,9 +107,9 @@ used.
 | literal file scan | rejected | lexical PostgreSQL search plus dense Qdrant retrieval remains the supported path |
 | MCP-only integration | rejected as primary integration | OpenAI-compatible/agent-native hooks and SDKs remain primary; MCP is optional interoperability |
 
-## Implementation status — 2026-07-13
+## Implementation status — 2026-07-14
 
-The first four delivery items are implemented behind tenant/workspace-scoped
+All five delivery items are implemented behind tenant/workspace-scoped
 operator APIs and covered by unit or API tests:
 
 - deterministic vault health is served at
@@ -120,7 +120,10 @@ operator APIs and covered by unit or API tests:
   not replace task-scoped recall;
 - the vault UI/API exposes `editable_content` rather than vectors, Qdrant
   payloads, tenant IDs, or provenance sections; saving still becomes a CAS
-  superseding revision and background reindex.
+  superseding revision and background reindex;
+- targeted body/section/confidence patches now use a dedicated CAS endpoint,
+  reject system-managed sections and stale revisions, derive an idempotency key,
+  and queue only the new revision through the transactional outbox.
 
 The live operator walkthrough additionally proves the complete local flow:
 retain and recall a test note, persist a conflict decision, select a real
@@ -130,9 +133,13 @@ The walkthrough treats an `embedding` field in an editable memory note as a
 failure.  This is a release gate, not a promise that all browser usability or
 multi-node production concerns are complete.
 
-Still pending from this phase is a purpose-built, field-level/section-level
-editor patch endpoint.  Until it exists, the supported editing mechanism is a
-full note body submitted through the existing CAS vault-import path.
+The full vault-import path remains available for signed bulk/offline workflows.
+The web editor uses the narrower targeted endpoint for applied edits and keeps
+the import planner only for explicit dry-run validation.
+
+Real PostgreSQL 17 CAS/idempotency behaviour was also validated in an isolated
+container on the `.14` agent node; see
+[target vault patch validation](TARGET_VAULT_PATCH_VALIDATION_2026_07_14.md).
 
 ## Automated curation delivery note
 

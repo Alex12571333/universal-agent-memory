@@ -191,6 +191,7 @@
 | `VaultExporter.export_workspace()` | Workspace → folder on disk | Safe relative paths; memory/observation counts |
 | `VaultExporter.plan_import()` | Markdown vault files → safe import plan | Dry-run; detects changed/unchanged/conflict/error files |
 | `VaultExporter.apply_import()` | Markdown vault files → CAS supersede writes | Creates new revisions only; never overwrites rows |
+| `VaultExporter.patch_memory()` | Body/section/confidence patch → CAS supersede | Rejects stale, cross-workspace, ambiguous and system-section edits; queues derived work |
 | `VaultExporter._memory_file()` | `MemoryItem` → Obsidian note | Frontmatter + provenance + supersede backlinks |
 | `VaultExporter._observation_file()` | `Observation` → reflection note | Evidence backlinks to `mem-*` notes |
 | `vault_manifest.py` | Markdown vault folder → manifest/checksum/signature verification | SHA-256 per file plus optional HMAC signature |
@@ -248,6 +249,7 @@
 | `POST /v1/workspaces/{id}/vault/import` | Dry-run/apply edited vault notes | Applies through `supersede`; conflicts on stale revisions |
 | `GET /v1/workspaces/{id}/vault` | Human-readable Markdown projection | PostgreSQL остаётся source of truth |
 | `POST /v1/workspaces/{id}/vault/archive` | Non-destructive archive revision | Сохраняет history и audit event |
+| `PATCH /v1/workspaces/{id}/vault/memories/{item_id}` | Targeted text/section CAS edit | Не принимает vectors/provenance; stale revision → `409`; embedding ставится в outbox |
 | `POST /v1/ingest/text` | Детерминированный text ingestion |
 | `POST /v1/ingest/document` | Base64 Markdown/PDF ingestion, лимит 20 MiB |
 | `POST /v1/workspaces/{id}/reflect` | Запуск baseline sleep/reflection |
