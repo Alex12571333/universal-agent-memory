@@ -134,6 +134,10 @@ def main() -> int:
 
     success = True
     plaintext_backup: Path | None = None
+    child_environment = os.environ.copy()
+    child_environment["UAM_BACKUP_DATABASE_URL"] = args.database_url
+    child_environment["UAM_DATABASE_URL"] = args.database_url
+    child_environment["UAM_BACKUP_ENCRYPTION_KEY"] = args.encryption_key
     try:
         descriptor, name = tempfile.mkstemp(prefix="obelisk-backup-", suffix=".dump")
         os.close(descriptor)
@@ -146,9 +150,8 @@ def main() -> int:
                 sys.executable,
                 str(ROOT / "scripts" / "backup.py"),
                 str(plaintext_backup),
-                "--database-url",
-                args.database_url,
             ],
+            environment=child_environment,
         )
         if steps[-1]["ok"]:
             success &= _encrypt_step(steps, plaintext_backup, backup_path, encryption_key)
@@ -162,9 +165,8 @@ def main() -> int:
                     str(backup_path),
                     "--report",
                     str(restore_report_path),
-                    "--source-database-url",
-                    args.database_url,
                 ],
+                environment=child_environment,
             )
         elif args.skip_restore_drill:
             steps.append(_skipped_step("restore_drill", "skipped by operator"))
@@ -177,11 +179,10 @@ def main() -> int:
                     sys.executable,
                     str(ROOT / "scripts" / "export_audit.py"),
                     str(audit_path),
-                    "--database-url",
-                    args.database_url,
                     "--limit",
                     "500",
                 ],
+                environment=child_environment,
             )
         else:
             steps.append(_skipped_step("audit_export", "skipped by operator"))
@@ -255,10 +256,18 @@ def _run_step(
     steps: list[dict[str, Any]],
     name: str,
     command: list[str],
+    *,
+    environment: dict[str, str] | None = None,
 ) -> bool:
     """Run one subprocess step and append a compact report entry."""
     started = time.time()
-    result = subprocess.run(command, check=False, text=True, capture_output=True)
+    result = subprocess.run(
+        command,
+        check=False,
+        text=True,
+        capture_output=True,
+        env=environment,
+    )
     steps.append(
         {
             "name": name,

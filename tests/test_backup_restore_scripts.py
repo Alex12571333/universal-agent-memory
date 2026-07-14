@@ -645,26 +645,40 @@ def test_validate_production_env_rejects_unsafe_qdrant_collection_name() -> None
 
 
 def test_backup_invokes_pg_dump(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    run = Mock()
-    monkeypatch.setattr(backup.subprocess, "run", run)
+    captured: dict[str, object] = {}
+
+    def fake_run(command: list[str], *, check: bool, env: dict[str, str]) -> None:
+        captured["command"] = command
+        captured["check"] = check
+        captured["environment"] = env
+        password_file = Path(env["PGPASSFILE"])
+        captured["password_file_mode"] = password_file.stat().st_mode & 0o777
+        captured["password_file_content"] = password_file.read_text(encoding="utf-8")
+
+    monkeypatch.setattr(backup.subprocess, "run", fake_run)
     monkeypatch.setattr(backup.shutil, "which", lambda command: "/usr/bin/pg_dump")
-    monkeypatch.setenv("UAM_BACKUP_DATABASE_URL", "postgresql://example/db")
+    monkeypatch.setenv(
+        "UAM_BACKUP_DATABASE_URL",
+        "postgresql://backup_user:s3cr%3Aet@example/db",
+    )
     output = tmp_path / "nested" / "uam.dump"
     monkeypatch.setattr("sys.argv", ["backup.py", str(output)])
 
     assert backup.main() == 0
 
-    run.assert_called_once_with(
-        [
-            "pg_dump",
-            "--format=custom",
-            "--no-owner",
-            "--no-acl",
-            f"--file={output}",
-            "postgresql://example/db",
-        ],
-        check=True,
-    )
+    assert captured["command"] == [
+        "pg_dump",
+        "--format=custom",
+        "--no-owner",
+        "--no-acl",
+        f"--file={output}",
+        "postgresql://backup_user@example/db",
+    ]
+    assert captured["check"] is True
+    assert captured["password_file_mode"] == 0o600
+    assert captured["password_file_content"] == "example:5432:db:backup_user:s3cr\\:et\n"
+    assert "s3cr" not in " ".join(captured["command"])
+    assert not Path(captured["environment"]["PGPASSFILE"]).exists()
     assert output.parent.exists()
 
 
@@ -684,10 +698,11 @@ def test_backup_uses_local_compose_postgres_when_pg_dump_is_unavailable(
 
     assert backup.main() == 0
 
-    assert run.call_args_list[0].args[0][:6] == [
-        "docker", "compose", "exec", "-T", "postgres", "pg_dump"
-    ]
-    assert "@127.0.0.1:5432/memory" in run.call_args_list[0].args[0][-1]
+    first_command = run.call_args_list[0].args[0]
+    assert first_command[:6] == ["docker", "compose", "exec", "-T", "postgres", "sh"]
+    assert "postgresql://memory_admin@127.0.0.1:5432/memory" in first_command
+    assert "memory@" not in " ".join(first_command)
+    assert run.call_args_list[0].kwargs["input"] == "memory\n"
     assert run.call_args_list[1].args[0][:3] == ["docker", "compose", "cp"]
 
 
@@ -703,18 +718,18 @@ def test_restore_invokes_pg_restore_with_optional_clean(
 
     assert restore.main() == 0
 
-    run.assert_called_once_with(
-        [
-            "pg_restore",
-            "--no-owner",
-            "--no-acl",
-            "--dbname=postgresql://example/db",
-            "--clean",
-            "--if-exists",
-            str(dump),
-        ],
-        check=True,
-    )
+    command = run.call_args.args[0]
+    assert command == [
+        "pg_restore",
+        "--no-owner",
+        "--no-acl",
+        "--dbname=postgresql://example/db",
+        "--clean",
+        "--if-exists",
+        str(dump),
+    ]
+    assert run.call_args.kwargs["check"] is True
+    assert "env" in run.call_args.kwargs
 
 
 def test_restore_decrypts_encrypted_artifact_to_temporary_file(
@@ -835,6 +850,7 @@ def test_restore_drill_uses_temporary_docker_target(
     backup_file.write_bytes(b"PGDMP")
     report_path = tmp_path / "restore-drill.json"
     commands: list[list[str]] = []
+    docker_env: dict[str, object] = {}
     tokens = iter(("abcd1234", "passwordseed"))
 
     def fake_run(
@@ -843,10 +859,17 @@ def test_restore_drill_uses_temporary_docker_target(
         check: bool = True,
         text: bool = True,
         capture_output: bool = False,
+        env: dict[str, str] | None = None,
+        input: str | None = None,
     ) -> subprocess.CompletedProcess[str]:
         commands.append(command)
-        stdout = ""
-        if capture_output and "pg_policies" not in command[-1]:
+        if command[:2] == ["docker", "run"]:
+            env_file = Path(command[command.index("--env-file") + 1])
+            docker_env["mode"] = env_file.stat().st_mode & 0o777
+            docker_env["content"] = env_file.read_text(encoding="utf-8")
+            docker_env["path"] = env_file
+        stdout = "1\n" if "select 1" in command else ""
+        if capture_output and "select 1" not in command and "pg_policies" not in command[-1]:
             stdout = "\n3\n0\n0\n0\n"
         return subprocess.CompletedProcess(command, 0, stdout=stdout, stderr="")
 
@@ -862,7 +885,18 @@ def test_restore_drill_uses_temporary_docker_target(
     container = "obelisk-restore-drill-abcd1234"
     volume = f"{container}-data"
     assert commands[0] == ["docker", "volume", "create", volume]
-    assert commands[1][:6] == ["docker", "run", "-d", "--name", container, "-e"]
+    assert commands[1][:6] == [
+        "docker",
+        "run",
+        "-d",
+        "--name",
+        container,
+        "--env-file",
+    ]
+    assert docker_env["mode"] == 0o600
+    assert "POSTGRES_PASSWORD=drill-passwordseed" in docker_env["content"]
+    assert not Path(docker_env["path"]).exists()
+    assert "drill-passwordseed" not in " ".join(" ".join(row) for row in commands)
     assert ["docker", "cp", str(backup_file), f"{container}:/tmp/obelisk-memory.dump"] in commands
     assert any(command[:4] == ["docker", "exec", container, "pg_restore"] for command in commands)
     assert any(command[:4] == ["docker", "exec", container, "psql"] for command in commands)
@@ -892,6 +926,8 @@ def test_restore_drill_rejects_missing_tenant_isolation(monkeypatch: pytest.Monk
         check: bool = True,
         text: bool = True,
         capture_output: bool = False,
+        env: dict[str, str] | None = None,
+        input: str | None = None,
     ) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess(command, 0, stdout="memory_items\n", stderr="")
 
@@ -912,6 +948,8 @@ def test_restore_drill_uses_compose_psql_for_local_source_parity(
         check: bool = True,
         text: bool = True,
         capture_output: bool = False,
+        env: dict[str, str] | None = None,
+        input: str | None = None,
     ) -> subprocess.CompletedProcess[str]:
         commands.append(command)
         return subprocess.CompletedProcess(command, 0, stdout="memory_items|3\n", stderr="")
@@ -933,10 +971,16 @@ def test_restore_drill_uses_compose_psql_for_local_source_parity(
             "exec",
             "-T",
             "postgres",
+            "sh",
+            "-c",
+            "IFS= read -r supplied; "
+            "PGPASSWORD=${supplied:-${POSTGRES_PASSWORD:-}}; export PGPASSWORD; "
+            'exec "$@"',
+            "obelisk-pg",
             "psql",
             "--tuples-only",
             "--no-align",
-            "--dbname=postgresql://memory_admin:memory@127.0.0.1:5432/memory",
+            "--dbname=postgresql://memory_admin@127.0.0.1:5432/memory",
             "--command",
             "select 'memory_items', count(*) from memory_items;",
         ]
@@ -1526,6 +1570,7 @@ def test_scheduled_backup_runs_backup_drill_audit_and_writes_report(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     commands: list[list[str]] = []
+    child_environments: list[dict[str, str]] = []
 
     def fake_run(
         command: list[str],
@@ -1533,8 +1578,10 @@ def test_scheduled_backup_runs_backup_drill_audit_and_writes_report(
         check: bool = False,
         text: bool = True,
         capture_output: bool = True,
+        env: dict[str, str] | None = None,
     ) -> subprocess.CompletedProcess[str]:
         commands.append(command)
+        child_environments.append(env or {})
         if "restore_drill.py" in command[1]:
             restore_report = Path(command[command.index("--report") + 1])
             restore_report.write_text(
@@ -1607,6 +1654,17 @@ def test_scheduled_backup_runs_backup_drill_audit_and_writes_report(
     assert "backup.py" in commands[0][1]
     assert "restore_drill.py" in commands[1][1]
     assert "export_audit.py" in commands[2][1]
+    joined_commands = "\n".join(" ".join(command) for command in commands)
+    assert "postgresql://example/db" not in joined_commands
+    assert BACKUP_ENCRYPTION_KEY not in joined_commands
+    assert all(
+        environment["UAM_BACKUP_DATABASE_URL"] == "postgresql://example/db"
+        for environment in child_environments
+    )
+    assert all(
+        environment["UAM_BACKUP_ENCRYPTION_KEY"] == BACKUP_ENCRYPTION_KEY
+        for environment in child_environments
+    )
 
 
 def test_scheduled_backup_signs_encrypted_bundle_manifest(
@@ -1618,6 +1676,7 @@ def test_scheduled_backup_signs_encrypted_bundle_manifest(
         check: bool = False,
         text: bool = True,
         capture_output: bool = True,
+        env: dict[str, str] | None = None,
     ) -> subprocess.CompletedProcess[str]:
         if "restore_drill.py" in command[1]:
             restore_report = Path(command[command.index("--report") + 1])
@@ -1806,6 +1865,7 @@ def test_scheduled_backup_alerts_on_failure(
         check: bool = False,
         text: bool = True,
         capture_output: bool = True,
+        env: dict[str, str] | None = None,
     ) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess(command, 7, stdout="", stderr="boom")
 

@@ -15,6 +15,7 @@ from typing import Any
 from backup_encryption import BackupEncryptionError, decrypt_file, parse_key
 
 from memory_plane.config.database import read_database_dsn
+from memory_plane.config.postgres_process import postgres_process_connection
 from memory_plane.config.secrets import read_secret_env
 
 BUNDLE_FORMAT = "obelisk-backup-bundle-v1"
@@ -109,16 +110,17 @@ def main() -> int:
                 raise RuntimeError(f"unable to decrypt backup: {exc}") from exc
             backup = decrypted_backup
 
-        command = [
-            "pg_restore",
-            "--no-owner",
-            "--no-acl",
-            f"--dbname={args.database_url}",
-        ]
-        if args.clean:
-            command.extend(["--clean", "--if-exists"])
-        command.append(str(backup))
-        subprocess.run(command, check=True)
+        with postgres_process_connection(args.database_url) as connection:
+            command = [
+                "pg_restore",
+                "--no-owner",
+                "--no-acl",
+                f"--dbname={connection.dsn}",
+            ]
+            if args.clean:
+                command.extend(["--clean", "--if-exists"])
+            command.append(str(backup))
+            subprocess.run(command, check=True, env=connection.environment)
         print(backup)
     finally:
         if decrypted_backup is not None:

@@ -43,8 +43,9 @@ PYTHONPATH=src python scripts/scheduled_backup.py \
   --backup-dir ./backups \
   --audit-dir ./audit-export \
   --report ./backups/latest-backup-report.json
-UAM_AUDIT_SIGNING_KEY=... PYTHONPATH=src python scripts/audit_retention.py \
-  --database-url "$UAM_DATABASE_URL" \
+UAM_AUDIT_SIGNING_KEY_FILE=/run/secrets/uam_audit_signing_key \
+UAM_AUDIT_RETENTION_DATABASE_URL_FILE=/run/secrets/uam_audit_retention_database_url \
+PYTHONPATH=src python scripts/audit_retention.py \
   --retain-days 365 \
   --export-root ./audit-retention \
   --json-report ./ops/audit-retention.json
