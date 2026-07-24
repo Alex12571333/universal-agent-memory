@@ -1,0 +1,40 @@
+{
+  "schema_version": "1.0",
+  "id": "memory.uam",
+  "kind": "memory_provider",
+  "name": "Universal Agent Memory",
+  "description": "Durable scoped memory backed by a self-hosted UAM service.",
+  "version": "0.2.0",
+  "author": "Universal Agent Memory",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/Alex12571333/universal-agent-memory",
+  "tags": ["durable", "memory", "self-hosted", "uam"],
+  "interfaces": ["agent.memory/v1"],
+  "exposure": "runtime",
+  "entrypoint": "provider:UniversalAgentMemoryProvider",
+  "dependencies": [],
+  "security": {
+    "permission_level": "confirm",
+    "required_scopes": ["memory.read", "memory.write", "network.outbound"],
+    "risk_level": "medium",
+    "side_effects": ["network_request", "memory_write"],
+    "secrets": ["UAM_API_KEY"]
+  },
+  "schemas": {
+    "config": {
+      "type": "object",
+      "properties": {
+        "url": {"type": "string"},
+        "tenant_id": {"type": "string"},
+        "workspace_id": {"type": "string"},
+        "agent_id": {"type": "string"}
+      }
+    },
+    "input": {},
+    "output": {}
+  },
+  "compatibility": {
+    "min_core_version": "0.2.0",
+    "sdk_version": "0.2.0"
+  }
+}

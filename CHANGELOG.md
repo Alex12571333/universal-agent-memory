@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add a typed Corax `memory_provider` adapter with canonical `extension.json`.
+
+## Unreleased
+
 - Signed, content-addressed release evidence v2 with source commit, immutable
   image digest, deployment identity, artifact SHA-256 checks, safe paths,
   freshness enforcement and operator HMAC verification.
