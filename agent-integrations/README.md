@@ -25,6 +25,7 @@ agent-integrations/
   shared/      runtime-agnostic lifecycle contract
   openclaw/    installable OpenClaw ESM plugin
   hermes/      Hermes MemoryProvider adapter
+  corax/       typed agent.memory/v1 provider (runtime-only, never an LLM tool)
 ```
 
 The shared contract is deliberately small so OpenClaw/Hermes-specific adapters
