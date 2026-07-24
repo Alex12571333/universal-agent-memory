@@ -5,6 +5,17 @@ import sys
 from pathlib import Path
 from uuid import uuid4
 
+import pytest
+
+pytest.importorskip(
+    "agent_core",
+    reason="Corax integration tests require the optional agent-core package",
+)
+pytest.importorskip(
+    "agent_sdk",
+    reason="Corax integration tests require the optional agent-sdk package",
+)
+
 from agent_core import MemoryProvider, MemoryQuery, MemoryRecord, ResultStatus
 from agent_sdk import ExtensionManifest, load_extension_instance
 
